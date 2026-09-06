@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useAppSettings } from '../context/AppSettingsContext'
+import { useToast } from '../context/ToastContext'
 import { ACCENTS, AccentColor, ThemeMode } from '../theme'
 import { LANGS, Lang } from '../i18n'
 
 export default function SettingsPanel(){
   const { theme, accent, lang, setTheme, setAccent, setLang, t } = useAppSettings()
+  const toast = useToast()
   const [outDir, setOutDir] = useState('')
   const [status, setStatus] = useState<any>(null)
   const [cfg, setCfg] = useState<any>({ concurrent:3, speedLimitKB:0, siteFolders:true, autoUpdateCheck:true, interceptBrowserDownloads:true, captureMediaRequests:true, captureDocuments:true, captureArchives:true, captureInstallers:true, openAtLogin:false, startMinimized:false })
@@ -20,15 +22,23 @@ export default function SettingsPanel(){
 
   async function pickFolder(){
     const f = await window.api.selectFolder()
-    if(f){ setOutDir(f); await window.api.setConfig({ customOutDir: f }) }
+    if(f){ setOutDir(f); await window.api.setConfig({ customOutDir: f }); toast.success('İndirme klasörü güncellendi') }
   }
   async function updateYtDlp(){
     setUpdating(true)
-    try{ await window.api.downloadYtDlp(); setStatus(await window.api.getYtDlpStatus()); setUpdateInfo(await window.api.checkYtDlpUpdate()) } catch(e:any){ alert('Hata: '+String(e)) }
+    try{
+      await window.api.downloadYtDlp()
+      setStatus(await window.api.getYtDlpStatus())
+      setUpdateInfo(await window.api.checkYtDlpUpdate())
+      toast.success('yt-dlp başarıyla indirildi / güncellendi!')
+    } catch(e:any){
+      toast.error('Güncelleme hatası: ' + String(e?.message || e))
+    }
     setUpdating(false)
   }
   async function saveCfg(patch:any){
     const n = await window.api.setConfig(patch); setCfg(n)
+    toast.info('Ayarlar kaydedildi')
   }
 
   return (

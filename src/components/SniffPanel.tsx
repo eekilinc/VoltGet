@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useAppSettings } from '../context/AppSettingsContext'
+import { useToast } from '../context/ToastContext'
 
 type Sniff = { url:string, type:string, pageUrl:string, time:string, filename?:string, sniffId?:string }
 type Analyzed = { title:string, thumbnail:string, formats:any[], extractor:string } | null
@@ -20,6 +21,7 @@ function short(u:string){
 
 export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, onHttpDownload }:{ outDir:string, onStartDownload:(opts:any)=>Promise<any>, onDirectDownload:(opts:any)=>Promise<any>, onHttpDownload:(opts:any)=>Promise<any>}){
   const { t } = useAppSettings()
+  const toast = useToast()
   const [items, setItems] = useState<Sniff[]>([])
   const [expanded, setExpanded] = useState<Record<number,boolean>>({})
   const [analyzing, setAnalyzing] = useState<Record<number,boolean>>({})
@@ -88,7 +90,7 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
       } else {
         await onStartDownload({ url: target, outDir, title: short(it.pageUrl || target) })
       }
-    } catch(e:any){ alert(String(e).slice(0,600)) }
+    } catch(e:any){ toast.error(String(e?.message || e).slice(0,600), 'İndirme Başlatılamadı') }
     setDownloading(s=> ({...s, [idx]:false}))
   }
 
@@ -97,9 +99,9 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
     setAnalyzing(s=> ({...s, [idx]:true}))
     try{
       const r = await window.api.analyzeUrl(target)
-      if (!r.formats || r.formats.length===0) { alert('Format bulunamadı — Hızlı İndir deneyin.'); return }
+      if (!r.formats || r.formats.length===0) { toast.warning('Format bulunamadı — Hızlı İndir deneyin.'); return }
       setInfos(s=> ({...s, [idx]: r})); setExpanded(s=> ({...s, [idx]: true}))
-    }catch(e:any){ alert(String(e).slice(0,700)) }
+    }catch(e:any){ toast.error(String(e?.message || e).slice(0,700), 'Analiz Hatası') }
     setAnalyzing(s=> ({...s, [idx]:false}))
   }
 

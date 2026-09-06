@@ -446,7 +446,11 @@ ipcMain.handle('pause-download', async (_e, id:string)=>{
     const opts = activeOpts.get(id)
     if(opts) pausedDownloads.set(id, opts)
     pausingIds.add(id)
-    p.kill()
+    if(typeof (p as any).pause === 'function') {
+      ;(p as any).pause()
+    } else if(typeof p.kill === 'function') {
+      p.kill()
+    }
     activeDownloads.delete(id)
     activeOpts.delete(id)
     if(mainWindow) mainWindow.webContents.send('download-paused',{id})
@@ -458,6 +462,11 @@ ipcMain.handle('pause-download', async (_e, id:string)=>{
 ipcMain.handle('retry-download', async (_e, opts:any)=>{
   const id=Date.now().toString(36)+Math.random().toString(36).slice(2,6)
   if(!canStart()){ pendingQueue.push({id, opts}); if(mainWindow) mainWindow.webContents.send('download-queued',{id,opts}); return {id, queued:true} }
+  if(opts.isHttp) {
+    if(mainWindow) mainWindow.webContents.send('download-started', { id, opts: {...opts, title: opts.filename}, outDir: opts.outDir })
+    runMultiPartHttpDownload(id, opts, opts.outDir, opts.outPath, opts.filename)
+    return { id, outPath: opts.outPath }
+  }
   doStartDownload(id, opts); return {id, outDir: getSiteFolder(opts.outDir||getDefaultDownloadDir(), opts.url)}
 })
 ipcMain.handle('resume-download', async (_e, payload:any)=>{
@@ -465,12 +474,97 @@ ipcMain.handle('resume-download', async (_e, payload:any)=>{
   const opts = pausedDownloads.get(id) || payload?.opts
   if(!id || !opts) return { error: 'no paused download found for id' }
   pausedDownloads.delete(id)
+  if(opts.isHttp){
+    if(!canStart()){ pendingQueue.push({id, opts}); if(mainWindow) mainWindow.webContents.send('download-queued',{id,opts}); return {id, queued:true} }
+    if(mainWindow) mainWindow.webContents.send('download-started', { id, opts: {...opts, title: opts.filename}, outDir: opts.outDir })
+    runMultiPartHttpDownload(id, opts, opts.outDir, opts.outPath, opts.filename)
+    return { id, outPath: opts.outPath }
+  }
   if(!canStart()){ pendingQueue.push({id, opts}); if(mainWindow) mainWindow.webContents.send('download-queued',{id,opts}); return {id, queued:true} }
   doStartDownload(id, opts); return {id, outDir: getSiteFolder(opts.outDir||getDefaultDownloadDir(), opts.url)}
 })
 ipcMain.handle('select-folder', async ()=>{ const r=await dialog.showOpenDialog({properties:['openDirectory']}); if(r.canceled) return null; return r.filePaths[0] })
 ipcMain.handle('open-folder', async (_e, dir:string)=>{ shell.openPath(dir||getDefaultDownloadDir()) })
 ipcMain.handle('get-default-dir', async ()=> getDefaultDownloadDir())
+
+function scanDownloadedFiles(dir: string, baseDir: string): any[] {
+  if (!fs.existsSync(dir)) return []
+  const results: any[] = []
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') || entry.name.startsWith('.tmp_')) continue
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        results.push(...scanDownloadedFiles(fullPath, baseDir))
+      } else if (entry.isFile()) {
+        try {
+          const stat = fs.statSync(fullPath)
+          const ext = path.extname(entry.name).slice(1).toLowerCase()
+          const relative = path.relative(baseDir, fullPath)
+          const folder = path.dirname(relative) === '.' ? 'Ana Klasör' : path.dirname(relative)
+          let category = 'other'
+          if (['mp4','mkv','webm','avi','mov','flv','ts','m4v'].includes(ext)) category = 'video'
+          else if (['mp3','m4a','flac','wav','aac','ogg','wma'].includes(ext)) category = 'audio'
+          else if (['pdf','doc','docx','xls','xlsx','ppt','pptx','txt','epub','csv'].includes(ext)) category = 'document'
+          else if (['zip','rar','7z','tar','gz','iso','torrent'].includes(ext)) category = 'archive'
+          else if (['exe','msi','apk','dmg','deb','rpm'].includes(ext)) category = 'installer'
+
+          results.push({
+            name: entry.name,
+            path: fullPath,
+            relativePath: relative,
+            folder,
+            size: stat.size,
+            mtime: stat.mtimeMs,
+            ext,
+            category
+          })
+        } catch {}
+      }
+    }
+  } catch {}
+  return results
+}
+
+ipcMain.handle('list-files', async (_e, customDir?: string) => {
+  const targetDir = customDir || getDefaultDownloadDir()
+  ensureDir(targetDir)
+  const files = scanDownloadedFiles(targetDir, targetDir)
+  return files.sort((a, b) => b.mtime - a.mtime)
+})
+
+ipcMain.handle('open-file', async (_e, filePath: string) => {
+  if (fs.existsSync(filePath)) {
+    return shell.openPath(filePath)
+  }
+  return 'Dosya bulunamadı'
+})
+
+ipcMain.handle('show-in-folder', async (_e, filePath: string) => {
+  if (fs.existsSync(filePath)) {
+    shell.showItemInFolder(filePath)
+    return true
+  }
+  return false
+})
+
+ipcMain.handle('delete-file', async (_e, filePath: string) => {
+  try {
+    if (fs.existsSync(filePath)) {
+      await shell.trashItem(filePath)
+      return { success: true }
+    }
+    return { success: false, error: 'Dosya bulunamadı' }
+  } catch (err: any) {
+    try {
+      fs.unlinkSync(filePath)
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  }
+})
 ipcMain.handle('get-config', async ()=> loadConfig())
 ipcMain.handle('set-config', async (_e, patch:any)=>{
   appConfig={...loadConfig(), ...patch}
@@ -621,19 +715,34 @@ async function runMultiPartHttpDownload(id:string, opts:any, outDir:string, outP
     const partSize = Math.floor(totalSize / partsCount)
     const partProgress: number[] = new Array(partsCount).fill(0)
     const activeReqs: any[] = []
+    let isAborted = false
     const startTime = Date.now()
 
+    // Parça indirme fonksiyonu (Resume / Byte Offset destekli)
     const downloadPart = (index: number, start: number, end: number) => {
       return new Promise<void>((resolve, reject) => {
         const partFile = path.join(tempDir, `part_${index}`)
-        const fileStream = fs.createWriteStream(partFile)
+        let existingBytes = 0
+        if (fs.existsSync(partFile)) {
+          try { existingBytes = fs.statSync(partFile).size } catch {}
+        }
+
+        const requiredBytes = end - start + 1
+        if (existingBytes >= requiredBytes) {
+          partProgress[index] = requiredBytes
+          return resolve()
+        }
+
+        partProgress[index] = existingBytes
+        const actualStart = start + existingBytes
+        const fileStream = fs.createWriteStream(partFile, { flags: existingBytes > 0 ? 'a' : 'w' })
         const parsedUrl = new URL(opts.url)
 
         const req = protocol.get({
           hostname: parsedUrl.hostname,
           port: parsedUrl.port,
           path: parsedUrl.pathname + parsedUrl.search,
-          headers: getHeaders(`bytes=${start}-${end}`)
+          headers: getHeaders(`bytes=${actualStart}-${end}`)
         }, res => {
           if (res.statusCode !== 206 && res.statusCode !== 200) {
             fileStream.close()
@@ -641,6 +750,10 @@ async function runMultiPartHttpDownload(id:string, opts:any, outDir:string, outP
           }
 
           res.on('data', (chunk: Buffer) => {
+            if (isAborted) {
+              try { res.destroy() } catch {}
+              return
+            }
             partProgress[index] += chunk.length
             const currentTotal = partProgress.reduce((a, b) => a + b, 0)
             const percent = totalSize > 0 ? (currentTotal / totalSize) * 100 : 0
@@ -677,7 +790,11 @@ async function runMultiPartHttpDownload(id:string, opts:any, outDir:string, outP
 
         req.on('error', err => {
           fileStream.close()
-          reject(err)
+          if (isAborted) {
+            resolve()
+          } else {
+            reject(err)
+          }
         })
 
         activeReqs.push(req)
@@ -685,12 +802,18 @@ async function runMultiPartHttpDownload(id:string, opts:any, outDir:string, outP
     }
 
     activeDownloads.set(id, {
+      pause: () => {
+        isAborted = true
+        activeReqs.forEach(r => { try { r.destroy() } catch {} })
+        // Pause edildiğinde tempDir korunur
+      },
       kill: () => {
+        isAborted = true
         activeReqs.forEach(r => { try { r.destroy() } catch {} })
         try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch {}
       }
-    })
-    activeOpts.set(id, opts)
+    } as any)
+    activeOpts.set(id, { ...opts, isHttp: true, outDir, outPath, filename })
 
     // Parçaları paralel başlat
     const promises = []
@@ -702,12 +825,20 @@ async function runMultiPartHttpDownload(id:string, opts:any, outDir:string, outP
 
     await Promise.all(promises)
 
+    if (pausingIds.has(id) || isAborted) {
+      pausingIds.delete(id)
+      processPending()
+      return
+    }
+
     // Parçaları birleştir
     const finalStream = fs.createWriteStream(outPath)
     for (let i = 0; i < partsCount; i++) {
       const partFile = path.join(tempDir, `part_${i}`)
-      const data = fs.readFileSync(partFile)
-      finalStream.write(data)
+      if (fs.existsSync(partFile)) {
+        const data = fs.readFileSync(partFile)
+        finalStream.write(data)
+      }
     }
     finalStream.end()
 
@@ -717,17 +848,16 @@ async function runMultiPartHttpDownload(id:string, opts:any, outDir:string, outP
     activeDownloads.delete(id)
     activeOpts.delete(id)
 
-    if (pausingIds.has(id)) {
-      pausingIds.delete(id)
-      processPending()
-      return
-    }
-
     if (mainWindow) mainWindow.webContents.send('download-done', { id, code: 0, outDir })
     try { new Notification({ title: 'Flexplorer: İndirme bitti (8 Parça)', body: filename.slice(0, 50) }).show() } catch {}
     processPending()
 
   } catch (err: any) {
+    if (pausingIds.has(id)) {
+      pausingIds.delete(id)
+      processPending()
+      return
+    }
     try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch {}
     // Hata durumunda standart tek akış indirmeyi dene
     console.warn('[MultiPart] fallback to standard http-download:', err.message)
@@ -772,7 +902,7 @@ function runHttpDownload(id:string, opts:any, outDir:string, outPath:string, fil
     processPending()
   })
   activeDownloads.set(id, { kill: ()=> req.destroy() })
-  activeOpts.set(id, opts)
+  activeOpts.set(id, { ...opts, isHttp: true, outDir, outPath, filename })
   file.on('finish', ()=>{
     file.close(); activeDownloads.delete(id); activeOpts.delete(id)
     if(pausingIds.has(id)){ pausingIds.delete(id); processPending(); return }
@@ -786,8 +916,9 @@ ipcMain.handle('http-download', async (_e, opts:any)=>{
   const filename = opts.filename || (opts.url.split('/').pop()?.split('?')[0] || `file_${Date.now()}`)
   const outPath=path.join(outDir, filename)
   const id=Date.now().toString(36)
-  if(!canStart()){ pendingQueue.push({id, opts:{...opts, outDir, filename}}); if(mainWindow) mainWindow.webContents.send('download-queued',{id, opts}); return {id, queued:true} }
-  if(mainWindow) mainWindow.webContents.send('download-started', { id, opts: {...opts, title: filename}, outDir })
-  runMultiPartHttpDownload(id, opts, outDir, outPath, filename)
+  const enrichedOpts = { ...opts, isHttp: true, outDir, outPath, filename, title: filename }
+  if(!canStart()){ pendingQueue.push({id, opts: enrichedOpts}); if(mainWindow) mainWindow.webContents.send('download-queued',{id, opts: enrichedOpts}); return {id, queued:true} }
+  if(mainWindow) mainWindow.webContents.send('download-started', { id, opts: enrichedOpts, outDir })
+  runMultiPartHttpDownload(id, enrichedOpts, outDir, outPath, filename)
   return {id, outPath}
 })
