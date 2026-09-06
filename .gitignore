@@ -1,0 +1,13 @@
+node_modules
+dist
+out
+release
+.tmp_*
+*.tmp*
+*.log
+.vite
+bin/yt-dlp.exe
+bin/yt-dlp
+.DS_Store
+Thumbs.db
+

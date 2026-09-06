@@ -1,0 +1,367 @@
+import { useEffect, useState } from 'react'
+import DownloadPanel from './components/DownloadPanel'
+import FileExplorer from './components/FileExplorer'
+import SniffPanel from './components/SniffPanel'
+import QueuePanel from './components/QueuePanel'
+import SettingsPanel from './components/SettingsPanel'
+import AboutPanel from './components/AboutPanel'
+import { useAppSettings } from './context/AppSettingsContext'
+
+declare global { interface Window { api: any } }
+
+type Job = { id:string, url:string, title:string, percent:number, speed:string, eta:string, total:string, status:'downloading'|'done'|'error'|'queued'|'paused', log:string, opts?:any }
+
+export default function App() {
+  const { t } = useAppSettings()
+  const [tab, setTab] = useState<'download' | 'sniff' | 'explorer' | 'settings' | 'about'>('download')
+  const [status, setStatus] = useState<any>(null)
+  const [outDir, setOutDir] = useState('')
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [latestSniff, setLatestSniff] = useState<any>(null)
+  const [downloadModal, setDownloadModal] = useState<any>(null)
+  const hasApi = typeof window !== 'undefined' && !!(window as any).api
+
+  useEffect(() => {
+    if (!hasApi) return
+    window.api.getYtDlpStatus().then(setStatus)
+    window.api.getDefaultDir().then(setOutDir)
+    window.api.getQueue().then((saved:any[])=>{
+      if(saved?.length) setJobs(saved.filter((j:any)=> j.status==='done'||j.status==='error'||j.status==='paused').slice(0,20))
+    })
+    const onP=(d:any)=> setJobs(j=> { const n=j.map(x=> x.id===d.id ? {...x, percent:d.percent, speed:d.speed, eta:d.eta, total:d.total||x.total, log:d.raw, status:'downloading' as Job['status']} : x); window.api.saveQueue(n); return n })
+    const onD=(d:any)=> setJobs(j=> { const n=j.map(x=> x.id===d.id ? {...x, status: (d.code===0?'done':'error') as Job['status'], percent: d.code===0?100:x.percent, log: d.code===0? 'Tamamlandı ✓ — '+d.outDir : x.log} : x); window.api.saveQueue(n); return n })
+    const onE=(d:any)=> setJobs(j=> { const n=j.map(x=> x.id===d.id ? {...x, status:'error' as Job['status'], log:d.error} : x); window.api.saveQueue(n); return n })
+    const onL=(d:any)=> setJobs(j=> j.map(x=> x.id===d.id ? {...x, log:d.text} : x))
+    const onQ=(d:any)=> setJobs(j=> j.map(x=> x.id===d.id ? {...x, status:'queued' as const, log:`Sırada #${d.position}`} : x))
+    const onS=(d:any)=> setJobs(j=> j.map(x=> x.id===d.id ? {...x, status:'downloading' as const, log:'Başlatıldı...'} : x))
+    const onC=(d:any)=> setJobs(j=> j.filter(x=> x.id!==d.id))
+    const onPaused=(d:any)=> setJobs(j=> { const n=j.map(x=> x.id===d.id ? {...x, status:'paused' as const, log:'Duraklatıldı'} : x); window.api.saveQueue(n); return n })
+    
+    // Anlık yakalama bildirimi geldiğinde doğrudan IDM İndirme Penceresini aç
+    const onSniffNotify = async (d:any) => {
+      const url = d.url
+      const pageUrl = d.pageUrl
+      const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(url)
+      let formats = null
+      if (!isGen && !url.endsWith('.pdf')) {
+        try {
+          const target = url.includes('googlevideo.com') && pageUrl ? pageUrl : url
+          const res = await window.api.analyzeUrl(target)
+          formats = res.formats || []
+        } catch(e) {}
+      }
+      setDownloadModal({ sniff: { url, pageUrl, filename: d.filename || url.split('/').pop()?.split('?')[0] }, formats })
+    }
+
+    window.api.onProgress(onP); window.api.onDone(onD); window.api.onError(onE); window.api.onLog(onL); window.api.onQueued(onQ); window.api.onStarted(onS); window.api.onCanceled(onC)
+    window.api.onPaused?.(onPaused)
+    window.api.onSniffed(onSniffNotify)
+
+    window.api.onOpenSniffItem?.(async (d:any)=>{
+      const { sniffId, url, pageUrl } = d
+      setTab('sniff')
+      // IDM tarzı: Bildirime tıklandığında doğrudan İndirme Bilgisi Penceresini aç
+      const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(url)
+      let formats = null
+      if (!isGen && !url.endsWith('.pdf')) {
+        try {
+          const res = await window.api.analyzeUrl(url)
+          formats = res.formats || []
+        } catch(e) {}
+      }
+      setDownloadModal({ sniff: { url, pageUrl, filename: url.split('/').pop()?.split('?')[0] }, formats })
+    })
+    window.api.onSwitchToSniffTab?.(()=> setTab('sniff'))
+    return ()=> window.api?.removeAll()
+  }, [hasApi])
+
+  const handleStartDownload = async (opts:any)=>{
+    const url = opts.url as string
+    const title = opts.title || url.slice(0,50)
+    const res = await window.api.startDownload(opts)
+    const id = res.id
+    const queued = !!res.queued
+    setJobs(j=> { const n=[{ id, url, title, percent:0, speed:'-', eta:'-', total:'', status: queued?'queued':'downloading', log: queued? `Sırada #${res.position||'?'}`:'Başlatıldı...', opts } as Job, ...j]; window.api.saveQueue(n); return n })
+    return id
+  }
+  const handleDirectDownload = async (opts:any)=>{
+    const res = await window.api.directDownload(opts)
+    const id = res.id as string
+    const queued = !!(res as any).queued
+    setJobs(j=> { const n=[{ id, url: opts.url, title: opts.url.slice(0,50), percent:0, speed:'-', eta:'-', total:'', status: queued?'queued':'downloading', log: queued? 'Sırada…':'Direkt indiriliyor...', opts } as Job, ...j]; window.api.saveQueue(n); return n })
+    return id
+  }
+  const handleHttpDownload = async (opts:any)=>{
+    const res = await window.api.httpDownload(opts)
+    const id = res.id as string
+    const queued = !!(res as any).queued
+    const title = opts.filename || opts.url.slice(0,50)
+    setJobs(j=> { const n=[{ id, url: opts.url, title, percent:0, speed:'-', eta:'-', total:'', status: queued?'queued':'downloading', log: queued? 'Sırada…':'İndiriliyor...', opts } as Job, ...j]; window.api.saveQueue(n); return n })
+    return id
+  }
+  const handleRetry = async (job:Job)=>{
+    if(!job.opts) return
+    const res = await window.api.retryDownload(job.opts)
+    const id = res.id
+    setJobs(j=> { const n=j.filter(x=> x.id!==job.id); const queued=!!res.queued; return [{ id, url: job.url, title: job.title, percent:0, speed:'-', eta:'-', total:'', status: queued?'queued':'downloading', log: queued?'Sırada…':'Yeniden başlatıldı...', opts: job.opts } as Job, ...n] })
+  }
+
+  const titles: Record<string,string> = {
+    download: '🔗 '+t('linkDownload'), sniff: '🎯 '+t('autoSniffer'), explorer: '📁 '+t('files'), settings: '⚙️ '+t('settings'), about: 'ℹ️ '+t('about')
+  }
+
+  if (!hasApi) {
+    return (
+      <div style={{ padding:24, background:'var(--bg)', color:'var(--text)', minHeight:'100vh' }}>
+        <h2 style={{ color:'#f87171' }}>Electron dışında açıldı</h2>
+        <div className="card-premium" style={{ marginTop:12, padding:12, borderRadius:12 }}>
+          <pre>{`cd D:\\Denemeler\\flexplorer\nnpm run start`}</pre>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display:'flex', height:'100vh', background:'var(--bg)', color:'var(--text)' }}>
+      <div style={{ width:216, background:'var(--panel-3)', borderRight:'1px solid var(--border)', display:'flex', flexDirection:'column', padding:14 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 4px', marginBottom:14 }}>
+          <div className="brand-gradient" style={{ width:36, height:36, borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, color:'#fff', boxShadow:'0 10px 24px color-mix(in srgb, var(--accent-solid) 35%, transparent)' }}>⚡</div>
+          <div>
+            <div style={{ fontWeight:900, fontSize:15, letterSpacing:0.2 }}>{t('appName')}</div>
+            <div className="text-muted" style={{ fontSize:11 }}>{t('appTagline')}</div>
+          </div>
+        </div>
+
+        <nav style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          {[
+            { id:'download', icon:'⬇️', label:t('navDownload'), desc:t('navDownloadDesc') },
+            { id:'sniff', icon:'🎯', label:t('navSniff'), desc:t('navSniffDesc') },
+            { id:'explorer', icon:'📁', label:t('navExplorer'), desc:t('navExplorerDesc') },
+          ].map(item=>(
+            <button key={item.id} onClick={()=>setTab(item.id as any)}
+              style={{
+                display:'flex', gap:10, alignItems:'center', padding:'11px 12px', borderRadius:12,
+                border:'1px solid '+(tab===item.id?'color-mix(in srgb, var(--accent-solid) 55%, transparent)':'transparent'),
+                background: tab===item.id ? 'color-mix(in srgb, var(--accent-solid) 16%, var(--panel))' : 'transparent',
+                color:'var(--text)', textAlign:'left'
+              }}>
+              <span style={{ fontSize:18 }}>{item.icon}</span>
+              <span><div style={{ fontSize:13, fontWeight:700 }}>{item.label}</div><div className="text-muted" style={{ fontSize:11 }}>{item.desc}</div></span>
+            </button>
+          ))}
+        </nav>
+        <div style={{ height:1, background:'var(--border)', margin:'12px 0' }}/>
+        <nav style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          {[
+            { id:'settings', icon:'⚙️', label:t('navSettings'), desc:t('navSettingsDesc') },
+            { id:'about', icon:'ℹ️', label:t('navAbout'), desc:t('navAboutDesc') },
+          ].map(item=>(
+            <button key={item.id} onClick={()=>setTab(item.id as any)}
+              style={{
+                display:'flex', gap:10, alignItems:'center', padding:'10px 12px', borderRadius:12,
+                border:'1px solid '+(tab===item.id?'color-mix(in srgb, var(--accent-solid) 55%, transparent)':'transparent'),
+                background: tab===item.id ? 'color-mix(in srgb, var(--accent-solid) 16%, var(--panel))' : 'transparent',
+                color:'var(--text)', textAlign:'left'
+              }}>
+              <span style={{ fontSize:16 }}>{item.icon}</span>
+              <span><div style={{ fontSize:12, fontWeight:600 }}>{item.label}</div><div className="text-muted" style={{ fontSize:10 }}>{item.desc}</div></span>
+            </button>
+          ))}
+        </nav>
+
+        <div style={{ flex:1 }}/>
+        {status && (
+          <div className="card-premium" style={{ borderRadius:12, padding:10, fontSize:11 }}>
+            <div style={{ display:'flex', justifyContent:'space-between' }}><span>yt-dlp</span><span style={{ color:(status.binExists||status.pathExists)?'#22c55e':'#f87171' }}>{(status.binExists||status.pathExists)?'✓':'✗'}</span></div>
+            <div style={{ display:'flex', justifyContent:'space-between' }}><span>ffmpeg</span><span style={{ color: status.ffmpegOk?'#22c55e':'#f87171' }}>{status.ffmpegOk?'✓':'✗'}</span></div>
+            <div className="text-muted" style={{ fontSize:10, marginTop:4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{outDir}</div>
+          </div>
+        )}
+        <div className="text-muted" style={{ fontSize:10, marginTop:10, textAlign:'center' }}>v1.1 • {t('idmAlt')}</div>
+      </div>
+
+      <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        <div className="glass" style={{ height:54, borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', padding:'0 16px', gap:10 }}>
+          <div style={{ fontWeight:800, fontSize:14 }}>{titles[tab]}</div>
+          <div style={{ flex:1 }}/>
+          <button onClick={()=>window.api.getYtDlpStatus().then(setStatus)} style={{ background:'var(--panel-2)', color:'var(--text)', border:'1px solid var(--border)', padding:'7px 12px', borderRadius:10, fontSize:11 }}>{t('refresh')}</button>
+          <button onClick={()=>window.api.openFolder(outDir)} className="brand-gradient" style={{ color:'#fff', border:0, padding:'7px 12px', borderRadius:10, fontSize:11, fontWeight:700 }}>📂 {t('folder')}</button>
+        </div>
+        <div style={{ flex:1, overflow:'hidden', display:'flex', background:'var(--bg-2)' }}>
+          {tab==='download' && <DownloadPanel outDir={outDir} onStartDownload={handleStartDownload} />}
+          {tab==='sniff' && <SniffPanel outDir={outDir} onStartDownload={handleStartDownload} onDirectDownload={handleDirectDownload} onHttpDownload={handleHttpDownload} />}
+          {tab==='explorer' && <FileExplorer />}
+          {tab==='settings' && <SettingsPanel />}
+          {tab==='about' && <AboutPanel />}
+        </div>
+      </div>
+
+      <QueuePanel jobs={jobs}
+        onCancel={(id)=>{ window.api.cancelDownload(id); setJobs(j=> j.filter(x=> x.id!==id)) }}
+        onPause={(id)=>{ window.api.pauseDownload(id); setJobs(j=> j.map(x=> x.id===id ? {...x, status:'paused', log:'Duraklatıldı'} : x)) }}
+        onResume={async (job)=>{ const res = await window.api.resumeDownload({ id: job.id, opts: job.opts }); setJobs(j=> j.map(x=> x.id===job.id ? {...x, status: res?.queued?'queued':'downloading', log: res?.queued?'Sırada…':'Devam ediyor...'} : x)) }}
+        onRetry={(job)=>handleRetry(job as any)}
+        onOpenFolder={()=>window.api.openFolder(outDir)}
+        onClear={()=> setJobs(j=> { const n=j.filter(x=> x.status==='downloading'||x.status==='queued'||x.status==='paused'); window.api.saveQueue(n); return n })} />
+
+      {/* IDM Tarzı Gelişmiş Dosya Özellikleri ve İndirme Penceresi (Download Properties Dialog) */}
+      {downloadModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 999999, background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s'
+        }}>
+          <div style={{
+            background: 'var(--panel)', border: '1px solid var(--accent-solid)', borderRadius: 16, width: 500,
+            boxShadow: '0 25px 60px rgba(0,0,0,0.8)', overflow: 'hidden', display: 'flex', flexDirection: 'column'
+          }}>
+            <div style={{ background: 'var(--panel-2)', padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontWeight: 900, fontSize: 14, color: 'var(--accent-solid)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>🛡️</span> IDM: İndirme Bilgisi ve Özellikleri
+              </div>
+              <button onClick={() => setDownloadModal(null)} style={{ background: 'transparent', border: 0, color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, fontWeight: 'bold' }}>✕</button>
+            </div>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Adres (URL):</label>
+                <div style={{ fontSize: 11, background: 'var(--panel-2)', padding: '8px 10px', borderRadius: 8, wordBreak: 'break-all', border: '1px solid var(--border)', color: 'var(--text)' }}>
+                  {downloadModal.sniff.url}
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Kaydedilecek Klasör:</label>
+                <div style={{ fontSize: 11, background: 'var(--panel-2)', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--accent-solid)', fontWeight: 700 }}>
+                  {outDir}
+                </div>
+              </div>
+
+              {downloadModal.formats && downloadModal.formats.length > 0 && (
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Video Kalitesi / Format Seçin:</label>
+                  <select id="idm-format-select" style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--border)', color: 'var(--text)', padding: '10px', borderRadius: 8, fontSize: 12 }}>
+                    {downloadModal.formats.map((f:any)=>(
+                      <option key={f.id} value={f.id}>
+                        {f.resolution} ({f.ext}) - {f.note || 'Standart'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                <button
+                  onClick={async () => {
+                    const sniff = downloadModal.sniff
+                    const selFormat = (document.getElementById('idm-format-select') as HTMLSelectElement)?.value
+                    setDownloadModal(null)
+                    setTab('download')
+                    const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(sniff.url)
+                    if (isGen || sniff.url.endsWith('.pdf')) {
+                      await handleHttpDownload({ url: sniff.url, outDir, filename: sniff.filename })
+                    } else if (selFormat) {
+                      await handleStartDownload({ url: sniff.url, outDir, formatId: selFormat, title: sniff.filename || 'Video' })
+                    } else {
+                      await handleDirectDownload({ url: sniff.url, outDir, pageUrl: sniff.pageUrl, title: sniff.filename || 'İndirme' })
+                    }
+                  }}
+                  className="brand-gradient"
+                  style={{ flex: 1, border: 0, padding: '12px', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 900, cursor: 'pointer', boxShadow: '0 6px 20px color-mix(in srgb, var(--accent-solid) 40%, transparent)' }}
+                >
+                  🚀 İndirmeyi Başlat
+                </button>
+                <button
+                  onClick={() => setDownloadModal(null)}
+                  style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', padding: '12px 18px', borderRadius: 10, color: 'var(--text)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  İptal
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* IDM Tarzı Akıllı İndirme ve Kalite Seçim Modalı */}
+      {latestSniff && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 99999,
+          background: 'var(--panel)', border: '2px solid var(--accent-solid)',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.7)', borderRadius: 16, padding: 20,
+          width: 420, animation: 'fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ fontWeight: 900, fontSize: 14, color: 'var(--accent-solid)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 18 }}>⚡</span> IDM: Yeni Medya Yakalandı
+            </div>
+            <button onClick={() => { setLatestSniff(null); (window as any).__sniffFormats = null; }} style={{ background: 'transparent', border: 0, color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, fontWeight: 'bold' }}>✕</button>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text)', background: 'var(--panel-2)', padding: '8px 10px', borderRadius: 8, marginBottom: 12, wordBreak: 'break-all', maxHeight: 40, overflow: 'hidden', border: '1px solid var(--border)' }}>
+            {latestSniff.filename || latestSniff.url}
+          </div>
+
+          {/* Kalite seçenekleri veya yükleniyor durumu */}
+          {(window as any).__sniffLoading ? (
+            <div style={{ textAlign: 'center', padding: 16, fontSize: 12, color: 'var(--text-muted)' }}>🔍 Kaliteler analiz ediliyor...</div>
+          ) : (window as any).__sniffFormats ? (
+            <div style={{ maxHeight: 180, overflowY: 'auto', marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Uygun Kaliteler:</div>
+              {(window as any).__sniffFormats.slice(0, 5).map((f:any)=>(
+                <button key={f.id} onClick={async()=>{
+                  const sniff = latestSniff
+                  setLatestSniff(null); (window as any).__sniffFormats = null;
+                  setTab('download')
+                  await handleStartDownload({ url: sniff.url, outDir, formatId: f.id, title: f.resolution || 'Video' })
+                }} style={{ display:'flex', justifyContent:'space-between', background:'var(--panel-2)', border:'1px solid var(--border)', padding:'6px 10px', borderRadius:8, color:'var(--text)', fontSize:11, cursor:'pointer' }}>
+                  <span>🎬 {f.resolution} ({f.ext})</span>
+                  <span style={{ color:'var(--accent-solid)' }}>İndir ⬇️</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            {(! (window as any).__sniffFormats && ! (window as any).__sniffLoading) && (
+              <button
+                onClick={async () => {
+                  const sniff = latestSniff
+                  const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(sniff.url)
+                  if (isGen || sniff.url.endsWith('.pdf')) {
+                    setLatestSniff(null); setTab('download')
+                    await handleHttpDownload({ url: sniff.url, outDir, filename: sniff.filename })
+                  } else {
+                    // Video veya site ise yt-dlp ile format analizi başlat
+                    ;(window as any).__sniffLoading = true
+                    try {
+                      const res = await window.api.analyzeUrl(sniff.url)
+                      ;(window as any).__sniffFormats = res.formats || []
+                      setLatestSniff({ ...sniff })
+                    } catch(e) {
+                      setLatestSniff(null)
+                      setTab('download')
+                      await handleDirectDownload({ url: sniff.url, outDir, pageUrl: sniff.pageUrl, title: 'Hızlı İndir' })
+                    } finally {
+                      ;(window as any).__sniffLoading = false
+                    }
+                  }
+                }}
+                className="brand-gradient"
+                style={{ flex: 1, border: 0, padding: '10px 14px', borderRadius: 10, color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px color-mix(in srgb, var(--accent-solid) 40%, transparent)' }}
+              >
+                📥 Doğrudan İndir / Analiz Et
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setTab('sniff')
+                setLatestSniff(null)
+                ;(window as any).__sniffFormats = null
+              }}
+              style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', padding: '10px 14px', borderRadius: 10, color: 'var(--text)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+            >
+              Yakalayıcıya Git
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

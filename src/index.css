@@ -1,0 +1,63 @@
+* { box-sizing: border-box; margin:0; padding:0; }
+:root {
+  --accent-from:#2563eb;
+  --accent-to:#0ea5e9;
+  --accent-solid:#2563eb;
+}
+:root[data-theme='dark'] {
+  --bg:#0a0a0f;
+  --bg-2:#0f0f12;
+  --panel:#18181b;
+  --panel-2:#121214;
+  --panel-3:#111113;
+  --text:#e6e6e6;
+  --muted:#a1a1aa;
+  --border:#27272a;
+  --border-2:#334155;
+  --shadow:0 20px 50px rgba(0,0,0,.35);
+}
+:root[data-theme='light'] {
+  --bg:#f5f7fb;
+  --bg-2:#eef2ff;
+  --panel:#ffffff;
+  --panel-2:#f8fafc;
+  --panel-3:#f1f5f9;
+  --text:#0f172a;
+  --muted:#475569;
+  --border:#dbe3ef;
+  --border-2:#cbd5e1;
+  --shadow:0 20px 40px rgba(15,23,42,.08);
+}
+html, body, #root { height:100%; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--text); -webkit-font-smoothing: antialiased; }
+::selection { background: color-mix(in srgb, var(--accent-solid) 28%, transparent); }
+::placeholder { color: var(--muted); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background:color-mix(in srgb, var(--accent-solid) 25%, var(--panel)); border-radius:999px; border:2px solid transparent; background-clip:padding-box; }
+::-webkit-scrollbar-track { background:var(--bg); }
+button, input, select, textarea { font: inherit; }
+button { cursor:pointer; transition: opacity 0.15s, transform 0.08s, background 0.15s, border-color 0.15s, box-shadow 0.2s; }
+button:active { transform: scale(0.98); }
+button:disabled { opacity:0.5; cursor:not-allowed; }
+input, select, textarea {
+  background:var(--panel-2);
+  color:var(--text);
+  border:1px solid var(--border);
+}
+input:focus, select:focus, textarea:focus { border-color:var(--accent-solid) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-solid) 22%, transparent); outline:none; }
+.card-premium {
+  background:linear-gradient(180deg, color-mix(in srgb, var(--panel) 92%, white 8%), var(--panel));
+  border:1px solid var(--border);
+  box-shadow:var(--shadow);
+  backdrop-filter: blur(14px);
+}
+.glow-accent { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-solid) 35%, transparent), 0 18px 50px color-mix(in srgb, var(--accent-solid) 18%, transparent); }
+.text-muted { color:var(--muted); }
+.brand-gradient { background:linear-gradient(135deg,var(--accent-from),var(--accent-to)); }
+.glass {
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+}
+@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+@keyframes pulse { 0%,100% { opacity:0.6 } 50% { opacity:1 } }

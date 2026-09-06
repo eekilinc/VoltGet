@@ -1,0 +1,46 @@
+import { contextBridge, ipcRenderer } from 'electron'
+
+contextBridge.exposeInMainWorld('api', {
+  analyzeUrl: (url: string) => ipcRenderer.invoke('analyze-url', url),
+  startDownload: (opts: any) => ipcRenderer.invoke('start-download', opts),
+  cancelDownload: (id: string) => ipcRenderer.invoke('cancel-download', id),
+  pauseDownload: (id: string) => ipcRenderer.invoke('pause-download', id),
+  resumeDownload: (id: string) => ipcRenderer.invoke('resume-download', id),
+  retryDownload: (opts: any) => ipcRenderer.invoke('retry-download', opts),
+  directDownload: (opts: any) => ipcRenderer.invoke('direct-download', opts),
+  httpDownload: (opts: any) => ipcRenderer.invoke('http-download', opts),
+  selectFolder: () => ipcRenderer.invoke('select-folder'),
+  openFolder: (dir: string) => ipcRenderer.invoke('open-folder', dir),
+  getDefaultDir: () => ipcRenderer.invoke('get-default-dir'),
+  getConfig: () => ipcRenderer.invoke('get-config'),
+  setConfig: (patch: any) => ipcRenderer.invoke('set-config', patch),
+  getYtDlpStatus: () => ipcRenderer.invoke('get-yt-dlp-status'),
+  checkYtDlpUpdate: () => ipcRenderer.invoke('check-yt-dlp-update'),
+  downloadYtDlp: () => ipcRenderer.invoke('download-yt-dlp'),
+  sniffedUrl: (data: any) => ipcRenderer.invoke('sniffed-url', data),
+  getQueue: () => ipcRenderer.invoke('get-queue'),
+  saveQueue: (jobs: any[]) => ipcRenderer.invoke('save-queue', jobs),
+  onProgress: (cb: any) => ipcRenderer.on('download-progress', (_e, d) => cb(d)),
+  onLog: (cb: any) => ipcRenderer.on('download-log', (_e, d) => cb(d)),
+  onDone: (cb: any) => ipcRenderer.on('download-done', (_e, d) => cb(d)),
+  onError: (cb: any) => ipcRenderer.on('download-error', (_e, d) => cb(d)),
+  onQueued: (cb: any) => ipcRenderer.on('download-queued', (_e, d) => cb(d)),
+  onStarted: (cb: any) => ipcRenderer.on('download-started', (_e, d) => cb(d)),
+  onCanceled: (cb: any) => ipcRenderer.on('download-canceled', (_e, d) => cb(d)),
+  onPaused: (cb: any) => ipcRenderer.on('download-paused', (_e, d) => cb(d)),
+  onSniffed: (cb: any) => ipcRenderer.on('sniffed-url', (_e, d) => cb(d)),
+  onShowDownloadDialog: (cb: any) => ipcRenderer.on('show-download-dialog', (_e, d) => cb(d)),
+  onOpenSniffItem: (cb: any) => ipcRenderer.on('open-sniff-item', (_e, d) => cb(d)),
+  onSwitchToSniffTab: (cb: any) => ipcRenderer.on('switch-to-sniff-tab', (_e, d) => cb(d)),
+  removeAll: () => {
+    ipcRenderer.removeAllListeners('download-progress')
+    ipcRenderer.removeAllListeners('download-log')
+    ipcRenderer.removeAllListeners('download-done')
+    ipcRenderer.removeAllListeners('download-error')
+    ipcRenderer.removeAllListeners('download-queued')
+    ipcRenderer.removeAllListeners('download-started')
+    ipcRenderer.removeAllListeners('download-canceled')
+    ipcRenderer.removeAllListeners('download-paused')
+    ipcRenderer.removeAllListeners('sniffed-url')
+  }
+})
