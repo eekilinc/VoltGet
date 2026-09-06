@@ -11,13 +11,18 @@ import { WebSocketServer, WebSocket } from 'ws'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+const isDev = !app.isPackaged && process.env.ELECTRON_IS_DEV !== '0'
 let mainWindow: BrowserWindow | null = null
 let downloadDialogWindow: BrowserWindow | null = null
 let lastDownloadDialogData: any = null
 
 function createDownloadDialogWindow(sniffData: any) {
   lastDownloadDialogData = sniffData
+  console.log('[Flexplorer] createDownloadDialogWindow called for:', sniffData?.url?.slice(0, 70))
+
   if (downloadDialogWindow && !downloadDialogWindow.isDestroyed()) {
+    if (downloadDialogWindow.isMinimized()) downloadDialogWindow.restore()
+    downloadDialogWindow.show()
     downloadDialogWindow.focus()
     downloadDialogWindow.webContents.send('show-download-dialog', sniffData)
     return
@@ -28,9 +33,9 @@ function createDownloadDialogWindow(sniffData: any) {
 
   downloadDialogWindow = new BrowserWindow({
     width: 500,
-    height: 460,
+    height: 480,
     frame: false,
-    transparent: true,
+    backgroundColor: '#0f172a',
     alwaysOnTop: true,
     resizable: false,
     webPreferences: {
@@ -50,11 +55,20 @@ function createDownloadDialogWindow(sniffData: any) {
     downloadDialogWindow.loadFile(path.join(__dirname, '../renderer/download-dialog.html'))
   }
 
-  downloadDialogWindow.webContents.on('did-finish-load', () => {
-    downloadDialogWindow?.webContents.send('show-download-dialog', lastDownloadDialogData || sniffData)
-    downloadDialogWindow?.show()
-    downloadDialogWindow?.focus()
-  })
+  const showWindow = () => {
+    if (downloadDialogWindow && !downloadDialogWindow.isDestroyed()) {
+      if (downloadDialogWindow.isMinimized()) downloadDialogWindow.restore()
+      downloadDialogWindow.show()
+      downloadDialogWindow.focus()
+      downloadDialogWindow.webContents.send('show-download-dialog', lastDownloadDialogData || sniffData)
+    }
+  }
+
+  downloadDialogWindow.once('ready-to-show', showWindow)
+  downloadDialogWindow.webContents.on('did-finish-load', showWindow)
+
+  // Fallback: 400ms içinde pencere hala görünür olmadıysa zorla göster
+  setTimeout(showWindow, 400)
 
   downloadDialogWindow.on('closed', () => {
     downloadDialogWindow = null
@@ -68,7 +82,6 @@ const pendingQueue: Array<{ id:string, opts:any }> = []
 const pausedDownloads = new Map<string, any>()
 const pausingIds = new Set<string>()
 
-const isDev = !app.isPackaged && process.env.ELECTRON_IS_DEV !== '0'
 const ytDlpPath = path.join(app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__dirname, '..'), 'bin', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
 function resolveFfmpegPath(): string {
   const bundled = path.join(app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__dirname, '..'), 'bin', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')

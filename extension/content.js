@@ -228,17 +228,15 @@
       }, 3000)
     }
 
-    // Ana butona tıklandığında doğrudan IDM indirme penceresini aç
-    directBtn.addEventListener('click', function (e) {
+    // Ana butona tıklandığında doğrudan IDM indirme penceresini aç, oka tıklandığında menüyü aç
+    mainBtn.addEventListener('click', function (e) {
       e.stopPropagation()
-      triggerDownload('dialog')
-    })
-
-    // Oktan tıklandığında format menüsünü aç/kapat
-    menuBtn.addEventListener('click', function (e) {
-      e.stopPropagation()
-      isMenuOpen = !isMenuOpen
-      dropdown.style.display = isMenuOpen ? 'flex' : 'none'
+      if (menuBtn && (e.target === menuBtn || menuBtn.contains(e.target))) {
+        isMenuOpen = !isMenuOpen
+        dropdown.style.display = isMenuOpen ? 'flex' : 'none'
+      } else {
+        triggerDownload('dialog')
+      }
     })
 
     // Menü öğelerine tıklandığında

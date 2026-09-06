@@ -12,7 +12,7 @@
     "start:dev": "cross-env ELECTRON_IS_DEV=0 npm run dev:electron",
     "build": "tsc -p tsconfig.electron.json && vite build && electron-builder",
     "build:renderer": "vite build",
-    "build:electron": "tsc -p tsconfig.electron.json",
+    "build:electron": "tsc -p tsconfig.electron.json && node -e \"fs.copyFileSync('electron/preload.cjs', 'dist/electron/preload.cjs')\"",
     "build:nm_host": "tsc --project tsconfig.electron.json",
     "preview": "vite preview"
   },
