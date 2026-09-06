@@ -82,24 +82,36 @@ function DialogApp() {
     setStarting(true)
 
     try {
-      const url = data.url
-      const pageUrl = data.pageUrl || url
-      const title = data.filename || data.title || 'Video'
-      const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(url)
+      const rawUrl = data.url || ''
+      const pageUrl = data.pageUrl || rawUrl
+      const isVideoSite = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(pageUrl)
+      const targetUrl = isVideoSite ? pageUrl : (rawUrl || pageUrl)
+      const title = data.title || data.filename || 'Video'
+      const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(rawUrl)
+      const isHls = rawUrl.includes('master.txt') || rawUrl.includes('.m3u8') || rawUrl.includes('playmix') || rawUrl.includes('cdnimages')
 
-      if (isGen || url.endsWith('.pdf')) {
-        await window.api.httpDownload({ url, outDir, filename: data.filename || title })
+      console.log('[download-dialog] handleStart:', { targetUrl, rawUrl, pageUrl, isAudioMode, selectedFormat, isGen, isHls })
+
+      if (isGen || rawUrl.endsWith('.pdf')) {
+        await window.api.httpDownload({ url: rawUrl, outDir, filename: data.filename || title })
+      } else if (isHls && !isVideoSite) {
+        await window.api.directDownload({ url: rawUrl, outDir, pageUrl, title })
       } else if (isAudioMode) {
-        await window.api.startDownload({ url: pageUrl, outDir, asAudio: true, title: `[Ses] ${title}` })
+        await window.api.startDownload({ url: targetUrl, outDir, asAudio: true, title: `[Ses] ${title}` })
       } else if (selectedFormat) {
-        await window.api.startDownload({ url: pageUrl, outDir, formatId: selectedFormat, title })
+        await window.api.startDownload({ url: targetUrl, outDir, formatId: selectedFormat, title })
       } else {
-        await window.api.directDownload({ url, outDir, pageUrl, title })
+        await window.api.directDownload({ url: targetUrl, outDir, pageUrl, title })
       }
-    } catch (err) {
+
+      // Başarılı olduğunda pencereyi kapat
+      setTimeout(() => {
+        window.close()
+      }, 350)
+    } catch (err: any) {
       console.error('Download start error:', err)
-    } finally {
-      window.close()
+      setStarting(false)
+      alert('İndirme başlatılamadı: ' + (err?.message || err))
     }
   }
 

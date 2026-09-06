@@ -27,14 +27,87 @@ export default function App() {
     window.api.getQueue().then((saved:any[])=>{
       if(saved?.length) setJobs(saved.filter((j:any)=> j.status==='done'||j.status==='error'||j.status==='paused').slice(0,20))
     })
-    const onP=(d:any)=> setJobs(j=> { const n=j.map(x=> x.id===d.id ? {...x, percent:d.percent, speed:d.speed, eta:d.eta, total:d.total||x.total, log:d.raw, status:'downloading' as Job['status']} : x); window.api.saveQueue(n); return n })
-    const onD=(d:any)=> setJobs(j=> { const n=j.map(x=> x.id===d.id ? {...x, status: (d.code===0?'done':'error') as Job['status'], percent: d.code===0?100:x.percent, log: d.code===0? 'Tamamlandı ✓ — '+d.outDir : x.log} : x); window.api.saveQueue(n); return n })
-    const onE=(d:any)=> setJobs(j=> { const n=j.map(x=> x.id===d.id ? {...x, status:'error' as Job['status'], log:d.error} : x); window.api.saveQueue(n); return n })
-    const onL=(d:any)=> setJobs(j=> j.map(x=> x.id===d.id ? {...x, log:d.text} : x))
-    const onQ=(d:any)=> setJobs(j=> j.map(x=> x.id===d.id ? {...x, status:'queued' as const, log:`Sırada #${d.position}`} : x))
-    const onS=(d:any)=> setJobs(j=> j.map(x=> x.id===d.id ? {...x, status:'downloading' as const, log:'Başlatıldı...'} : x))
-    const onC=(d:any)=> setJobs(j=> j.filter(x=> x.id!==d.id))
-    const onPaused=(d:any)=> setJobs(j=> { const n=j.map(x=> x.id===d.id ? {...x, status:'paused' as const, log:'Duraklatıldı'} : x); window.api.saveQueue(n); return n })
+    const onP = (d: any) => {
+      setJobs(j => {
+        const exists = j.some(x => x.id === d.id)
+        if (!exists) {
+          const newJob: Job = {
+            id: d.id,
+            url: '',
+            title: 'İndiriliyor...',
+            percent: d.percent || 0,
+            speed: d.speed || '-',
+            eta: d.eta || '-',
+            total: d.total || '',
+            status: 'downloading',
+            log: d.raw || 'İndiriliyor...'
+          }
+          const n = [newJob, ...j]
+          window.api.saveQueue(n)
+          return n
+        }
+        const n = j.map(x => x.id === d.id ? { ...x, percent: d.percent, speed: d.speed, eta: d.eta, total: d.total || x.total, log: d.raw, status: 'downloading' as Job['status'] } : x)
+        window.api.saveQueue(n)
+        return n
+      })
+    }
+    const onD = (d: any) => setJobs(j => { const n = j.map(x => x.id === d.id ? { ...x, status: (d.code === 0 ? 'done' : 'error') as Job['status'], percent: d.code === 0 ? 100 : x.percent, log: d.code === 0 ? 'Tamamlandı ✓ — ' + d.outDir : x.log } : x); window.api.saveQueue(n); return n })
+    const onE = (d: any) => setJobs(j => { const n = j.map(x => x.id === d.id ? { ...x, status: 'error' as Job['status'], log: d.error } : x); window.api.saveQueue(n); return n })
+    const onL = (d: any) => setJobs(j => j.map(x => x.id === d.id ? { ...x, log: d.text } : x))
+    const onQ = (d: any) => {
+      setJobs(j => {
+        const exists = j.some(x => x.id === d.id)
+        if (exists) {
+          const n = j.map(x => x.id === d.id ? { ...x, status: 'queued' as const, log: `Sırada #${d.position}` } : x)
+          window.api.saveQueue(n)
+          return n
+        }
+        const title = d.opts?.title || d.opts?.filename || d.opts?.url || 'İndirme'
+        const newJob: Job = {
+          id: d.id,
+          url: d.opts?.url || '',
+          title: title.slice(0, 70),
+          percent: 0,
+          speed: '-',
+          eta: '-',
+          total: '',
+          status: 'queued',
+          log: `Sırada #${d.position}`,
+          opts: d.opts
+        }
+        const n = [newJob, ...j]
+        window.api.saveQueue(n)
+        return n
+      })
+    }
+    const onS = (d: any) => {
+      setJobs(j => {
+        const exists = j.some(x => x.id === d.id)
+        if (exists) {
+          const n = j.map(x => x.id === d.id ? { ...x, status: 'downloading' as const, log: 'Başlatıldı...' } : x)
+          window.api.saveQueue(n)
+          return n
+        }
+        const title = d.opts?.title || d.opts?.filename || d.opts?.url || 'İndirme'
+        const newJob: Job = {
+          id: d.id,
+          url: d.opts?.url || '',
+          title: title.slice(0, 70),
+          percent: 0,
+          speed: '-',
+          eta: '-',
+          total: '',
+          status: 'downloading',
+          log: 'Başlatıldı...',
+          opts: d.opts
+        }
+        const n = [newJob, ...j]
+        window.api.saveQueue(n)
+        return n
+      })
+    }
+    const onC = (d: any) => setJobs(j => j.filter(x => x.id !== d.id))
+    const onPaused = (d: any) => setJobs(j => { const n = j.map(x => x.id === d.id ? { ...x, status: 'paused' as const, log: 'Duraklatıldı' } : x); window.api.saveQueue(n); return n })
     
     // Anlık yakalama bildirimi: Arka plan yakalamaları Yakalayıcı panelinde görünür
     const onSniffNotify = (_d: any) => {

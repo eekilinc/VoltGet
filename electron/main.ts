@@ -429,35 +429,54 @@ function doStartDownload(id:string, opts:any){
   const ytdlp=findYtDlp()
   const args:string[]=['--js-runtimes','node','--no-warnings','--concurrent-fragments','16']
   if(appConfig.speedLimitKB>0) args.push('--limit-rate', `${appConfig.speedLimitKB}K`)
-  if(opts.asAudio){ args.push('-x','--audio-format','mp3','--audio-quality','0') }
+  if(opts.asAudio){
+    args.push('-x','--audio-format','mp3','--audio-quality','0')
+  }
   else if(opts.formatId){
-    // Eğer seçilen format zaten bir ses formatıysa bestaudio ekleme
     const isAudio = opts.isAudioOnly || opts.formatId.includes('audio')
     if (isAudio) {
       args.push('-f', opts.formatId)
+    } else if (opts.formatId === 'best') {
+      args.push('-f', 'bv*+ba/b')
+    } else if (opts.formatId.includes('+') || opts.formatId.includes('/')) {
+      args.push('-f', opts.formatId)
     } else {
-      args.push('-f', opts.formatId+'+bestaudio/best')
+      args.push('-f', `${opts.formatId}+bestaudio/best`)
     }
     args.push('--merge-output-format','mp4')
   }
-  else { args.push('-f','bv*+ba/b'); args.push('--merge-output-format','mp4') }
+  else {
+    args.push('-f','bv*+ba/b')
+    args.push('--merge-output-format','mp4')
+  }
   const tmpl = opts.filename || appConfig.filenameTemplate || '%(title)s.%(ext)s'
   const outTemplate = path.join(outDir, tmpl)
   args.push('-o', outTemplate, '--no-playlist','--newline','--progress', '--continue')
   if(ffmpegPath!=='ffmpeg') args.push('--ffmpeg-location', ffmpegPath)
   args.push(opts.url)
+  console.log('[Flexplorer] starting download process:', id, ytdlp, args.join(' '))
   const proc=spawn(ytdlp,args,{shell:false})
   activeDownloads.set(id, proc)
   activeOpts.set(id, opts)
-  // persist queue
-  if(mainWindow) mainWindow.webContents.send('download-started', { id, opts, outDir })
+  // persist queue & notify UI
+  if(mainWindow && !mainWindow.isDestroyed()){
+    if(mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+    mainWindow.webContents.send('download-started', { id, opts, outDir })
+    mainWindow.webContents.send('switch-to-download-tab')
+  }
   proc.stdout.on('data',(d:Buffer)=>{
     const text=d.toString()
     const m=text.match(/\[download\]\s+(\d+\.?\d*)%.*?of\s+([^\s]+).*?at\s+([^\s]+).*?ETA\s+([^\s]+)/)
     if(m && mainWindow) mainWindow.webContents.send('download-progress',{id,percent:parseFloat(m[1]),total:m[2],speed:m[3],eta:m[4],raw:text.trim().slice(0,200)})
     else if(mainWindow && (text.includes('[download]')||text.includes('[ExtractAudio]')||text.includes('[Merger]'))) mainWindow.webContents.send('download-log',{id,text:text.trim().slice(0,300)})
   })
-  proc.stderr.on('data',(d:Buffer)=>{ if(mainWindow) mainWindow.webContents.send('download-log',{id,text:d.toString().trim().slice(0,400)}) })
+  proc.stderr.on('data',(d:Buffer)=>{
+    const errText = d.toString()
+    console.error('[yt-dlp error output]:', errText.slice(0, 300))
+    if(mainWindow) mainWindow.webContents.send('download-log',{id,text:errText.trim().slice(0,400)})
+  })
   proc.on('close',(code)=>{
     activeDownloads.delete(id)
     activeOpts.delete(id)
