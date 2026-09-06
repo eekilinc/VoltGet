@@ -182,42 +182,8 @@ function startSniffServer() {
     if (req.url === '/sniff' && req.method === 'POST') {
       let body=''; req.on('data', c=> body+=c); req.on('end', async ()=>{
         try{
-          const data=JSON.parse(body)
-          const sniffId = Date.now().toString(36)+Math.random().toString(36).slice(2,6)
-          if (wss) {
-            wss.clients.forEach((client: WebSocket) => {
-              if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({ type: 'sniffed-url', data: { ...data, sniffId, time: new Date().toLocaleTimeString() } }));
-              }
-            });
-          }
-          if (mainWindow) mainWindow.webContents.send('sniffed-url', { ...data, sniffId, time: new Date().toLocaleTimeString() })
-          // IDM Tarzı: Arka planda analiz et ve modalı aç
-          const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(data.url)
-          let analyzedData: any = { ...data, formats: null, title: data.filename || data.url.split('/').pop()?.split('?')[0] }
-          if (!isGen && !data.url.endsWith('.pdf')) {
-            try {
-              const target = (data.url.includes('googlevideo.com') || data.url.includes('youtube.com')) && data.pageUrl ? data.pageUrl : data.url
-              const res = await analyzeUrl(target)
-              analyzedData = { ...data, ...res }
-            } catch(e) { console.error('[Flexplorer] analyze error', e) }
-          }
-          createDownloadDialogWindow(analyzedData)
-          if (mainWindow && !mainWindow.isFocused()) { mainWindow.flashFrame(true) }
-          const notifyKey = notifyKeyFor(data)
-          if(shouldNotifySniff(notifyKey)){
-            try{
-              const site = (()=>{ try{ return new URL(data.pageUrl).hostname.replace('www.','') } catch{ return data.type||'media' } })()
-              const n = new Notification({ title:`🎯 Flexplorer: ${site} yakalandı`, body: `${data.type} • Tıkla → Yakalayıcı'da gör`, silent:false })
-              n.on('click', ()=>{
-                if(mainWindow){
-                  mainWindow.show(); mainWindow.focus()
-                  createDownloadDialogWindow(analyzedData) // IDM Tarzı: Bildirime tıklandığında analiz edilmiş veriyle aç!
-                }
-              })
-              n.show()
-            }catch{}
-          }
+          const data = JSON.parse(body)
+          await handleIncomingSniff(data)
           res.writeHead(200,{'Content-Type':'application/json'}); res.end(JSON.stringify({ok:true}))
         }catch(e:any){ res.writeHead(400); res.end(String(e)) }
       }); return
@@ -227,32 +193,14 @@ function startSniffServer() {
   })
   sniffServer.listen(8765,'127.0.0.1',()=>{
     console.log('[Flexplorer] sniff server http://127.0.0.1:8765/sniff')
-        wss = new WebSocketServer({ server: sniffServer! });
+    wss = new WebSocketServer({ server: sniffServer! });
     wss.on('connection', ws => {
       console.log('[Flexplorer] WebSocket connected');
-      ws.on('message', (message: string) => {
+      ws.on('message', async (message: string) => {
         try {
           const msg = JSON.parse(message.toString());
-          if (msg.type === 'sniffed-url' && mainWindow) {
-            const data = msg.data;
-            const sniffId = Date.now().toString(36)+Math.random().toString(36).slice(2,6)
-            mainWindow.webContents.send('sniffed-url', { ...data, sniffId, time: new Date().toLocaleTimeString() });
-            if (!mainWindow.isFocused()) { mainWindow.flashFrame(true) }
-            const notifyKey = notifyKeyFor(data)
-            if(shouldNotifySniff(notifyKey)){
-              try{
-                const site = (()=>{ try{ return new URL(data.pageUrl).hostname.replace('www.','') } catch{ return data.type||'media' } })()
-                const n = new Notification({ title:`🎯 Flexplorer: ${site} yakalandı`, body: `${data.type} • Tıkla → Yakalayıcı'da gör`, silent:false })
-                n.on('click', ()=>{
-                  if(mainWindow){
-                    mainWindow.show(); mainWindow.focus()
-                    mainWindow.webContents.send('open-sniff-item', { sniffId, url: data.url, pageUrl: data.pageUrl })
-                    mainWindow.webContents.send('switch-to-sniff-tab')
-                  }
-                })
-                n.show()
-              }catch{}
-            }
+          if (msg.type === 'sniffed-url') {
+            await handleIncomingSniff(msg.data);
           }
         } catch (e: any) {
           console.error('[Flexplorer] WebSocket message error', e);
@@ -263,6 +211,68 @@ function startSniffServer() {
     });
   })
   sniffServer.on('error',(e:any)=> console.error('[sniff server]',e.message))
+}
+
+async function handleIncomingSniff(data: any) {
+  const sniffId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+  const sniffData = { ...data, sniffId, time: new Date().toLocaleTimeString() }
+
+  // 1. Ana pencere ve açık olan WebSocket istemcilerine gönder (Yakalayıcı listesinde görünsün)
+  if (wss) {
+    wss.clients.forEach((client: WebSocket) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ type: 'sniffed-url', data: sniffData }))
+      }
+    })
+  }
+  if (mainWindow) {
+    mainWindow.webContents.send('sniffed-url', sniffData)
+  }
+
+  // 2. IDM Davranışı: SADECE kullanıcı video üstü butona bastıysa veya dosya indirmesi başlattıysa pencere aç!
+  if (data.userInitiated) {
+    const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(data.url)
+    let analyzedData: any = { ...data, formats: null, title: data.filename || data.title || data.url.split('/').pop()?.split('?')[0] }
+    if (!isGen && !data.url.endsWith('.pdf')) {
+      try {
+        const target = (data.url.includes('googlevideo.com') || data.url.includes('youtube.com')) && data.pageUrl ? data.pageUrl : data.url
+        const res = await analyzeUrl(target)
+        analyzedData = { ...data, ...res }
+      } catch (e) {
+        console.error('[Flexplorer] analyze error', e)
+      }
+    }
+    createDownloadDialogWindow(analyzedData)
+    if (mainWindow && !mainWindow.isFocused()) {
+      mainWindow.flashFrame(true)
+    }
+    return
+  }
+
+  // 3. Arka plan otomatik yakalama: ekrana pencere veya modal fırlatma!
+  // Sadece bildirim ayarı açıksa sessizce bildirim göster
+  const notifyKey = notifyKeyFor(data)
+  if (shouldNotifySniff(notifyKey)) {
+    try {
+      const site = (() => {
+        try { return new URL(data.pageUrl).hostname.replace('www.', '') } catch { return data.type || 'media' }
+      })()
+      const n = new Notification({
+        title: `🎯 Flexplorer: ${site} yakalandı`,
+        body: `${data.type} • Tıkla → Yakalayıcı'da gör`,
+        silent: true
+      })
+      n.on('click', () => {
+        if (mainWindow) {
+          mainWindow.show()
+          mainWindow.focus()
+          mainWindow.webContents.send('open-sniff-item', { sniffId, url: data.url, pageUrl: data.pageUrl })
+          mainWindow.webContents.send('switch-to-sniff-tab')
+        }
+      })
+      n.show()
+    } catch {}
+  }
 }
 
 app.whenReady().then(() => {

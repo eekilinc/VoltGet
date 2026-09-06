@@ -1,13 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Flexplorer Yakalayıcı",
-  "version": "1.0.1",
-  "description": "Sayfadaki video/müzik linklerini yakalar ve Flexplorer'a gönderir - tüm siteler + iframeler",
+  "version": "1.1.0",
+  "description": "Sayfadaki video/müzik linklerini yakalar ve IDM tarzı video üstü indirme paneli sunar",
   "permissions": ["webRequest", "storage", "tabs", "scripting", "cookies", "downloads", "contextMenus", "nativeMessaging"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [
-    { "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_start", "all_frames": true },
     { "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_idle", "all_frames": true }
   ],
   "action": { "default_title": "Flexplorer Yakalayıcı", "default_popup": "popup.html" },

@@ -37,8 +37,9 @@ export default function App() {
     const onC=(d:any)=> setJobs(j=> j.filter(x=> x.id!==d.id))
     const onPaused=(d:any)=> setJobs(j=> { const n=j.map(x=> x.id===d.id ? {...x, status:'paused' as const, log:'Duraklatıldı'} : x); window.api.saveQueue(n); return n })
     
-    // Anlık yakalama bildirimi geldiğinde doğrudan IDM İndirme Penceresini aç
+    // Anlık yakalama bildirimi: SADECE kullanıcı video üstü butona bastıysa veya indirme talep ettiyse aç
     const onSniffNotify = async (d:any) => {
+      if (!d.userInitiated) return
       const url = d.url
       const pageUrl = d.pageUrl
       const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(url)
