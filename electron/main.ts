@@ -32,8 +32,8 @@ function createDownloadDialogWindow(sniffData: any) {
   if (!fs.existsSync(preloadPath)) preloadPath = path.join(__dirname, 'preload.js')
 
   downloadDialogWindow = new BrowserWindow({
-    width: 500,
-    height: 480,
+    width: 520,
+    height: 530,
     frame: false,
     backgroundColor: '#0f172a',
     alwaysOnTop: true,
@@ -176,6 +176,9 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' } })
+  mainWindow.webContents.on('did-finish-load', () => {
+    broadcastExtensionStatus()
+  })
 }
 
 let sniffServer: http.Server | null = null
@@ -196,7 +199,26 @@ function shouldNotifySniff(key:string){
   sniffLastNotify.set(key, now)
   return true
 }
+
+function getExtensionConnectedCount(): number {
+  if (!wss) return 0
+  let count = 0
+  wss.clients.forEach((c: any) => {
+    if (c.readyState === 1 /* OPEN */) count++
+  })
+  return count
+}
+
+function broadcastExtensionStatus() {
+  const count = getExtensionConnectedCount()
+  const status = { connected: count > 0, count }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('extension-status-changed', status)
+  }
+}
+
 function startSniffServer() {
+  if (sniffServer) return
   sniffServer = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
     if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return }
@@ -209,7 +231,7 @@ function startSniffServer() {
         }catch(e:any){ res.writeHead(400); res.end(String(e)) }
       }); return
     }
-    if (req.url === '/status'){ res.writeHead(200,{'Content-Type':'application/json'}); res.end(JSON.stringify({ok:true, app:'Flexplorer', sniff:true})); return }
+    if (req.url === '/status'){ res.writeHead(200,{'Content-Type':'application/json'}); res.end(JSON.stringify({ok:true, app:'Flexplorer', sniff:true, extensionConnected: getExtensionConnectedCount() > 0})); return }
     res.writeHead(404); res.end('not found')
   })
   sniffServer.listen(8765,'127.0.0.1',()=>{
@@ -217,6 +239,7 @@ function startSniffServer() {
     wss = new WebSocketServer({ server: sniffServer! });
     wss.on('connection', ws => {
       console.log('[Flexplorer] WebSocket connected');
+      broadcastExtensionStatus();
       ws.on('message', async (message: string) => {
         try {
           const msg = JSON.parse(message.toString());
@@ -227,8 +250,14 @@ function startSniffServer() {
           console.error('[Flexplorer] WebSocket message error', e);
         }
       });
-      ws.on('close', () => console.log('[Flexplorer] WebSocket disconnected'));
-      ws.on('error', (e: Error) => console.error('[Flexplorer] WebSocket error', e));
+      ws.on('close', () => {
+        console.log('[Flexplorer] WebSocket disconnected');
+        broadcastExtensionStatus();
+      });
+      ws.on('error', (e: Error) => {
+        console.error('[Flexplorer] WebSocket error', e);
+        broadcastExtensionStatus();
+      });
     });
   })
   sniffServer.on('error',(e:any)=> console.error('[sniff server]',e.message))
@@ -1034,3 +1063,53 @@ ipcMain.handle('http-download', async (_e, opts:any)=>{
   runMultiPartHttpDownload(id, enrichedOpts, outDir, outPath, filename)
   return {id, outPath}
 })
+
+function getExtensionDir(): string {
+  const p1 = path.join(app.getAppPath(), 'extension')
+  if (fs.existsSync(p1)) return p1
+  const p2 = path.join(__dirname, '../../extension')
+  if (fs.existsSync(p2)) return p2
+  const p3 = path.join(process.resourcesPath, 'extension')
+  if (fs.existsSync(p3)) return p3
+  return p1
+}
+
+ipcMain.handle('open-extension-folder', async () => {
+  const extDir = getExtensionDir()
+  if (fs.existsSync(extDir)) {
+    await shell.openPath(extDir)
+    return { success: true, path: extDir }
+  }
+  return { success: false, error: 'Eklenti klasörü bulunamadı: ' + extDir }
+})
+
+ipcMain.handle('export-extension-zip', async () => {
+  const extDir = getExtensionDir()
+  if (!fs.existsSync(extDir)) {
+    throw new Error('Eklenti klasörü bulunamadı: ' + extDir)
+  }
+  const outDir = getDefaultDownloadDir()
+  ensureDir(outDir)
+  const zipPath = path.join(outDir, 'flexplorer-eklenti.zip')
+
+  return new Promise((resolve, reject) => {
+    // Windows PowerShell Compress-Archive komutu ile sıfır bağımlılıkla hızlıca zip oluştur
+    const psCmd = `Compress-Archive -Path "${extDir}\\*" -DestinationPath "${zipPath}" -Force`
+    const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCmd])
+    proc.on('close', (code) => {
+      if (code === 0 && fs.existsSync(zipPath)) {
+        shell.showItemInFolder(zipPath)
+        resolve({ success: true, zipPath })
+      } else {
+        reject(new Error(`ZIP paketi oluşturulamadı (çıkış kodu: ${code})`))
+      }
+    })
+    proc.on('error', (err) => reject(err))
+  })
+})
+
+ipcMain.handle('get-extension-status', async () => {
+  const count = getExtensionConnectedCount()
+  return { connected: count > 0, count }
+})
+

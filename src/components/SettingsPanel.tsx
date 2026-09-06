@@ -3,6 +3,7 @@ import { useAppSettings } from '../context/AppSettingsContext'
 import { useToast } from '../context/ToastContext'
 import { ACCENTS, AccentColor, ThemeMode } from '../theme'
 import { LANGS, Lang } from '../i18n'
+import ExtensionInstallModal from './ExtensionInstallModal'
 
 export default function SettingsPanel(){
   const { theme, accent, lang, setTheme, setAccent, setLang, t } = useAppSettings()
@@ -12,12 +13,23 @@ export default function SettingsPanel(){
   const [cfg, setCfg] = useState<any>({ concurrent:3, speedLimitKB:0, siteFolders:true, autoUpdateCheck:true, interceptBrowserDownloads:true, captureMediaRequests:true, captureDocuments:true, captureArchives:true, captureInstallers:true, openAtLogin:false, startMinimized:false })
   const [updating, setUpdating] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<any>(null)
+  const [extConnected, setExtConnected] = useState(false)
+  const [extModalOpen, setExtModalOpen] = useState(false)
+  const [zipping, setZipping] = useState(false)
 
   useEffect(()=>{
     window.api?.getDefaultDir().then(setOutDir)
     window.api?.getYtDlpStatus().then(setStatus)
     window.api?.getConfig().then(setCfg)
     window.api?.checkYtDlpUpdate().then(setUpdateInfo).catch(()=>{})
+
+    window.api?.getExtensionStatus?.().then((res: any) => {
+      if (res) setExtConnected(!!res.connected)
+    })
+    const onExt = (res: any) => {
+      if (res) setExtConnected(!!res.connected)
+    }
+    window.api?.onExtensionStatus?.(onExt)
   },[])
 
   async function pickFolder(){
@@ -41,8 +53,85 @@ export default function SettingsPanel(){
     toast.info('Ayarlar kaydedildi')
   }
 
+  async function openExtFolder() {
+    const res = await window.api?.openExtensionFolder()
+    if (res?.success) toast.success('Eklenti klasörü açıldı')
+    else toast.error(res?.error || 'Klasör açılamadı')
+  }
+
+  async function exportExtZip() {
+    setZipping(true)
+    try {
+      const res = await window.api?.exportExtensionZip()
+      if (res?.success) toast.success('flexplorer-eklenti.zip oluşturuldu ve Gezgin\'de gösterildi')
+      else toast.error('ZIP oluşturulamadı')
+    } catch (e: any) {
+      toast.error('Hata: ' + (e?.message || e))
+    }
+    setZipping(false)
+  }
+
   return (
     <div style={{ flex:1, padding:18, overflow:'auto', display:'flex', flexDirection:'column', gap:14 }}>
+      {/* Tarayıcı Eklentisi Yönetim Kartı */}
+      <div className="card-premium glow-accent" style={{ borderRadius:18, padding:18 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ fontSize:26 }}>🧩</span>
+            <div>
+              <div style={{ fontWeight:900, fontSize:15 }}>Flexplorer Tarayıcı Eklentisi (Chrome & Edge)</div>
+              <div className="text-muted" style={{ fontSize:11 }}>
+                Web sayfalarındaki video ve indirmeleri yakalayan IDM tarzı tarayıcı eklentisi
+              </div>
+            </div>
+          </div>
+          <div style={{
+            display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:20,
+            background: extConnected ? 'rgba(34, 197, 94, 0.12)' : 'rgba(234, 179, 8, 0.12)',
+            border: extConnected ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(234, 179, 8, 0.4)',
+            color: extConnected ? '#86efac' : '#fde047',
+            fontSize:12, fontWeight:800
+          }}>
+            <span>{extConnected ? '🟢' : '⚪'}</span>
+            <span>{extConnected ? 'Eklenti Bağlı ve Aktif' : 'Eklenti Bekleniyor'}</span>
+          </div>
+        </div>
+
+        <div style={{ marginTop:14, display:'flex', gap:10, flexWrap:'wrap' }}>
+          <button
+            onClick={openExtFolder}
+            className="brand-gradient"
+            style={{ color:'#fff', border:0, padding:'10px 14px', borderRadius:10, fontSize:12, fontWeight:800, display:'flex', alignItems:'center', gap:6 }}
+          >
+            <span>📂</span>
+            <span>Eklenti Klasörünü Aç</span>
+          </button>
+
+          <button
+            onClick={exportExtZip}
+            disabled={zipping}
+            style={{ background:'var(--panel-2)', color:'var(--text)', border:'1px solid var(--border)', padding:'10px 14px', borderRadius:10, fontSize:12, fontWeight:700, display:'flex', alignItems:'center', gap:6 }}
+          >
+            <span>📦</span>
+            <span>{zipping ? 'Paketleniyor...' : 'ZIP Olarak Dışa Aktar'}</span>
+          </button>
+
+          <button
+            onClick={()=>setExtModalOpen(true)}
+            style={{ background:'var(--panel-2)', color:'var(--text)', border:'1px solid var(--border)', padding:'10px 14px', borderRadius:10, fontSize:12, fontWeight:700, display:'flex', alignItems:'center', gap:6 }}
+          >
+            <span>🚀</span>
+            <span>Kurulum Kılavuzunu Görüntüle</span>
+          </button>
+        </div>
+      </div>
+
+      <ExtensionInstallModal
+        isOpen={extModalOpen}
+        onClose={()=>setExtModalOpen(false)}
+        connected={extConnected}
+      />
+
       <div className="card-premium" style={{ borderRadius:18, padding:18 }}>
         <div style={{ fontWeight:900, fontSize:16 }}>{t('settingsAppearance')}</div>
         <div className="text-muted" style={{ fontSize:12, marginTop:4 }}>{t('settingsTheme')} • {t('settingsLanguage')} • {t('accentColor')}</div>

@@ -163,24 +163,72 @@ function DialogApp() {
         </button>
       </div>
 
-      {/* Dosya / Medya Bilgisi */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <div style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Dosya / Medya Adı:
-        </div>
-        <div style={{
-          fontSize: 12,
-          fontWeight: 700,
-          background: 'rgba(30, 41, 59, 0.7)',
-          padding: '8px 12px',
-          borderRadius: 8,
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          color: '#f1f5f9',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap'
-        }}>
-          {data?.title || data?.filename || data?.url || 'Bağlantı algılandı...'}
+      {/* Dosya / Medya Bilgisi + Önizleme Kartı */}
+      <div style={{
+        background: 'rgba(30, 41, 59, 0.7)',
+        padding: '10px 12px',
+        borderRadius: 12,
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        display: 'flex',
+        gap: 12,
+        alignItems: 'center'
+      }}>
+        {data?.thumbnail ? (
+          <img
+            src={data.thumbnail}
+            alt="thumbnail"
+            style={{
+              width: 84,
+              height: 50,
+              objectFit: 'cover',
+              borderRadius: 8,
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+              flexShrink: 0
+            }}
+          />
+        ) : (
+          <div style={{
+            width: 44,
+            height: 44,
+            borderRadius: 10,
+            background: isGenericFile ? 'rgba(59, 130, 246, 0.15)' : 'rgba(37, 99, 235, 0.15)',
+            color: '#60a5fa',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 22,
+            flexShrink: 0
+          }}>
+            {isGenericFile ? '📦' : '🎬'}
+          </div>
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontSize: 12,
+            fontWeight: 800,
+            color: '#f8fafc',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}>
+            {data?.title || data?.filename || data?.url || 'Bağlantı algılandı...'}
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+            {data?.duration && (
+              <span style={{ fontSize: 10, background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: 6, color: '#cbd5e1' }}>
+                ⏱️ {data.duration}
+              </span>
+            )}
+            {data?.uploader && (
+              <span style={{ fontSize: 10, background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: 6, color: '#93c5fd' }}>
+                👤 {data.uploader}
+              </span>
+            )}
+            <span style={{ fontSize: 10, color: '#38bdf8', fontWeight: 600 }}>
+              {isGenericFile ? 'Doğrudan İndirme' : `${formats.length} Kalite Hazır`}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -280,6 +328,40 @@ function DialogApp() {
                   </span>
                 )}
               </div>
+
+              {/* Hızlı Kalite Hapları */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                {[
+                  { label: '🎬 En İyi Kalite', match: 'best' },
+                  { label: '1080p Full HD', match: '1080' },
+                  { label: '720p HD', match: '720' },
+                  { label: '480p SD', match: '480' }
+                ].map(pill => {
+                  const found = formats.find(f => f.id === pill.match || f.id.includes(pill.match) || f.resolution?.includes(pill.match))
+                  const targetVal = found ? found.id : pill.match
+                  const isSelected = selectedFormat === targetVal
+                  return (
+                    <button
+                      key={pill.label}
+                      onClick={() => setSelectedFormat(targetVal)}
+                      style={{
+                        background: isSelected ? 'rgba(37, 99, 235, 0.3)' : 'rgba(30, 41, 59, 0.7)',
+                        border: '1px solid ' + (isSelected ? '#3b82f6' : 'rgba(255,255,255,0.08)'),
+                        color: isSelected ? '#60a5fa' : '#94a3b8',
+                        padding: '4px 9px',
+                        borderRadius: 6,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      {pill.label}
+                    </button>
+                  )
+                })}
+              </div>
+
               <select
                 value={selectedFormat}
                 onChange={e => setSelectedFormat(e.target.value)}

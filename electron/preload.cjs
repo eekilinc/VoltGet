@@ -37,6 +37,10 @@ contextBridge.exposeInMainWorld('api', {
   onOpenSniffItem: (cb) => ipcRenderer.on('open-sniff-item', (_e, d) => cb(d)),
   onSwitchToSniffTab: (cb) => ipcRenderer.on('switch-to-sniff-tab', (_e, d) => cb(d)),
   onSwitchToDownloadTab: (cb) => ipcRenderer.on('switch-to-download-tab', (_e, d) => cb(d)),
+  openExtensionFolder: () => ipcRenderer.invoke('open-extension-folder'),
+  exportExtensionZip: () => ipcRenderer.invoke('export-extension-zip'),
+  getExtensionStatus: () => ipcRenderer.invoke('get-extension-status'),
+  onExtensionStatus: (cb) => ipcRenderer.on('extension-status-changed', (_e, d) => cb(d)),
   removeAll: () => {
     ipcRenderer.removeAllListeners('download-progress')
     ipcRenderer.removeAllListeners('download-log')
@@ -47,5 +51,6 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.removeAllListeners('download-started')
     ipcRenderer.removeAllListeners('download-paused')
     ipcRenderer.removeAllListeners('sniffed-url')
+    ipcRenderer.removeAllListeners('extension-status-changed')
   }
 })

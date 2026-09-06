@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useAppSettings } from '../context/AppSettingsContext'
 import { useToast } from '../context/ToastContext'
+import ExtensionInstallModal from './ExtensionInstallModal'
 
 type Sniff = { url:string, type:string, pageUrl:string, time:string, filename?:string, sniffId?:string }
 type Analyzed = { title:string, thumbnail:string, formats:any[], extractor:string } | null
@@ -29,7 +30,19 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
   const [downloading, setDownloading] = useState<Record<number,boolean>>({})
   const [filterDomain, setFilterDomain] = useState<string>('all')
   const [scrollToSniffId, setScrollToSniffId] = useState<string|null>(null)
+  const [extConnected, setExtConnected] = useState(false)
+  const [extModalOpen, setExtModalOpen] = useState(false)
   const itemRefs = useRef<Record<string, HTMLDivElement>>({})
+
+  useEffect(()=>{
+    window.api?.getExtensionStatus?.().then((res: any) => {
+      if (res) setExtConnected(!!res.connected)
+    })
+    const onExt = (res: any) => {
+      if (res) setExtConnected(!!res.connected)
+    }
+    window.api?.onExtensionStatus?.(onExt)
+  },[])
 
   useEffect(()=>{
     if (scrollToSniffId) {
@@ -128,6 +141,41 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
         </div>
       </div>
 
+      {!extConnected && (
+        <div
+          onClick={()=>setExtModalOpen(true)}
+          style={{
+            background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.12) 0%, rgba(245, 158, 11, 0.05) 100%)',
+            border: '1px solid rgba(234, 179, 8, 0.35)',
+            borderRadius: 16,
+            padding: '12px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            cursor: 'pointer',
+            transition: 'all 0.15s'
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = '#eab308' }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(234, 179, 8, 0.35)' }}
+        >
+          <span style={{ fontSize: 24 }}>🧩</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 12, color: '#fde047' }}>
+              Tarayıcı Eklentisini Yükleyin (Chrome, Edge, Brave, Opera)
+            </div>
+            <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>
+              Videoların üzerinde "Flexplorer ile İndir" butonunun çıkması için eklentiyi 15 saniyede kurabilirsiniz.
+            </div>
+          </div>
+          <button
+            className="brand-gradient"
+            style={{ color: '#fff', border: 0, padding: '7px 14px', borderRadius: 8, fontSize: 11, fontWeight: 800, whiteSpace: 'nowrap' }}
+          >
+            Kurulumu Başlat ⚡
+          </button>
+        </div>
+      )}
+
       <div className="card-premium" style={{ borderRadius:18, padding:16, flex:1 }}>
         {domains.length>1 && (
           <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
@@ -219,6 +267,11 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
           )
         })()}
       </div>
+      <ExtensionInstallModal
+        isOpen={extModalOpen}
+        onClose={()=>setExtModalOpen(false)}
+        connected={extConnected}
+      />
     </div>
   )
 }

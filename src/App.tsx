@@ -5,6 +5,7 @@ import SniffPanel from './components/SniffPanel'
 import QueuePanel from './components/QueuePanel'
 import SettingsPanel from './components/SettingsPanel'
 import AboutPanel from './components/AboutPanel'
+import ExtensionInstallModal from './components/ExtensionInstallModal'
 import { useAppSettings } from './context/AppSettingsContext'
 
 declare global { interface Window { api: any } }
@@ -18,6 +19,8 @@ export default function App() {
   const [outDir, setOutDir] = useState('')
   const [jobs, setJobs] = useState<Job[]>([])
   const [downloadModal, setDownloadModal] = useState<any>(null)
+  const [isExtModalOpen, setIsExtModalOpen] = useState(false)
+  const [extConnected, setExtConnected] = useState(false)
   const hasApi = typeof window !== 'undefined' && !!(window as any).api
 
   useEffect(() => {
@@ -124,6 +127,15 @@ export default function App() {
     })
     window.api.onSwitchToSniffTab?.(() => setTab('sniff'))
     window.api.onSwitchToDownloadTab?.(() => setTab('download'))
+
+    window.api.getExtensionStatus?.().then((res: any) => {
+      if (res) setExtConnected(!!res.connected)
+    })
+    const onExt = (res: any) => {
+      if (res) setExtConnected(!!res.connected)
+    }
+    window.api.onExtensionStatus?.(onExt)
+
     return () => window.api?.removeAll()
   }, [hasApi])
 
@@ -189,18 +201,37 @@ export default function App() {
             { id:'download', icon:'⬇️', label:t('navDownload'), desc:t('navDownloadDesc') },
             { id:'sniff', icon:'🎯', label:t('navSniff'), desc:t('navSniffDesc') },
             { id:'explorer', icon:'📁', label:t('navExplorer'), desc:t('navExplorerDesc') },
-          ].map(item=>(
-            <button key={item.id} onClick={()=>setTab(item.id as any)}
-              style={{
-                display:'flex', gap:10, alignItems:'center', padding:'11px 12px', borderRadius:12,
-                border:'1px solid '+(tab===item.id?'color-mix(in srgb, var(--accent-solid) 55%, transparent)':'transparent'),
-                background: tab===item.id ? 'color-mix(in srgb, var(--accent-solid) 16%, var(--panel))' : 'transparent',
-                color:'var(--text)', textAlign:'left'
-              }}>
-              <span style={{ fontSize:18 }}>{item.icon}</span>
-              <span><div style={{ fontSize:13, fontWeight:700 }}>{item.label}</div><div className="text-muted" style={{ fontSize:11 }}>{item.desc}</div></span>
-            </button>
-          ))}
+          ].map(item=>{
+            const activeDownloads = jobs.filter(j=> j.status==='downloading'||j.status==='queued').length
+            return (
+              <button key={item.id} onClick={()=>setTab(item.id as any)}
+                style={{
+                  display:'flex', gap:10, alignItems:'center', padding:'11px 12px', borderRadius:12,
+                  border:'1px solid '+(tab===item.id?'color-mix(in srgb, var(--accent-solid) 55%, transparent)':'transparent'),
+                  background: tab===item.id ? 'color-mix(in srgb, var(--accent-solid) 16%, var(--panel))' : 'transparent',
+                  color:'var(--text)', textAlign:'left'
+                }}>
+                <span style={{ fontSize:18 }}>{item.icon}</span>
+                <span style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:700 }}>{item.label}</div>
+                  <div className="text-muted" style={{ fontSize:11 }}>{item.desc}</div>
+                </span>
+                {item.id==='download' && activeDownloads > 0 && (
+                  <span style={{
+                    background:'var(--accent-solid)',
+                    color:'#fff',
+                    padding:'2px 7px',
+                    borderRadius:99,
+                    fontSize:10,
+                    fontWeight:900,
+                    boxShadow:'0 2px 8px color-mix(in srgb, var(--accent-solid) 50%, transparent)'
+                  }}>
+                    {activeDownloads}
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </nav>
         <div style={{ height:1, background:'var(--border)', margin:'12px 0' }}/>
         <nav style={{ display:'flex', flexDirection:'column', gap:6 }}>
@@ -222,6 +253,40 @@ export default function App() {
         </nav>
 
         <div style={{ flex:1 }}/>
+
+        {/* Tarayıcı Eklentisi Durum Kartı */}
+        <div
+          onClick={()=>setIsExtModalOpen(true)}
+          style={{
+            cursor:'pointer',
+            padding:'10px 12px',
+            borderRadius:14,
+            marginBottom:10,
+            border: extConnected ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(234, 179, 8, 0.35)',
+            background: extConnected ? 'rgba(34, 197, 94, 0.08)' : 'rgba(234, 179, 8, 0.08)',
+            display:'flex',
+            alignItems:'center',
+            gap:10,
+            transition:'all 0.15s'
+          }}
+          onMouseEnter={e=> { e.currentTarget.style.transform = 'translateY(-1px)' }}
+          onMouseLeave={e=> { e.currentTarget.style.transform = 'translateY(0)' }}
+        >
+          <div style={{
+            width:10, height:10, borderRadius:99,
+            background: extConnected ? '#22c55e' : '#eab308',
+            boxShadow: extConnected ? '0 0 10px #22c55e' : 'none'
+          }} />
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:11, fontWeight:800, color: extConnected ? '#86efac' : '#fde047', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+              {extConnected ? 'Eklenti Bağlı ✓' : 'Eklenti Kurulumu ⚡'}
+            </div>
+            <div className="text-muted" style={{ fontSize:9, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+              {extConnected ? 'IDM Yakalayıcı Aktif' : '15 saniyede yükle'}
+            </div>
+          </div>
+        </div>
+
         {status && (
           <div className="card-premium" style={{ borderRadius:12, padding:10, fontSize:11 }}>
             <div style={{ display:'flex', justifyContent:'space-between' }}><span>yt-dlp</span><span style={{ color:(status.binExists||status.pathExists)?'#22c55e':'#f87171' }}>{(status.binExists||status.pathExists)?'✓':'✗'}</span></div>
@@ -236,6 +301,25 @@ export default function App() {
         <div className="glass" style={{ height:54, borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', padding:'0 16px', gap:10 }}>
           <div style={{ fontWeight:800, fontSize:14 }}>{titles[tab]}</div>
           <div style={{ flex:1 }}/>
+          <button
+            onClick={()=>setIsExtModalOpen(true)}
+            style={{
+              display:'flex',
+              alignItems:'center',
+              gap:6,
+              background: extConnected ? 'rgba(34, 197, 94, 0.12)' : 'rgba(234, 179, 8, 0.12)',
+              color: extConnected ? '#86efac' : '#fde047',
+              border: extConnected ? '1px solid rgba(34, 197, 94, 0.35)' : '1px solid rgba(234, 179, 8, 0.35)',
+              padding:'6px 12px',
+              borderRadius:10,
+              fontSize:11,
+              fontWeight:800,
+              cursor:'pointer'
+            }}
+          >
+            <span>{extConnected ? '🟢' : '🧩'}</span>
+            <span>{extConnected ? 'Eklenti Bağlı' : 'Eklenti Kurulumu'}</span>
+          </button>
           <button onClick={()=>window.api.getYtDlpStatus().then(setStatus)} style={{ background:'var(--panel-2)', color:'var(--text)', border:'1px solid var(--border)', padding:'7px 12px', borderRadius:10, fontSize:11 }}>{t('refresh')}</button>
           <button onClick={()=>window.api.openFolder(outDir)} className="brand-gradient" style={{ color:'#fff', border:0, padding:'7px 12px', borderRadius:10, fontSize:11, fontWeight:700 }}>📂 {t('folder')}</button>
         </div>
@@ -331,6 +415,12 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <ExtensionInstallModal
+        isOpen={isExtModalOpen}
+        onClose={() => setIsExtModalOpen(false)}
+        connected={extConnected}
+      />
 
     </div>
   )
