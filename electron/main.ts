@@ -13,23 +13,28 @@ const __dirname = path.dirname(__filename)
 
 let mainWindow: BrowserWindow | null = null
 let downloadDialogWindow: BrowserWindow | null = null
+let lastDownloadDialogData: any = null
 
 function createDownloadDialogWindow(sniffData: any) {
+  lastDownloadDialogData = sniffData
   if (downloadDialogWindow && !downloadDialogWindow.isDestroyed()) {
     downloadDialogWindow.focus()
     downloadDialogWindow.webContents.send('show-download-dialog', sniffData)
     return
   }
 
+  let preloadPath = path.join(__dirname, 'preload.cjs')
+  if (!fs.existsSync(preloadPath)) preloadPath = path.join(__dirname, 'preload.js')
+
   downloadDialogWindow = new BrowserWindow({
-    width: 480,
-    height: 440,
+    width: 500,
+    height: 460,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     resizable: false,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
+      preload: preloadPath,
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
@@ -46,14 +51,17 @@ function createDownloadDialogWindow(sniffData: any) {
   }
 
   downloadDialogWindow.webContents.on('did-finish-load', () => {
-    downloadDialogWindow?.webContents.send('show-download-dialog', sniffData)
+    downloadDialogWindow?.webContents.send('show-download-dialog', lastDownloadDialogData || sniffData)
     downloadDialogWindow?.show()
+    downloadDialogWindow?.focus()
   })
 
   downloadDialogWindow.on('closed', () => {
     downloadDialogWindow = null
   })
 }
+
+ipcMain.handle('get-download-dialog-data', () => lastDownloadDialogData)
 const activeDownloads = new Map<string, ChildProcess | { kill: ()=>void }>()
 const activeOpts = new Map<string, any>()
 const pendingQueue: Array<{ id:string, opts:any }> = []
@@ -232,19 +240,59 @@ async function handleIncomingSniff(data: any) {
   // 2. IDM Davranışı: SADECE kullanıcı video üstü butona bastıysa veya dosya indirmesi başlattıysa pencere aç!
   if (data.userInitiated) {
     const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(data.url)
-    let analyzedData: any = { ...data, formats: null, title: data.filename || data.title || data.url.split('/').pop()?.split('?')[0] }
-    if (!isGen && !data.url.endsWith('.pdf')) {
-      try {
-        const target = (data.url.includes('googlevideo.com') || data.url.includes('youtube.com')) && data.pageUrl ? data.pageUrl : data.url
-        const res = await analyzeUrl(target)
-        analyzedData = { ...data, ...res }
-      } catch (e) {
-        console.error('[Flexplorer] analyze error', e)
-      }
+    const initialTitle = data.filename || data.title || data.url.split('/').pop()?.split('?')[0] || 'Video'
+    
+    // ANINDA kullanılabilir varsayılan formatlar (Kullanıcı 1 salise bile beklemeden hemen indirebilir!)
+    const defaultFormats = isGen || data.url.endsWith('.pdf') ? [] : [
+      { id: 'best', resolution: '🎬 En İyi Kalite (Hızlı İndir)', ext: 'mp4', note: 'Otomatik Önerilen' },
+      { id: 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best', resolution: '🎬 1080p Full HD', ext: 'mp4', note: 'Yüksek Çözünürlük' },
+      { id: 'bestvideo[height<=720]+bestaudio/best[height<=720]/best', resolution: '🎬 720p HD', ext: 'mp4', note: 'Standart HD' },
+      { id: 'bestvideo[height<=480]+bestaudio/best[height<=480]/best', resolution: '🎬 480p SD', ext: 'mp4', note: 'Hızlı İndirme' },
+      { id: 'bestaudio/best', resolution: '🎵 MP3 / Sadece Ses', ext: 'mp3', note: 'En Yüksek Ses Kalitesi' }
+    ]
+
+    const initialData = {
+      ...data,
+      formats: defaultFormats,
+      selectedFormat: data.asAudio ? 'bestaudio/best' : 'best',
+      title: initialTitle,
+      loading: !isGen && !data.url.endsWith('.pdf')
     }
-    createDownloadDialogWindow(analyzedData)
-    if (mainWindow && !mainWindow.isFocused()) {
-      mainWindow.flashFrame(true)
+
+    // ANINDA PENCEREYİ AÇ (Kullanıcı beklemesin, IDM anında açılır!)
+    createDownloadDialogWindow(initialData)
+
+    // Arka planda kaliteleri analiz et ve pencereye ilet (En fazla 3.5 saniye bekle):
+    if (!isGen && !data.url.endsWith('.pdf')) {
+      const target = (data.url.includes('googlevideo.com') || data.url.includes('youtube.com')) && data.pageUrl ? data.pageUrl : data.url
+      
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500))
+      
+      Promise.race([analyzeUrl(target), timeoutPromise]).then((res: any) => {
+        const enrichedFormats = (res?.formats && res.formats.length > 0) ? res.formats : defaultFormats
+        const analyzed = {
+          ...initialData,
+          ...(res || {}),
+          formats: enrichedFormats,
+          selectedFormat: data.asAudio ? (enrichedFormats.find((f: any) => f.isAudioOnly)?.id || 'bestaudio/best') : (enrichedFormats[0]?.id || 'best'),
+          loading: false
+        }
+        lastDownloadDialogData = analyzed
+        if (downloadDialogWindow && !downloadDialogWindow.isDestroyed()) {
+          downloadDialogWindow.webContents.send('show-download-dialog', analyzed)
+        }
+      }).catch(err => {
+        console.warn('[Flexplorer] analyze warning/timeout, using default formats:', err?.message || err)
+        const fallback = {
+          ...initialData,
+          loading: false,
+          formats: defaultFormats
+        }
+        lastDownloadDialogData = fallback
+        if (downloadDialogWindow && !downloadDialogWindow.isDestroyed()) {
+          downloadDialogWindow.webContents.send('show-download-dialog', fallback)
+        }
+      })
     }
     return
   }
@@ -434,10 +482,14 @@ ipcMain.handle('start-download', async (_e, opts:any)=>{
   // site klasörü ve queue
   if(!canStart()){
     pendingQueue.push({id, opts})
-    if(mainWindow) mainWindow.webContents.send('download-queued',{id, opts, position: pendingQueue.length})
+    if(mainWindow) {
+      mainWindow.webContents.send('download-queued',{id, opts, position: pendingQueue.length})
+      mainWindow.webContents.send('switch-to-download-tab')
+    }
     return { id, queued:true, position: pendingQueue.length }
   }
   doStartDownload(id, opts)
+  if(mainWindow) mainWindow.webContents.send('switch-to-download-tab')
   return { id, outDir: getSiteFolder(opts.outDir||getDefaultDownloadDir(), opts.url) }
 })
 ipcMain.handle('cancel-download', async (_e, id:string)=>{
@@ -615,7 +667,15 @@ ipcMain.handle('direct-download', async (_e, opts:any)=>{
   const outDir=getSiteFolder(opts.outDir||getDefaultDownloadDir(), opts.url); ensureDir(outDir)
   const filename=opts.filename||`video_${Date.now()}.mp4`; const outPath=path.join(outDir, filename)
   const ytdlp=findYtDlp(); const id=Date.now().toString(36)
-  if(!canStart()){ pendingQueue.push({id, opts:{...opts, url:opts.url, outDir: outDir, filename}}); if(mainWindow) mainWindow.webContents.send('download-queued',{id, opts}); return {id, queued:true} }
+  if(!canStart()){
+    pendingQueue.push({id, opts:{...opts, url:opts.url, outDir: outDir, filename}});
+    if(mainWindow) {
+      mainWindow.webContents.send('download-queued',{id, opts});
+      mainWindow.webContents.send('switch-to-download-tab');
+    }
+    return {id, queued:true}
+  }
+  if(mainWindow) mainWindow.webContents.send('switch-to-download-tab')
   const args:string[]=['--js-runtimes','node','--no-warnings',
     '--extractor-args','generic:variant_query','--extractor-args','generic:fragment_query','--hls-use-mpegts','--concurrent-fragments','16','--extractor-args','generic:impersonate=chrome']
   if(appConfig.speedLimitKB>0) args.push('--limit-rate', `${appConfig.speedLimitKB}K`)
@@ -927,8 +987,18 @@ ipcMain.handle('http-download', async (_e, opts:any)=>{
   const outPath=path.join(outDir, filename)
   const id=Date.now().toString(36)
   const enrichedOpts = { ...opts, isHttp: true, outDir, outPath, filename, title: filename }
-  if(!canStart()){ pendingQueue.push({id, opts: enrichedOpts}); if(mainWindow) mainWindow.webContents.send('download-queued',{id, opts: enrichedOpts}); return {id, queued:true} }
-  if(mainWindow) mainWindow.webContents.send('download-started', { id, opts: enrichedOpts, outDir })
+  if(!canStart()){
+    pendingQueue.push({id, opts: enrichedOpts});
+    if(mainWindow) {
+      mainWindow.webContents.send('download-queued',{id, opts: enrichedOpts});
+      mainWindow.webContents.send('switch-to-download-tab');
+    }
+    return {id, queued:true}
+  }
+  if(mainWindow) {
+    mainWindow.webContents.send('download-started', { id, opts: enrichedOpts, outDir });
+    mainWindow.webContents.send('switch-to-download-tab');
+  }
   runMultiPartHttpDownload(id, enrichedOpts, outDir, outPath, filename)
   return {id, outPath}
 })

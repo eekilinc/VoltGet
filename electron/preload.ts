@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('api', {
   showInFolder: (filePath: string) => ipcRenderer.invoke('show-in-folder', filePath),
   deleteFile: (filePath: string) => ipcRenderer.invoke('delete-file', filePath),
   getConfig: () => ipcRenderer.invoke('get-config'),
+  getDownloadDialogData: () => ipcRenderer.invoke('get-download-dialog-data'),
   setConfig: (patch: any) => ipcRenderer.invoke('set-config', patch),
   getYtDlpStatus: () => ipcRenderer.invoke('get-yt-dlp-status'),
   checkYtDlpUpdate: () => ipcRenderer.invoke('check-yt-dlp-update'),
@@ -36,6 +37,7 @@ contextBridge.exposeInMainWorld('api', {
   onShowDownloadDialog: (cb: any) => ipcRenderer.on('show-download-dialog', (_e, d) => cb(d)),
   onOpenSniffItem: (cb: any) => ipcRenderer.on('open-sniff-item', (_e, d) => cb(d)),
   onSwitchToSniffTab: (cb: any) => ipcRenderer.on('switch-to-sniff-tab', (_e, d) => cb(d)),
+  onSwitchToDownloadTab: (cb: any) => ipcRenderer.on('switch-to-download-tab', (_e, d) => cb(d)),
   removeAll: () => {
     ipcRenderer.removeAllListeners('download-progress')
     ipcRenderer.removeAllListeners('download-log')

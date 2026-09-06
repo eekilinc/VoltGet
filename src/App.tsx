@@ -17,7 +17,6 @@ export default function App() {
   const [status, setStatus] = useState<any>(null)
   const [outDir, setOutDir] = useState('')
   const [jobs, setJobs] = useState<Job[]>([])
-  const [latestSniff, setLatestSniff] = useState<any>(null)
   const [downloadModal, setDownloadModal] = useState<any>(null)
   const hasApi = typeof window !== 'undefined' && !!(window as any).api
 
@@ -37,43 +36,22 @@ export default function App() {
     const onC=(d:any)=> setJobs(j=> j.filter(x=> x.id!==d.id))
     const onPaused=(d:any)=> setJobs(j=> { const n=j.map(x=> x.id===d.id ? {...x, status:'paused' as const, log:'Duraklatıldı'} : x); window.api.saveQueue(n); return n })
     
-    // Anlık yakalama bildirimi: SADECE kullanıcı video üstü butona bastıysa veya indirme talep ettiyse aç
-    const onSniffNotify = async (d:any) => {
-      if (!d.userInitiated) return
-      const url = d.url
-      const pageUrl = d.pageUrl
-      const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(url)
-      let formats = null
-      if (!isGen && !url.endsWith('.pdf')) {
-        try {
-          const target = url.includes('googlevideo.com') && pageUrl ? pageUrl : url
-          const res = await window.api.analyzeUrl(target)
-          formats = res.formats || []
-        } catch(e) {}
-      }
-      setDownloadModal({ sniff: { url, pageUrl, filename: d.filename || url.split('/').pop()?.split('?')[0] }, formats })
+    // Anlık yakalama bildirimi: Arka plan yakalamaları Yakalayıcı panelinde görünür
+    const onSniffNotify = (_d: any) => {
+      // Kullanıcı video üstü butona bastığında bağımsız downloadDialogWindow açıldığı için
+      // ana pencerede çakışan modal açılması engellenir.
     }
 
     window.api.onProgress(onP); window.api.onDone(onD); window.api.onError(onE); window.api.onLog(onL); window.api.onQueued(onQ); window.api.onStarted(onS); window.api.onCanceled(onC)
     window.api.onPaused?.(onPaused)
     window.api.onSniffed(onSniffNotify)
 
-    window.api.onOpenSniffItem?.(async (d:any)=>{
-      const { sniffId, url, pageUrl } = d
+    window.api.onOpenSniffItem?.((_d: any) => {
       setTab('sniff')
-      // IDM tarzı: Bildirime tıklandığında doğrudan İndirme Bilgisi Penceresini aç
-      const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(url)
-      let formats = null
-      if (!isGen && !url.endsWith('.pdf')) {
-        try {
-          const res = await window.api.analyzeUrl(url)
-          formats = res.formats || []
-        } catch(e) {}
-      }
-      setDownloadModal({ sniff: { url, pageUrl, filename: url.split('/').pop()?.split('?')[0] }, formats })
     })
-    window.api.onSwitchToSniffTab?.(()=> setTab('sniff'))
-    return ()=> window.api?.removeAll()
+    window.api.onSwitchToSniffTab?.(() => setTab('sniff'))
+    window.api.onSwitchToDownloadTab?.(() => setTab('download'))
+    return () => window.api?.removeAll()
   }, [hasApi])
 
   const handleStartDownload = async (opts:any)=>{
@@ -281,88 +259,6 @@ export default function App() {
         </div>
       )}
 
-      {/* IDM Tarzı Akıllı İndirme ve Kalite Seçim Modalı */}
-      {latestSniff && (
-        <div style={{
-          position: 'fixed', bottom: 24, right: 24, zIndex: 99999,
-          background: 'var(--panel)', border: '2px solid var(--accent-solid)',
-          boxShadow: '0 20px 40px rgba(0,0,0,0.7)', borderRadius: 16, padding: 20,
-          width: 420, animation: 'fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ fontWeight: 900, fontSize: 14, color: 'var(--accent-solid)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 18 }}>⚡</span> IDM: Yeni Medya Yakalandı
-            </div>
-            <button onClick={() => { setLatestSniff(null); (window as any).__sniffFormats = null; }} style={{ background: 'transparent', border: 0, color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, fontWeight: 'bold' }}>✕</button>
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--text)', background: 'var(--panel-2)', padding: '8px 10px', borderRadius: 8, marginBottom: 12, wordBreak: 'break-all', maxHeight: 40, overflow: 'hidden', border: '1px solid var(--border)' }}>
-            {latestSniff.filename || latestSniff.url}
-          </div>
-
-          {/* Kalite seçenekleri veya yükleniyor durumu */}
-          {(window as any).__sniffLoading ? (
-            <div style={{ textAlign: 'center', padding: 16, fontSize: 12, color: 'var(--text-muted)' }}>🔍 Kaliteler analiz ediliyor...</div>
-          ) : (window as any).__sniffFormats ? (
-            <div style={{ maxHeight: 180, overflowY: 'auto', marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Uygun Kaliteler:</div>
-              {(window as any).__sniffFormats.slice(0, 5).map((f:any)=>(
-                <button key={f.id} onClick={async()=>{
-                  const sniff = latestSniff
-                  setLatestSniff(null); (window as any).__sniffFormats = null;
-                  setTab('download')
-                  await handleStartDownload({ url: sniff.url, outDir, formatId: f.id, title: f.resolution || 'Video' })
-                }} style={{ display:'flex', justifyContent:'space-between', background:'var(--panel-2)', border:'1px solid var(--border)', padding:'6px 10px', borderRadius:8, color:'var(--text)', fontSize:11, cursor:'pointer' }}>
-                  <span>🎬 {f.resolution} ({f.ext})</span>
-                  <span style={{ color:'var(--accent-solid)' }}>İndir ⬇️</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-
-          <div style={{ display: 'flex', gap: 10 }}>
-            {(! (window as any).__sniffFormats && ! (window as any).__sniffLoading) && (
-              <button
-                onClick={async () => {
-                  const sniff = latestSniff
-                  const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(sniff.url)
-                  if (isGen || sniff.url.endsWith('.pdf')) {
-                    setLatestSniff(null); setTab('download')
-                    await handleHttpDownload({ url: sniff.url, outDir, filename: sniff.filename })
-                  } else {
-                    // Video veya site ise yt-dlp ile format analizi başlat
-                    ;(window as any).__sniffLoading = true
-                    try {
-                      const res = await window.api.analyzeUrl(sniff.url)
-                      ;(window as any).__sniffFormats = res.formats || []
-                      setLatestSniff({ ...sniff })
-                    } catch(e) {
-                      setLatestSniff(null)
-                      setTab('download')
-                      await handleDirectDownload({ url: sniff.url, outDir, pageUrl: sniff.pageUrl, title: 'Hızlı İndir' })
-                    } finally {
-                      ;(window as any).__sniffLoading = false
-                    }
-                  }
-                }}
-                className="brand-gradient"
-                style={{ flex: 1, border: 0, padding: '10px 14px', borderRadius: 10, color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px color-mix(in srgb, var(--accent-solid) 40%, transparent)' }}
-              >
-                📥 Doğrudan İndir / Analiz Et
-              </button>
-            )}
-            <button
-              onClick={() => {
-                setTab('sniff')
-                setLatestSniff(null)
-                ;(window as any).__sniffFormats = null
-              }}
-              style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', padding: '10px 14px', borderRadius: 10, color: 'var(--text)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-            >
-              Yakalayıcıya Git
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

@@ -106,11 +106,9 @@
         <div class="flexplorer-main-btn" style="
           display: flex;
           align-items: center;
-          gap: 7px;
-          background: rgba(15, 23, 42, 0.88);
-          border: 1px solid rgba(59, 130, 246, 0.6);
+          background: rgba(15, 23, 42, 0.92);
+          border: 1px solid rgba(59, 130, 246, 0.7);
           color: #f8fafc;
-          padding: 6px 12px;
           border-radius: 9px;
           cursor: pointer;
           font-size: 12px;
@@ -118,10 +116,15 @@
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1);
           backdrop-filter: blur(12px);
           transition: all 0.15s ease;
+          overflow: hidden;
         ">
-          <span style="display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; background: #2563eb; border-radius: 4px; color: #fff; font-size: 10px; font-weight: 900;">⚡</span>
-          <span>Bu videoyu indir</span>
-          <span style="font-size: 10px; opacity: 0.8; margin-left: 2px;">▾</span>
+          <div class="flexplorer-action-direct" style="display: flex; align-items: center; gap: 7px; padding: 6px 10px; transition: background 0.12s;">
+            <span style="display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; background: #2563eb; border-radius: 4px; color: #fff; font-size: 10px; font-weight: 900;">⚡</span>
+            <span>Bu videoyu indir</span>
+          </div>
+          <div class="flexplorer-action-menu" style="display: flex; align-items: center; justify-content: center; padding: 6px 8px; border-left: 1px solid rgba(255, 255, 255, 0.15); font-size: 10px; opacity: 0.85; transition: background 0.12s;">
+            ▾
+          </div>
         </div>
 
         <div class="flexplorer-dropdown" style="
@@ -165,21 +168,23 @@
     `
 
     var mainBtn = overlay.querySelector('.flexplorer-main-btn')
+    var directBtn = overlay.querySelector('.flexplorer-action-direct')
+    var menuBtn = overlay.querySelector('.flexplorer-action-menu')
     var dropdown = overlay.querySelector('.flexplorer-dropdown')
     var items = overlay.querySelectorAll('.flexplorer-item')
 
     // Hover efektleri
-    mainBtn.addEventListener('mouseenter', function () {
-      mainBtn.style.background = 'rgba(30, 41, 59, 0.96)'
-      mainBtn.style.borderColor = '#38bdf8'
-      mainBtn.style.boxShadow = '0 8px 24px rgba(56, 189, 248, 0.35)'
+    directBtn.addEventListener('mouseenter', function () {
+      directBtn.style.background = 'rgba(59, 130, 246, 0.25)'
     })
-    mainBtn.addEventListener('mouseleave', function () {
-      if (!isMenuOpen) {
-        mainBtn.style.background = 'rgba(15, 23, 42, 0.88)'
-        mainBtn.style.borderColor = 'rgba(59, 130, 246, 0.6)'
-        mainBtn.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.6)'
-      }
+    directBtn.addEventListener('mouseleave', function () {
+      directBtn.style.background = 'transparent'
+    })
+    menuBtn.addEventListener('mouseenter', function () {
+      menuBtn.style.background = 'rgba(59, 130, 246, 0.35)'
+    })
+    menuBtn.addEventListener('mouseleave', function () {
+      menuBtn.style.background = 'transparent'
     })
 
     items.forEach(function (it) {
@@ -191,48 +196,57 @@
       })
     })
 
-    // Menü açma/kapatma
-    mainBtn.addEventListener('click', function (e) {
+    function triggerDownload(action) {
+      var targetUrl = getTargetUrlForVideo(videoEl)
+      var pageTitle = document.title || 'Video'
+
+      dropdown.style.display = 'none'
+      isMenuOpen = false
+
+      directBtn.innerHTML = `
+        <span style="color:#4ade80; font-size:12px;">✓</span>
+        <span style="color:#4ade80;">İndirme başlatıldı...</span>
+      `
+
+      chrome.runtime.sendMessage({
+        type: 'user_request_download',
+        data: {
+          url: targetUrl,
+          pageUrl: location.href,
+          title: pageTitle,
+          asAudio: action === 'audio',
+          showDialog: true,
+          userInitiated: true
+        }
+      })
+
+      setTimeout(function () {
+        directBtn.innerHTML = `
+          <span style="display:flex;align-items:center;justify-content:center;width:16px;height:16px;background:#2563eb;border-radius:4px;color:#fff;font-size:10px;font-weight:900;">⚡</span>
+          <span>Bu videoyu indir</span>
+        `
+      }, 3000)
+    }
+
+    // Ana butona tıklandığında doğrudan IDM indirme penceresini aç
+    directBtn.addEventListener('click', function (e) {
+      e.stopPropagation()
+      triggerDownload('dialog')
+    })
+
+    // Oktan tıklandığında format menüsünü aç/kapat
+    menuBtn.addEventListener('click', function (e) {
       e.stopPropagation()
       isMenuOpen = !isMenuOpen
       dropdown.style.display = isMenuOpen ? 'flex' : 'none'
     })
 
-    // İndirme tetikleme aksiyonları
+    // Menü öğelerine tıklandığında
     items.forEach(function (it) {
       it.addEventListener('click', function (e) {
         e.stopPropagation()
         var action = it.getAttribute('data-action')
-        var targetUrl = getTargetUrlForVideo(videoEl)
-        var pageTitle = document.title || 'Video'
-
-        dropdown.style.display = 'none'
-        isMenuOpen = false
-
-        mainBtn.innerHTML = `
-          <span style="color:#4ade80; font-size:12px;">✓</span>
-          <span style="color:#4ade80;">İndirme başlatıldı...</span>
-        `
-
-        chrome.runtime.sendMessage({
-          type: 'user_request_download',
-          data: {
-            url: targetUrl,
-            pageUrl: location.href,
-            title: pageTitle,
-            asAudio: action === 'audio',
-            showDialog: action === 'dialog',
-            userInitiated: true
-          }
-        })
-
-        setTimeout(function () {
-          mainBtn.innerHTML = `
-            <span style="display:flex;align-items:center;justify-content:center;width:16px;height:16px;background:#2563eb;border-radius:4px;color:#fff;font-size:10px;font-weight:900;">⚡</span>
-            <span>Bu videoyu indir</span>
-            <span style="font-size:10px;opacity:0.8;margin-left:2px;">▾</span>
-          `
-        }, 3000)
+        triggerDownload(action)
       })
     })
 

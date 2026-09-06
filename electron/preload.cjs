@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
   deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
   getConfig: () => ipcRenderer.invoke('get-config'),
+  getDownloadDialogData: () => ipcRenderer.invoke('get-download-dialog-data'),
   setConfig: (patch) => ipcRenderer.invoke('set-config', patch),
   getYtDlpStatus: () => ipcRenderer.invoke('get-yt-dlp-status'),
   checkYtDlpUpdate: () => ipcRenderer.invoke('check-yt-dlp-update'),
@@ -32,8 +33,10 @@ contextBridge.exposeInMainWorld('api', {
   onStarted: (cb) => ipcRenderer.on('download-started', (_e, d) => cb(d)),
   onPaused: (cb) => ipcRenderer.on('download-paused', (_e, d) => cb(d)),
   onSniffed: (cb) => ipcRenderer.on('sniffed-url', (_e, d) => cb(d)),
+  onShowDownloadDialog: (cb) => ipcRenderer.on('show-download-dialog', (_e, d) => cb(d)),
   onOpenSniffItem: (cb) => ipcRenderer.on('open-sniff-item', (_e, d) => cb(d)),
   onSwitchToSniffTab: (cb) => ipcRenderer.on('switch-to-sniff-tab', (_e, d) => cb(d)),
+  onSwitchToDownloadTab: (cb) => ipcRenderer.on('switch-to-download-tab', (_e, d) => cb(d)),
   removeAll: () => {
     ipcRenderer.removeAllListeners('download-progress')
     ipcRenderer.removeAllListeners('download-log')
