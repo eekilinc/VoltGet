@@ -8,6 +8,7 @@ import AboutPanel from './components/AboutPanel'
 import ExtensionInstallModal from './components/ExtensionInstallModal'
 import VoltLogo from './components/VoltLogo'
 import { useAppSettings } from './context/AppSettingsContext'
+import { playDownloadCompleteChime } from './utils/audio'
 
 declare global { interface Window { api: any } }
 
@@ -38,7 +39,8 @@ export default function App() {
   const [extConnected, setExtConnected] = useState(false)
   const [clipboardDetectedUrl, setClipboardDetectedUrl] = useState<string | null>(null)
   const [clipboardWatcherActive, setClipboardWatcherActive] = useState<boolean>(true)
-  const [appVersion, setAppVersion] = useState<string>('1.0.4')
+  const [speedLimitKB, setSpeedLimitKB] = useState<number>(0)
+  const [appVersion, setAppVersion] = useState<string>('1.0.5')
   const hasApi = typeof window !== 'undefined' && !!(window as any).api
 
   useEffect(() => {
@@ -50,6 +52,9 @@ export default function App() {
     window.api.getConfig?.().then((c: any) => {
       if (c && typeof c.clipboardWatcher === 'boolean') {
         setClipboardWatcherActive(c.clipboardWatcher)
+      }
+      if (c && typeof c.speedLimitKB === 'number') {
+        setSpeedLimitKB(c.speedLimitKB)
       }
     })
     window.api.getQueue().then(async (saved: any[]) => {
@@ -102,6 +107,13 @@ export default function App() {
       })
     }
     const onD = (d: any) => setJobs(j => {
+      if (d.code === 0) {
+        window.api.getConfig?.().then((cfg: any) => {
+          if (cfg?.soundNotification !== false) {
+            playDownloadCompleteChime()
+          }
+        }).catch(() => playDownloadCompleteChime())
+      }
       const n = j.map(x => x.id === d.id ? {
         ...x,
         status: (d.code === 0 ? 'done' : 'error') as Job['status'],
@@ -485,6 +497,37 @@ export default function App() {
           )}
           <div style={{ flex:1 }}/>
 
+          {/* Hızlı Hız Sınırlayıcı */}
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <select
+              value={speedLimitKB}
+              onChange={async e => {
+                const val = parseInt(e.target.value) || 0
+                setSpeedLimitKB(val)
+                await window.api?.setSpeedLimit?.(val)
+              }}
+              title={t('speedLimiter')}
+              style={{
+                background: speedLimitKB > 0 ? 'var(--badge-warning-bg)' : 'var(--panel-2)',
+                color: speedLimitKB > 0 ? 'var(--badge-warning-text)' : 'var(--text)',
+                border: '1px solid ' + (speedLimitKB > 0 ? 'var(--badge-warning-border)' : 'var(--border)'),
+                padding: '6px 9px',
+                borderRadius: 10,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+                outline: 'none'
+              }}
+            >
+              <option value={0}>⚡ {t('speedUnlimited')}</option>
+              <option value={1024}>🐢 1 MB/s</option>
+              <option value={2048}>⚡ 2 MB/s</option>
+              <option value={5120}>⚡ 5 MB/s</option>
+              <option value={10240}>🚀 10 MB/s</option>
+              <option value={20480}>🚀 20 MB/s</option>
+            </select>
+          </div>
+
           {/* Pano İzleyici Hızlı Geçiş Butonu */}
           <button
             onClick={toggleClipboardWatcher}
@@ -542,6 +585,22 @@ export default function App() {
         onCancel={(id)=>{ window.api.cancelDownload(id); setJobs(j=> j.filter(x=> x.id!==id)) }}
         onPause={(id)=>{ window.api.pauseDownload(id); setJobs(j=> j.map(x=> x.id===id ? {...x, status:'paused', log:'Duraklatıldı'} : x)) }}
         onResume={async (job)=>{ const res = await window.api.resumeDownload({ id: job.id, opts: job.opts }); setJobs(j=> j.map(x=> x.id===job.id ? {...x, status: res?.queued?'queued':'downloading', log: res?.queued?'Sırada…':'Devam ediyor...'} : x)) }}
+        onPauseAll={async () => {
+          await window.api.pauseAllDownloads?.()
+          setJobs(j => {
+            const n = j.map(x => (x.status === 'downloading' || x.status === 'queued') ? { ...x, status: 'paused' as const, log: 'Duraklatıldı' } : x)
+            window.api.saveQueue(n)
+            return n
+          })
+        }}
+        onResumeAll={async () => {
+          await window.api.resumeAllDownloads?.()
+          setJobs(j => {
+            const n = j.map(x => x.status === 'paused' ? { ...x, status: 'downloading' as const, log: 'Devam ediyor...' } : x)
+            window.api.saveQueue(n)
+            return n
+          })
+        }}
         onRetry={(job)=>handleRetry(job as any)}
         onOpenFolder={()=>window.api.openFolder(outDir)}
         onOpenFile={(filePath)=>window.api.openFile(filePath)}

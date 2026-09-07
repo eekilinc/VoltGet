@@ -271,6 +271,9 @@ export default function SettingsPanel(){
         <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:12, fontSize:12, cursor:'pointer' }}>
           <input type="checkbox" checked={!!cfg.siteFolders} onChange={e=> saveCfg({ siteFolders: e.target.checked })} /> {t('siteSubfolders')}
         </label>
+        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:8, fontSize:12, cursor:'pointer' }}>
+          <input type="checkbox" checked={!!cfg.categoryFolders} onChange={e=> saveCfg({ categoryFolders: e.target.checked })} /> 🗂️ {t('categorySubfolders')}
+        </label>
       </div>
 
       <div className="card-premium" style={{ borderRadius:18, padding:18 }}>
@@ -278,12 +281,41 @@ export default function SettingsPanel(){
         <div style={{ display:'flex', gap:12, marginTop:10, flexWrap:'wrap' }}>
           <label style={{ flex:1, minWidth:140, fontSize:12 }}> {t('concurrentDownloads')}<br/>
             <select value={cfg.concurrent} onChange={e=> saveCfg({ concurrent: parseInt(e.target.value)})} style={{ marginTop:6, width:'100%', padding:'8px', borderRadius:10 }}>
-              <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={5}>5</option>
+              <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={5}>5</option><option value={8}>8</option>
             </select>
           </label>
           <label style={{ flex:1, minWidth:140, fontSize:12 }}> {t('speedLimiter')}<br/>
-            <input type="number" value={cfg.speedLimitKB} onChange={e=> saveCfg({ speedLimitKB: parseInt(e.target.value)||0 })} style={{ marginTop:6, width:'100%', padding:'8px', borderRadius:10 }} />
+            <select
+              value={cfg.speedLimitKB || 0}
+              onChange={e=> saveCfg({ speedLimitKB: parseInt(e.target.value) || 0 })}
+              style={{ marginTop:6, width:'100%', padding:'8px', borderRadius:10 }}
+            >
+              <option value={0}>⚡ {t('speedUnlimited')}</option>
+              <option value={1024}>1 MB/s</option>
+              <option value={2048}>2 MB/s</option>
+              <option value={5120}>5 MB/s</option>
+              <option value={10240}>10 MB/s</option>
+              <option value={20480}>20 MB/s</option>
+            </select>
           </label>
+        </div>
+
+        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:14, fontSize:12, cursor:'pointer' }}>
+          <input type="checkbox" checked={cfg.soundNotification !== false} onChange={e=> saveCfg({ soundNotification: e.target.checked })} /> 🔔 {t('soundNotification')}
+        </label>
+
+        <div style={{ marginTop:14 }}>
+          <div style={{ fontSize:12, fontWeight:700, marginBottom:4 }}>⚡ {t('postDownloadAction')}</div>
+          <select
+            value={cfg.postDownloadAction || 'none'}
+            onChange={e=> saveCfg({ postDownloadAction: e.target.value })}
+            style={{ width:'100%', padding:'8px 10px', borderRadius:10, background:'var(--panel-2)', color:'var(--text)', border:'1px solid var(--border)', fontSize:12 }}
+          >
+            <option value="none">{t('actionNone')}</option>
+            <option value="shutdown">{t('actionShutdown')}</option>
+            <option value="sleep">{t('actionSleep')}</option>
+            <option value="quit">{t('actionQuit')}</option>
+          </select>
         </div>
       </div>
 

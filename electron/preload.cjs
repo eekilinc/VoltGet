@@ -51,6 +51,10 @@ contextBridge.exposeInMainWorld('api', {
   minimizeDialog: () => ipcRenderer.invoke('minimize-dialog'),
   closeDialog: () => ipcRenderer.invoke('close-dialog'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  pauseAllDownloads: () => ipcRenderer.invoke('pause-all-downloads'),
+  resumeAllDownloads: () => ipcRenderer.invoke('resume-all-downloads'),
+  setSpeedLimit: (limitKB) => ipcRenderer.invoke('set-speed-limit', limitKB),
+  setPostDownloadAction: (action) => ipcRenderer.invoke('set-post-download-action', action),
   removeAll: () => {
     ipcRenderer.removeAllListeners('download-progress')
     ipcRenderer.removeAllListeners('download-log')

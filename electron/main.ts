@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Notification, Tray, Menu, clipboard } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, Notification, Tray, Menu, clipboard, powerSaveBlocker } from 'electron'
 import { spawn, ChildProcess, execSync } from 'child_process'
 import path from 'path'
 import fs from 'fs'
@@ -250,6 +250,7 @@ type AppConfig = {
   concurrent: number
   speedLimitKB: number // 0 = unlimited
   siteFolders: boolean
+  categoryFolders?: boolean
   filenameTemplate: string // e.g. %(title)s.%(ext)s
   autoUpdateCheck: boolean
   sniffNotifications: boolean
@@ -267,8 +268,10 @@ type AppConfig = {
   closeToTray: boolean
   minimizeToTray: boolean
   clipboardWatcher: boolean
+  soundNotification?: boolean
+  postDownloadAction?: 'none' | 'shutdown' | 'sleep' | 'quit'
 }
-const defaultConfig: AppConfig = { concurrent: 3, speedLimitKB: 0, siteFolders: true, filenameTemplate: '%(title)s.%(ext)s', autoUpdateCheck: true, sniffNotifications: true, sniffDebounceMs: 8000, theme: 'dark', accentColor: 'blue', language: 'tr', interceptBrowserDownloads: true, captureMediaRequests: true, captureDocuments: true, captureArchives: true, captureInstallers: true, openAtLogin: false, startMinimized: false, closeToTray: true, minimizeToTray: false, clipboardWatcher: true }
+const defaultConfig: AppConfig = { concurrent: 3, speedLimitKB: 0, siteFolders: true, categoryFolders: false, filenameTemplate: '%(title)s.%(ext)s', autoUpdateCheck: true, sniffNotifications: true, sniffDebounceMs: 8000, theme: 'dark', accentColor: 'blue', language: 'tr', interceptBrowserDownloads: true, captureMediaRequests: true, captureDocuments: true, captureArchives: true, captureInstallers: true, openAtLogin: false, startMinimized: false, closeToTray: true, minimizeToTray: false, clipboardWatcher: true, soundNotification: true, postDownloadAction: 'none' }
 function configPath(){ return path.join(app.getPath('userData'), 'config.json') }
 function queuePath(){ return path.join(app.getPath('userData'), 'queue.json') }
 function loadConfig(): AppConfig {
@@ -306,9 +309,78 @@ function detectSite(url:string){
     return 'Diger'
   }catch{ return 'Diger' }
 }
-function getSiteFolder(base:string, url:string){
+function getSiteFolder(base:string, url:string, filename?: string){
+  if(appConfig.categoryFolders){
+    const ext = path.extname(filename || url.split('?')[0]).slice(1).toLowerCase()
+    let catFolder = 'Other'
+    if (['mp4','mkv','webm','avi','mov','flv','ts','m4v'].includes(ext) || url.includes('.m3u8')) catFolder = 'Video'
+    else if (['mp3','m4a','flac','wav','aac','ogg','wma'].includes(ext)) catFolder = 'Music'
+    else if (['pdf','doc','docx','xls','xlsx','ppt','pptx','txt','epub','csv'].includes(ext)) catFolder = 'Documents'
+    else if (['zip','rar','7z','tar','gz','iso','torrent'].includes(ext)) catFolder = 'Archives'
+    else if (['exe','msi','apk','dmg','deb','rpm'].includes(ext)) catFolder = 'Programs'
+    return path.join(base, catFolder)
+  }
   if(!appConfig.siteFolders) return base
   return path.join(base, detectSite(url))
+}
+
+let powerSaveBlockerId: number | null = null
+let postDownloadTriggered = false
+
+function updatePowerSaveBlocker() {
+  const isDownloading = activeDownloads.size > 0
+  if (isDownloading) {
+    if (powerSaveBlockerId === null || !powerSaveBlocker.isStarted(powerSaveBlockerId)) {
+      powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension')
+      console.log('[VoltGet PowerSave] Sleep prevented while downloading, id:', powerSaveBlockerId)
+    }
+  } else if (powerSaveBlockerId !== null) {
+    if (powerSaveBlocker.isStarted(powerSaveBlockerId)) {
+      powerSaveBlocker.stop(powerSaveBlockerId)
+      console.log('[VoltGet PowerSave] Power save blocker released')
+    }
+    powerSaveBlockerId = null
+    checkPostDownloadAction()
+  }
+}
+
+function checkPostDownloadAction() {
+  if (activeDownloads.size === 0 && pendingQueue.length === 0) {
+    const action = appConfig.postDownloadAction || 'none'
+    if (action === 'none' || postDownloadTriggered) return
+    postDownloadTriggered = true
+
+    if (action === 'quit') {
+      console.log('[VoltGet] Post-download action: Quitting app...')
+      setTimeout(() => app.quit(), 1500)
+    } else if (action === 'shutdown' && process.platform === 'win32') {
+      console.log('[VoltGet] Post-download action: Shutting down PC in 60s...')
+      try {
+        new Notification({
+          title: 'VoltGet: Otomatik Kapanma',
+          body: 'Tüm indirmeler bitti. Bilgisayar 60 saniye içinde kapatılacak.'
+        }).show()
+        execSync('shutdown /s /t 60')
+      } catch (err) {
+        console.error('[VoltGet] Shutdown error:', err)
+      }
+    } else if (action === 'sleep' && process.platform === 'win32') {
+      console.log('[VoltGet] Post-download action: Putting PC to sleep...')
+      try {
+        new Notification({
+          title: 'VoltGet: Uyku Modu',
+          body: 'Tüm indirmeler bitti. Sistem uyku moduna alınıyor.'
+        }).show()
+        setTimeout(() => {
+          try { execSync('rundll32.exe powrprof.dll,SetSuspendState') } catch {}
+        }, 3000)
+      } catch (err) {
+        console.error('[VoltGet] Sleep error:', err)
+      }
+    }
+  } else {
+    postDownloadTriggered = false
+  }
 }
 function saveQueue(jobs:any[]){
   try{ fs.writeFileSync(queuePath(), JSON.stringify(jobs.slice(0,50),null,2)) }catch{}
@@ -1134,15 +1206,14 @@ function doStartDownload(id:string, opts:any){
     return
   }
 
-  // 3. Normal dosya indirmesi ise doğrudan 8 parçalı yüksek hızlı HTTP indiriciye aktar
   const isGeneric = opts.isHttp ||
                     /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(finalUrl) ||
                     (opts.filename && /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(opts.filename))
   if (isGeneric) {
-    const baseOut = opts.outDir || getDefaultDownloadDir()
-    const outDir = getSiteFolder(baseOut, finalUrl)
-    ensureDir(outDir)
     const filename = opts.filename || finalUrl.split('/').pop()?.split('?')[0] || `file_${Date.now()}`
+    const baseOut = opts.outDir || getDefaultDownloadDir()
+    const outDir = getSiteFolder(baseOut, finalUrl, filename)
+    ensureDir(outDir)
     const outPath = path.join(outDir, filename)
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('download-started', { id, opts: { ...opts, title: filename }, outDir })
@@ -1154,7 +1225,7 @@ function doStartDownload(id:string, opts:any){
 
   // 4. Medya / Video indirmesi
   const baseOut = opts.outDir || getDefaultDownloadDir()
-  const outDir = getSiteFolder(baseOut, finalUrl)
+  const outDir = getSiteFolder(baseOut, finalUrl, opts.filename || opts.title)
   ensureDir(outDir)
   const ytdlp = findYtDlp()
   const isHls = finalUrl.includes('.m3u8') || finalUrl.includes('master.txt') || finalUrl.includes('/hls/') || finalUrl.includes('playmix') || finalUrl.includes('cdnimages') || finalUrl.includes('/q/') || finalUrl.includes('molystream')
@@ -1260,6 +1331,7 @@ function doStartDownload(id:string, opts:any){
 
   activeDownloads.set(id, proc)
   activeOpts.set(id, { ...opts, url: finalUrl })
+  updatePowerSaveBlocker()
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore()
@@ -1307,6 +1379,7 @@ function doStartDownload(id:string, opts:any){
     activeOpts.delete(id)
     if (pausingIds.has(id)) {
       pausingIds.delete(id)
+      updatePowerSaveBlocker()
       processPending()
       return
     }
@@ -1371,6 +1444,7 @@ function doStartDownload(id:string, opts:any){
 
       ffProc.on('close', (ffCode) => {
         activeDownloads.delete(id)
+        updatePowerSaveBlocker()
         if (ffCode === 0 && fs.existsSync(tempOut)) {
           try {
             fs.renameSync(tempOut, actualOut)
@@ -1417,6 +1491,7 @@ function doStartDownload(id:string, opts:any){
 
       ffProc.on('error', (e: any) => {
         activeDownloads.delete(id)
+        updatePowerSaveBlocker()
         try { fs.unlinkSync(tempOut) } catch {}
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('download-error', { id, error: String(e) })
         processPending()
@@ -1469,12 +1544,14 @@ function doStartDownload(id:string, opts:any){
       if (code === 0) new Notification({ title: 'İndirme tamamlandı (VoltGet)', body: (opts.title || finalUrl).slice(0, 60) }).show()
       else new Notification({ title: 'İndirme hatası', body: `Kod ${code} • ${finalUrl.slice(0, 40)}` }).show()
     } catch {}
+    updatePowerSaveBlocker()
     processPending()
   })
 
   proc.on('error', (e: any) => {
     activeDownloads.delete(id)
     activeOpts.delete(id)
+    updatePowerSaveBlocker()
     if (mainWindow) mainWindow.webContents.send('download-error', { id, error: String(e) })
     processPending()
   })
@@ -1499,7 +1576,7 @@ ipcMain.handle('cancel-download', async (_e, id:string)=>{
   // pending'te ise sil
   const idx=pendingQueue.findIndex(q=> q.id===id)
   if(idx!==-1){ pendingQueue.splice(idx,1); if(mainWindow) mainWindow.webContents.send('download-canceled',{id}); return true }
-  const p=activeDownloads.get(id); if(p){ p.kill(); activeDownloads.delete(id); activeOpts.delete(id); pausedDownloads.delete(id); if(mainWindow) mainWindow.webContents.send('download-canceled',{id}); processPending(); return true }
+  const p=activeDownloads.get(id); if(p){ p.kill(); activeDownloads.delete(id); activeOpts.delete(id); pausedDownloads.delete(id); updatePowerSaveBlocker(); if(mainWindow) mainWindow.webContents.send('download-canceled',{id}); processPending(); return true }
   return false
 })
 ipcMain.handle('pause-download', async (_e, id:string)=>{
@@ -1518,6 +1595,7 @@ ipcMain.handle('pause-download', async (_e, id:string)=>{
     }
     activeDownloads.delete(id)
     activeOpts.delete(id)
+    updatePowerSaveBlocker()
     if(mainWindow) mainWindow.webContents.send('download-paused',{id})
     processPending()
     return true
@@ -1552,6 +1630,69 @@ ipcMain.handle('select-folder', async ()=>{ const r=await dialog.showOpenDialog(
 ipcMain.handle('open-folder', async (_e, dir:string)=>{ shell.openPath(dir||getDefaultDownloadDir()) })
 ipcMain.handle('get-default-dir', async ()=> getDefaultDownloadDir())
 ipcMain.handle('get-app-version', () => app.getVersion())
+
+ipcMain.handle('pause-all-downloads', async () => {
+  let count = 0
+  for (const [id, proc] of activeDownloads.entries()) {
+    const opts = activeOpts.get(id)
+    if (opts) pausedDownloads.set(id, opts)
+    pausingIds.add(id)
+    if (typeof (proc as any).pause === 'function') {
+      ;(proc as any).pause()
+    } else if (typeof proc.kill === 'function') {
+      proc.kill()
+    }
+    activeDownloads.delete(id)
+    activeOpts.delete(id)
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('download-paused', { id })
+    count++
+  }
+  while (pendingQueue.length > 0) {
+    const job = pendingQueue.shift()!
+    pausedDownloads.set(job.id, job.opts)
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('download-paused', { id: job.id })
+    count++
+  }
+  updatePowerSaveBlocker()
+  return { success: true, count }
+})
+
+ipcMain.handle('resume-all-downloads', async () => {
+  let count = 0
+  const keys = Array.from(pausedDownloads.keys())
+  for (const id of keys) {
+    const opts = pausedDownloads.get(id)
+    pausedDownloads.delete(id)
+    if (opts) {
+      if (!canStart()) {
+        pendingQueue.push({ id, opts })
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('download-queued', { id, opts, position: pendingQueue.length })
+      } else {
+        if (opts.isHttp) {
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('download-started', { id, opts: { ...opts, title: opts.filename }, outDir: opts.outDir })
+          runMultiPartHttpDownload(id, opts, opts.outDir, opts.outPath, opts.filename)
+        } else {
+          doStartDownload(id, opts)
+        }
+      }
+      count++
+    }
+  }
+  updatePowerSaveBlocker()
+  return { success: true, count }
+})
+
+ipcMain.handle('set-speed-limit', async (_e, limitKB: number) => {
+  appConfig.speedLimitKB = limitKB
+  saveConfig(appConfig)
+  return { success: true, speedLimitKB: limitKB }
+})
+
+ipcMain.handle('set-post-download-action', async (_e, action: 'none' | 'shutdown' | 'sleep' | 'quit') => {
+  appConfig.postDownloadAction = action
+  saveConfig(appConfig)
+  return { success: true, action }
+})
 
 ipcMain.handle('get-disk-space', async (_e, dirPath?: string) => {
   try {
@@ -2015,6 +2156,7 @@ async function runMultiPartHttpDownload(id:string, opts:any, outDir:string, outP
       }
     } as any)
     activeOpts.set(id, { ...opts, isHttp: true, outDir, outPath, filename })
+    updatePowerSaveBlocker()
 
     // Parçaları paralel başlat
     const promises = []
@@ -2028,6 +2170,7 @@ async function runMultiPartHttpDownload(id:string, opts:any, outDir:string, outP
 
     if (pausingIds.has(id) || isAborted) {
       pausingIds.delete(id)
+      updatePowerSaveBlocker()
       processPending()
       return
     }
@@ -2055,6 +2198,7 @@ async function runMultiPartHttpDownload(id:string, opts:any, outDir:string, outP
 
     activeDownloads.delete(id)
     activeOpts.delete(id)
+    updatePowerSaveBlocker()
 
     let statSize = 0
     try { if (fs.existsSync(outPath)) statSize = fs.statSync(outPath).size } catch {}
@@ -2112,7 +2256,7 @@ function runHttpDownload(id:string, opts:any, outDir:string, outPath:string, fil
       return
     }
     if (res.statusCode >= 400) {
-      file.destroy(); fs.unlink(tempOutPath, ()=>{}); activeDownloads.delete(id); activeOpts.delete(id)
+      file.destroy(); fs.unlink(tempOutPath, ()=>{}); activeDownloads.delete(id); activeOpts.delete(id); updatePowerSaveBlocker()
       if(mainWindow) mainWindow.webContents.send('download-error', {id, error: `HTTP ${res.statusCode}: ${res.statusMessage}`})
       processPending()
       return
@@ -2127,12 +2271,13 @@ function runHttpDownload(id:string, opts:any, outDir:string, outPath:string, fil
     })
     res.pipe(file)
   }).on('error', (e:any)=>{
-    file.destroy(); fs.unlink(tempOutPath, ()=>{}); activeDownloads.delete(id); activeOpts.delete(id)
+    file.destroy(); fs.unlink(tempOutPath, ()=>{}); activeDownloads.delete(id); activeOpts.delete(id); updatePowerSaveBlocker()
     if(mainWindow) mainWindow.webContents.send('download-error', {id, error: String(e)})
     processPending()
   })
   activeDownloads.set(id, { kill: ()=> { req.destroy(); try { fs.unlinkSync(tempOutPath) } catch {} } })
   activeOpts.set(id, { ...opts, isHttp: true, outDir, outPath, filename })
+  updatePowerSaveBlocker()
   file.on('finish', ()=>{
     file.close()
     try {
@@ -2140,8 +2285,8 @@ function runHttpDownload(id:string, opts:any, outDir:string, outPath:string, fil
     } catch {
       try { fs.copyFileSync(tempOutPath, outPath); fs.unlinkSync(tempOutPath) } catch {}
     }
-    activeDownloads.delete(id); activeOpts.delete(id)
-    if(pausingIds.has(id)){ pausingIds.delete(id); processPending(); return }
+    activeDownloads.delete(id); activeOpts.delete(id); updatePowerSaveBlocker()
+    if(pausingIds.has(id)){ pausingIds.delete(id); updatePowerSaveBlocker(); processPending(); return }
 
     let statSize = 0
     try { if (fs.existsSync(outPath)) statSize = fs.statSync(outPath).size } catch {}

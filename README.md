@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/eekilinc/VoltGet/releases"><img src="https://img.shields.io/badge/version-1.0.4-blue.svg?style=for-the-badge&logo=github" alt="Version"></a>
+  <a href="https://github.com/eekilinc/VoltGet/releases"><img src="https://img.shields.io/badge/version-1.0.5-blue.svg?style=for-the-badge&logo=github" alt="Version"></a>
   <a href="https://github.com/eekilinc/VoltGet/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge" alt="License"></a>
   <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-31.7.7-47848F.svg?style=for-the-badge&logo=electron" alt="Electron"></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.5-3178C6.svg?style=for-the-badge&logo=typescript" alt="TypeScript"></a>
@@ -24,7 +24,7 @@
 
 **VoltGet** is a powerful, modern, open-source download manager designed to replace legacy tools like Internet Download Manager (IDM). It integrates an **8-threaded accelerated multi-part HTTP engine**, a **deep network sniffer**, and **yt-dlp + FFmpeg** integration to download files, videos, and music at peak network speeds.
 
-Equipped with a Chromium browser extension (Manifest V3), VoltGet automatically detects media streams, floating download buttons over HTML5 video players, and captures browser download requests with a seamless IDM-like instant dialog.
+Equipped with a Chromium and Firefox browser extension (Manifest V3 / V2), VoltGet automatically detects media streams, floating download buttons over HTML5 video players, and captures browser download requests with a seamless IDM-like instant dialog.
 
 ---
 
@@ -43,6 +43,26 @@ Equipped with a Chromium browser extension (Manifest V3), VoltGet automatically 
   </tr>
   <tr>
     <td width="50%">
+      <h3>🔋 Sleep Prevention & Post-Download Actions</h3>
+      Native <code>powerSaveBlocker</code> keeps Windows awake while downloads are active. Optional automatic triggers: <b>Shut down PC</b>, <b>Sleep</b>, or <b>Exit VoltGet</b> when the queue finishes.
+    </td>
+    <td width="50%">
+      <h3>🎛️ Advanced Queue & Batch Controls</h3>
+      Instant <b>Pause All</b> and <b>Resume All</b> controls, real-time live search filter, status filter tabs (All, Downloading, Done, Paused, Error), and synthesized Web Audio completion chime.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3>⚡ Quick Speed Limiter Widget</h3>
+      Instant speed limiter in the top navigation bar: Unlimited, 1 MB/s, 2 MB/s, 5 MB/s, 10 MB/s, or 20 MB/s with zero buffering disruptions for background downloads.
+    </td>
+    <td width="50%">
+      <h3>🗂️ Smart Category Sorting</h3>
+      Automatically organizes downloads into organized subfolders (<code>Video/</code>, <code>Music/</code>, <code>Documents/</code>, <code>Archives/</code>, <code>Programs/</code>).
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
       <h3>🎬 Intelligent HLS & DASH Auto-Merger</h3>
       Automatically parses <code>master.m3u8</code>, <code>master.txt</code>, and <code>manifest.mpd</code> playlists. Intelligently matches and merges separate audio and video streams into crystal-clear MP4 files.
     </td>
@@ -54,21 +74,11 @@ Equipped with a Chromium browser extension (Manifest V3), VoltGet automatically 
   <tr>
     <td width="50%">
       <h3>🧩 IDM-Style Browser Extension</h3>
-      Manifest V3 extension injects a sleek floating "Download Video" badge directly above web media players and auto-intercepts browser downloads via WebSocket.
+      Manifest V3/V2 extensions for Chrome and Firefox inject floating download buttons directly above web media players and auto-intercept browser downloads.
     </td>
     <td width="50%">
       <h3>📁 Integrated File Explorer</h3>
-      Manage your downloads directly in-app. Automatic category sorting (Videos, Audio, Documents, Archives, Software) with open folder, rename, and launch controls.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>🎛️ PRO IDM Download Dialog</h3>
-      Instant capture modal with editable filename, auto-category badges (Video, Music, Archive, Document), live disk free space indicator, resolution quick-pills (4K/1080p/720p/MP3), and dual action buttons (Download Now vs Add to Queue).
-    </td>
-    <td width="50%">
-      <h3>📋 Clipboard Watcher & Drag-and-Drop</h3>
-      Non-intrusive clipboard listener catches copied media URLs with a 1-click floating action. Drag & drop URLs directly onto the app, or extract dozens of links simultaneously using the Batch Harvester.
+      Manage your downloads directly in-app. Automatic category sorting with open folder, rename, launch, and disk sync controls.
     </td>
   </tr>
   <tr>
@@ -78,7 +88,7 @@ Equipped with a Chromium browser extension (Manifest V3), VoltGet automatically 
     </td>
     <td width="50%">
       <h3>🎨 Modern Glassmorphic UI & 7 Themes</h3>
-      Clean, responsive dark-mode interface with live network speed meters and customizable accent colors: Blue, Purple, Green, Orange, Pink, Red, and Teal.
+      Clean, responsive dark and light modes with live network speed meters and customizable accent colors.
     </td>
   </tr>
 </table>
