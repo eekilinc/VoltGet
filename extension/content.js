@@ -241,7 +241,7 @@
                             h.includes('instagram.com') || h.includes('twitter.com') || h.includes('x.com') ||
                             h.includes('facebook.com') || h.includes('vimeo.com') || h.includes('dailymotion.com')
 
-        var realUrl = (bestStream && bestStream.url) ? bestStream.url : getTargetUrlForVideo(videoEl)
+        var realUrl = isVideoPortal ? location.href : ((bestStream && bestStream.url) ? bestStream.url : getTargetUrlForVideo(videoEl))
         if (!realUrl) {
           realUrl = location.href
         }

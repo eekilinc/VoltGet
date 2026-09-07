@@ -307,8 +307,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendToFlexplorer(cleanData, { userInitiated: false })
   } else if (msg?.type === 'user_request_download') {
     let downloadData = { ...msg.data }
-    if (downloadData.url) downloadData.url = normalizeToMasterPlaylist(downloadData.url)
-    const isVideoPortal = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(downloadData.pageUrl || '')
+    const isVideoPortal = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(downloadData.pageUrl || '') ||
+                          /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(downloadData.url || '')
+    if (isVideoPortal && downloadData.pageUrl && /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(downloadData.pageUrl)) {
+      downloadData.url = downloadData.pageUrl
+    }
     
     // Eğer video portalı değilse ve gelen URL doğrudan bir medya akışı (.m3u8, .mp4, master.txt) DEĞİLSE
     // (örneğin embed sayfası, player linki, .html, .php vs. ise hafızadaki gerçek stream ile değiştir)

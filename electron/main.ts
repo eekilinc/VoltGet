@@ -458,9 +458,13 @@ async function handleIncomingSniff(data: any) {
 
   // 3. IDM Davranışı: Kullanıcı video üstü butona bastıysa VEYA tarayıcıda dosya indirmesi başladıysa pencere aç!
   if (data.userInitiated || data.isGenericDownload) {
-    // Embed veya oynatıcı sayfası geldiyse gerçek stream URL'si ile eşle
     let resolvedUrl = data.url
-    if (resolvedUrl && isPlayerOrEmbedUrl(resolvedUrl)) {
+    const isVideoPortal = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(data.pageUrl || '') ||
+                          /youtube\.com|youtu\.be|googlevideo\.com/i.test(resolvedUrl || '')
+    if (isVideoPortal && data.pageUrl && /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(data.pageUrl)) {
+      resolvedUrl = data.pageUrl
+      data.url = data.pageUrl
+    } else if (resolvedUrl && isPlayerOrEmbedUrl(resolvedUrl)) {
       const pageHost = (() => { try { return new URL(data.pageUrl).hostname.replace(/^www\./i, '').toLowerCase() } catch { return '' } })()
       const urlHost = (() => { try { return new URL(data.url).hostname.replace(/^www\./i, '').toLowerCase() } catch { return '' } })()
       const matched = recentStreamsByPage.get(data.pageUrl) ||
@@ -624,15 +628,18 @@ async function analyzeUrl(url: string): Promise<any> {
     }
   }
 
+  const isYouTube = /youtube\.com|youtu\.be/i.test(normUrl)
   const ytdlp = findYtDlp()
   const args = [
     '--dump-json',
     '--no-playlist',
     '--js-runtimes', 'node',
-    '--no-warnings',
-    '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    normUrl
+    '--no-warnings'
   ]
+  if (!isYouTube) {
+    args.push('--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+  }
+  args.push(normUrl)
   return new Promise((resolve, reject) => {
     const proc = spawn(ytdlp, args, { shell: false, windowsHide: true })
     let out = '', err = ''
@@ -711,8 +718,16 @@ function doStartDownload(id:string, opts:any){
   let finalUrl = normalizeToMasterPlaylist(opts.url || '')
   opts.url = finalUrl
 
+  const isYouTube = /youtube\.com|youtu\.be|googlevideo\.com/i.test(finalUrl) ||
+                    (opts.pageUrl && /youtube\.com|youtu\.be/i.test(opts.pageUrl))
+
+  if (isYouTube && opts.pageUrl && /youtube\.com|youtu\.be/i.test(opts.pageUrl)) {
+    finalUrl = opts.pageUrl
+    opts.url = opts.pageUrl
+  }
+
   // 1. Embed veya oynatıcı sayfası geldiyse hafızadaki gerçek akış URL'si ile eşle
-  if (isPlayerOrEmbedUrl(finalUrl)) {
+  if (!isYouTube && isPlayerOrEmbedUrl(finalUrl)) {
     const pageHost = (() => { try { return new URL(opts.pageUrl).hostname.replace(/^www\./i, '').toLowerCase() } catch { return '' } })()
     const urlHost = (() => { try { return new URL(opts.url).hostname.replace(/^www\./i, '').toLowerCase() } catch { return '' } })()
     const matched = recentStreamsByPage.get(opts.pageUrl) ||
@@ -806,9 +821,11 @@ function doStartDownload(id:string, opts:any){
     } catch {}
   }
 
-  args.push('--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-  if (opts.cookie) {
-    args.push('--add-header', `Cookie:${opts.cookie}`)
+  if (!isYouTube) {
+    args.push('--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    if (opts.cookie) {
+      args.push('--add-header', `Cookie:${opts.cookie}`)
+    }
   }
 
   if (opts.asAudio) {
