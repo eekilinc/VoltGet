@@ -1,0 +1,68 @@
+name: Release VoltGet
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Download Latest yt-dlp Binary
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "bin", "dist/bin"
+          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "bin/yt-dlp.exe"
+          Copy-Item -Path "bin/yt-dlp.exe" -Destination "dist/bin/yt-dlp.exe"
+          $size = (Get-Item "bin/yt-dlp.exe").Length
+          Write-Host "Downloaded yt-dlp.exe size: $size bytes"
+
+      - name: Build Electron Main & Preload
+        run: npm run build:electron
+
+      - name: Build Renderer
+        run: npm run build:renderer
+
+      - name: Package Windows Installers (NSIS & Portable)
+        run: npx electron-builder --win --x64 --publish never
+
+      - name: Generate Checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path "release/*.exe" | ForEach-Object {
+            $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash
+            "$hash  $($_.Name)" | Out-File -FilePath "release/checksums.sha256.txt" -Append -Encoding utf8
+          }
+          Get-Content "release/checksums.sha256.txt"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+            release/checksums.sha256.txt
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Notification } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, Notification, Tray, Menu } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import path from 'path'
 import fs from 'fs'
@@ -266,9 +266,11 @@ type AppConfig = {
   captureInstallers: boolean
   openAtLogin: boolean
   startMinimized: boolean
+  closeToTray: boolean
+  minimizeToTray: boolean
   clipboardWatcher: boolean
 }
-const defaultConfig: AppConfig = { concurrent: 3, speedLimitKB: 0, siteFolders: true, filenameTemplate: '%(title)s.%(ext)s', autoUpdateCheck: true, sniffNotifications: true, sniffDebounceMs: 8000, theme: 'dark', accentColor: 'blue', language: 'tr', interceptBrowserDownloads: true, captureMediaRequests: true, captureDocuments: true, captureArchives: true, captureInstallers: true, openAtLogin: false, startMinimized: false, clipboardWatcher: true }
+const defaultConfig: AppConfig = { concurrent: 3, speedLimitKB: 0, siteFolders: true, filenameTemplate: '%(title)s.%(ext)s', autoUpdateCheck: true, sniffNotifications: true, sniffDebounceMs: 8000, theme: 'dark', accentColor: 'blue', language: 'tr', interceptBrowserDownloads: true, captureMediaRequests: true, captureDocuments: true, captureArchives: true, captureInstallers: true, openAtLogin: false, startMinimized: false, closeToTray: true, minimizeToTray: false, clipboardWatcher: true }
 function configPath(){ return path.join(app.getPath('userData'), 'config.json') }
 function queuePath(){ return path.join(app.getPath('userData'), 'queue.json') }
 function loadConfig(): AppConfig {
@@ -316,12 +318,121 @@ function loadQueue():any[] {
   return []
 }
 
+let tray: Tray | null = null
+let isQuitting = false
+
+function createTray() {
+  if (tray) return
+  const isWin = process.platform === 'win32'
+  const trayIconPath = isWin
+    ? (getAppIconPath() || path.join(process.cwd(), 'assets', 'icon-16.png'))
+    : (path.join(process.cwd(), 'assets', 'icon-16.png'))
+
+  if (!trayIconPath || !fs.existsSync(trayIconPath)) return
+
+  try {
+    tray = new Tray(trayIconPath)
+    tray.setToolTip('VoltGet - Ultra Hızlı İndirme Yöneticisi')
+
+    const updateTrayMenu = () => {
+      const contextMenu = Menu.buildFromTemplate([
+        {
+          label: '⚡ VoltGet\'i Göster',
+          click: () => {
+            if (mainWindow) {
+              if (mainWindow.isMinimized()) mainWindow.restore()
+              mainWindow.show()
+              mainWindow.focus()
+            }
+          }
+        },
+        {
+          label: '📥 İndirmeler Sekmesi',
+          click: () => {
+            if (mainWindow) {
+              if (mainWindow.isMinimized()) mainWindow.restore()
+              mainWindow.show()
+              mainWindow.focus()
+              mainWindow.webContents.send('switch-to-download-tab')
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: appConfig.clipboardWatcher ? '📋 Pano İzleyici: Açık' : '📋 Pano İzleyici: Kapalı',
+          type: 'checkbox',
+          checked: !!appConfig.clipboardWatcher,
+          click: (menuItem) => {
+            appConfig.clipboardWatcher = menuItem.checked
+            saveConfig(appConfig)
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('config-changed', appConfig)
+            }
+            updateTrayMenu()
+          }
+        },
+        {
+          label: '⚙️ Ayarlar',
+          click: () => {
+            if (mainWindow) {
+              if (mainWindow.isMinimized()) mainWindow.restore()
+              mainWindow.show()
+              mainWindow.focus()
+              mainWindow.webContents.send('switch-to-settings-tab')
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: '🚪 VoltGet\'ten Çıkış',
+          click: () => {
+            isQuitting = true
+            app.quit()
+          }
+        }
+      ])
+      tray?.setContextMenu(contextMenu)
+    }
+
+    updateTrayMenu()
+
+    tray.on('double-click', () => {
+      if (mainWindow) {
+        if (mainWindow.isVisible()) {
+          if (mainWindow.isMinimized()) mainWindow.restore()
+          mainWindow.focus()
+        } else {
+          mainWindow.show()
+          mainWindow.focus()
+        }
+      }
+    })
+
+    tray.on('click', () => {
+      if (mainWindow) {
+        if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
+          mainWindow.hide()
+        } else {
+          if (mainWindow.isMinimized()) mainWindow.restore()
+          mainWindow.show()
+          mainWindow.focus()
+        }
+      }
+    })
+  } catch (err) {
+    console.error('[VoltGet] Failed to initialize system tray:', err)
+  }
+}
+
 function createWindow() {
   let preloadPath = path.join(__dirname, 'preload.cjs')
   if (!fs.existsSync(preloadPath)) preloadPath = path.join(__dirname, 'preload.js')
   const appIcon = getAppIconPath()
+  const shouldStartHidden = appConfig.startMinimized || process.argv.includes('--hidden')
+
   mainWindow = new BrowserWindow({
     width: 1220, height: 760, minWidth: 1020, minHeight: 620, backgroundColor: '#0a0a0f', title: 'VoltGet - Ultra Hızlı İndirme Yöneticisi', icon: appIcon,
+    show: !shouldStartHidden,
     webPreferences: { preload: preloadPath, nodeIntegration: false, contextIsolation: true, sandbox: false }, autoHideMenuBar: true,
   })
   if (isDev) {
@@ -333,6 +444,22 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' } })
   mainWindow.webContents.on('did-finish-load', () => {
     broadcastExtensionStatus()
+  })
+
+  // Kapatınca tepsiye küçült (closeToTray)
+  mainWindow.on('close', (e) => {
+    if (!isQuitting && appConfig.closeToTray) {
+      e.preventDefault()
+      mainWindow?.hide()
+      return false
+    }
+  })
+
+  // Küçültünce tepsiye gizle (minimizeToTray)
+  mainWindow.on('minimize', () => {
+    if (appConfig.minimizeToTray) {
+      mainWindow?.hide()
+    }
   })
 }
 
@@ -664,14 +791,30 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     ensureDir(getDefaultDownloadDir())
-    app.setLoginItemSettings({ openAtLogin: !!appConfig.openAtLogin, openAsHidden: appConfig.startMinimized })
+    try {
+      app.setLoginItemSettings({
+        openAtLogin: !!appConfig.openAtLogin,
+        openAsHidden: !!appConfig.startMinimized,
+        path: process.execPath,
+        args: appConfig.startMinimized ? ['--hidden'] : []
+      })
+    } catch {}
     startSniffServer()
     createWindow()
+    createTray()
     startClipboardWatcher()
   })
 
-  app.on('window-all-closed', () => { try{ wss?.close(); sniffServer?.close()}catch{}; if (process.platform !== 'darwin') app.quit() })
-  app.on('before-quit', () => { try{ wss?.close(); sniffServer?.close()}catch{} })
+  app.on('window-all-closed', () => {
+    if (!appConfig.closeToTray) {
+      try{ wss?.close(); sniffServer?.close()}catch{};
+      if (process.platform !== 'darwin') app.quit()
+    }
+  })
+  app.on('before-quit', () => {
+    isQuitting = true
+    try{ wss?.close(); sniffServer?.close()}catch{}
+  })
 }
 
 function findYtDlp(): string {
@@ -1376,9 +1519,23 @@ ipcMain.handle('set-config', async (_e, patch:any)=>{
   appConfig={...loadConfig(), ...patch}
   saveConfig(appConfig)
   if(patch.openAtLogin !== undefined || patch.startMinimized !== undefined){
-    app.setLoginItemSettings({ openAtLogin: !!appConfig.openAtLogin, openAsHidden: appConfig.startMinimized })
+    try {
+      app.setLoginItemSettings({
+        openAtLogin: !!appConfig.openAtLogin,
+        openAsHidden: !!appConfig.startMinimized,
+        path: process.execPath,
+        args: appConfig.startMinimized ? ['--hidden'] : []
+      })
+    } catch {}
   }
   return appConfig
+})
+ipcMain.handle('open-external', async (_e, url: string) => {
+  if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+    shell.openExternal(url)
+    return true
+  }
+  return false
 })
 ipcMain.handle('get-yt-dlp-status', async ()=>{
   const binExists=fs.existsSync(ytDlpPath); let pathExists=false; try{ const {execSync}=await import('child_process'); execSync('yt-dlp --version',{stdio:'ignore'}); pathExists=true }catch{}

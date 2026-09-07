@@ -173,13 +173,92 @@ export default function SettingsPanel(){
       </div>
 
       <div className="card-premium" style={{ borderRadius:18, padding:18 }}>
-        <div style={{ fontWeight:800, fontSize:13 }}>🚀 Başlangıç</div>
-        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, fontSize:12 }}>
-          <input type="checkbox" checked={!!cfg.openAtLogin} onChange={e=> saveCfg({ openAtLogin: e.target.checked })} /> Windows başlangıcında aç
-        </label>
-        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, fontSize:12 }}>
-          <input type="checkbox" checked={!!cfg.startMinimized} onChange={e=> saveCfg({ startMinimized: e.target.checked })} /> Sistem tepsisinde küçült
-        </label>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+          <div style={{ fontWeight:800, fontSize:14, display:'flex', alignItems:'center', gap:8 }}>
+            <span>🚀</span>
+            <span>Sistem Tepsisi & Windows Başlangıcı</span>
+          </div>
+          <span style={{ fontSize:10, padding:'2px 8px', borderRadius:6, background:'rgba(59, 130, 246, 0.15)', color:'#60a5fa', fontWeight:800 }}>
+            IDM Benzeri Arka Plan Entegrasyonu
+          </span>
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:10, fontSize:12 }}>
+          <label style={{ display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer', padding:'8px 10px', borderRadius:10, background:'var(--panel-2)', border:'1px solid var(--border)' }}>
+            <input
+              type="checkbox"
+              style={{ marginTop:2 }}
+              checked={!!cfg.openAtLogin}
+              onChange={e=> saveCfg({ openAtLogin: e.target.checked })}
+            />
+            <div>
+              <div style={{ fontWeight:700 }}>Windows ile Otomatik Başlat</div>
+              <div className="text-muted" style={{ fontSize:11, marginTop:2 }}>
+                Bilgisayarınız açıldığında VoltGet otomatik olarak çalıştırılır.
+              </div>
+            </div>
+          </label>
+
+          <label style={{ display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer', padding:'8px 10px', borderRadius:10, background:'var(--panel-2)', border:'1px solid var(--border)' }}>
+            <input
+              type="checkbox"
+              style={{ marginTop:2 }}
+              checked={cfg.closeToTray !== false}
+              onChange={e=> saveCfg({ closeToTray: e.target.checked })}
+            />
+            <div>
+              <div style={{ fontWeight:700 }}>Pencereyi Kapatınca Sistem Tepsisine Küçült (Önerilen)</div>
+              <div className="text-muted" style={{ fontSize:11, marginTop:2 }}>
+                Pencereyi (X) ile kapattığınızda indirmeler kesilmez; VoltGet saatin yanındaki sistem tepsisinde sessizce çalışmaya devam eder.
+              </div>
+            </div>
+          </label>
+
+          <label style={{ display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer', padding:'8px 10px', borderRadius:10, background:'var(--panel-2)', border:'1px solid var(--border)' }}>
+            <input
+              type="checkbox"
+              style={{ marginTop:2 }}
+              checked={!!cfg.minimizeToTray}
+              onChange={e=> saveCfg({ minimizeToTray: e.target.checked })}
+            />
+            <div>
+              <div style={{ fontWeight:700 }}>Simge Durumuna Küçültünce Sistem Tepsisine Gizle</div>
+              <div className="text-muted" style={{ fontSize:11, marginTop:2 }}>
+                Pencereyi küçülttüğünüzde görev çubuğundan kaldırılır ve sistem tepsisine gizlenir.
+              </div>
+            </div>
+          </label>
+
+          <label style={{ display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer', padding:'8px 10px', borderRadius:10, background:'var(--panel-2)', border:'1px solid var(--border)' }}>
+            <input
+              type="checkbox"
+              style={{ marginTop:2 }}
+              checked={!!cfg.startMinimized}
+              onChange={e=> saveCfg({ startMinimized: e.target.checked })}
+            />
+            <div>
+              <div style={{ fontWeight:700 }}>Başlangıçta Gizli / Tepside Başlat</div>
+              <div className="text-muted" style={{ fontSize:11, marginTop:2 }}>
+                Uygulama açılırken ekranda ana pencere açılmaz, doğrudan arka planda sistem tepsisinde başlar.
+              </div>
+            </div>
+          </label>
+
+          <label style={{ display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer', padding:'8px 10px', borderRadius:10, background:'var(--panel-2)', border:'1px solid var(--border)' }}>
+            <input
+              type="checkbox"
+              style={{ marginTop:2 }}
+              checked={cfg.clipboardWatcher !== false}
+              onChange={e=> saveCfg({ clipboardWatcher: e.target.checked })}
+            />
+            <div>
+              <div style={{ fontWeight:700 }}>📋 Akıllı Pano (Clipboard) İzleyici</div>
+              <div className="text-muted" style={{ fontSize:11, marginTop:2 }}>
+                Kopyalanan YouTube, video veya indirme linklerini anında algılayıp sağ altta indirme bildirimi açar.
+              </div>
+            </div>
+          </label>
+        </div>
       </div>
 
       <div className="card-premium" style={{ borderRadius:18, padding:18 }}>

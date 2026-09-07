@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('api', {
   onClipboardUrl: (cb: any) => ipcRenderer.on('clipboard-url-detected', (_e, d) => cb(d)),
   minimizeDialog: () => ipcRenderer.invoke('minimize-dialog'),
   closeDialog: () => ipcRenderer.invoke('close-dialog'),
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   removeAll: () => {
     ipcRenderer.removeAllListeners('download-progress')
     ipcRenderer.removeAllListeners('download-log')
