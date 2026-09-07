@@ -2,14 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import ReactDOM from 'react-dom/client'
 import './index.css'
 
-const DEFAULT_VIDEO_FORMATS = [
-  { id: 'best', resolution: '🎬 En İyi Kalite (Önerilen)', ext: 'mp4', note: 'Otomatik En Yüksek Çözünürlük' },
-  { id: 'bestvideo[height<=2160]+bestaudio/best[height<=2160]/best', resolution: '🎬 4K Ultra HD (2160p)', ext: 'mp4', note: 'Ultra HD' },
-  { id: 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best', resolution: '🎬 1080p Full HD', ext: 'mp4', note: 'Yüksek Çözünürlük' },
-  { id: 'bestvideo[height<=720]+bestaudio/best[height<=720]/best', resolution: '🎬 720p HD', ext: 'mp4', note: 'Standart HD' },
-  { id: 'bestvideo[height<=480]+bestaudio/best[height<=480]/best', resolution: '🎬 480p SD', ext: 'mp4', note: 'Hızlı İndirme' },
-  { id: 'bestaudio/best', resolution: '🎵 MP3 / Sadece Ses', ext: 'mp3', note: 'En Yüksek Ses Kalitesi' }
-]
+export type SiteProfile = 'hls' | 'youtube' | 'social' | 'file' | 'audio'
 
 function normalizeToMasterPlaylist(url: string): string {
   if (!url || typeof url !== 'string') return url
@@ -28,27 +21,69 @@ function extractDomain(u: string): string {
   }
 }
 
-function detectCategory(url: string, filename?: string, asAudio?: boolean) {
-  if (asAudio) return { name: 'Müzik & Ses', icon: '🎵', color: '#f59e0b', ext: '.mp3' }
-  const check = (url + ' ' + (filename || '')).toLowerCase()
-  if (/\.(mp3|m4a|flac|wav|ogg|aac)(\?|$)/i.test(check)) {
-    return { name: 'Müzik & Ses', icon: '🎵', color: '#f59e0b', ext: '.mp3' }
+function detectSiteProfile(url: string, pageUrl?: string, filename?: string): SiteProfile {
+  const combined = `${url || ''} ${pageUrl || ''} ${filename || ''}`.toLowerCase()
+
+  // 1. Doğrudan dosya indirmeleri (Arşiv, Kurulum, Belge)
+  if (/\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(combined)) {
+    return 'file'
   }
-  if (/\.(zip|rar|7z|gz|tar|iso|torrent)(\?|$)/i.test(check)) {
-    return { name: 'Sıkıştırılmış Arşiv', icon: '📦', color: '#a855f7', ext: '.zip' }
+
+  // 2. Müzik & Ses siteleri veya doğrudan ses linkleri
+  if (/\.(mp3|wav|flac|m4a|aac|ogg)($|\?)/i.test(combined) || combined.includes('soundcloud.com') || combined.includes('spotify.com') || combined.includes('bandcamp.com')) {
+    return 'audio'
   }
-  if (/\.(exe|msi|apk|dmg|pkg|deb|rpm)(\?|$)/i.test(check)) {
-    return { name: 'Program / Yazılım', icon: '⚙️', color: '#ec4899', ext: '.exe' }
+
+  // 3. YouTube platformu
+  if (/youtube\.com|youtu\.be/i.test(combined)) {
+    return 'youtube'
   }
-  if (/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|epub|txt)(\?|$)/i.test(check)) {
-    return { name: 'Belge & Doküman', icon: '📄', color: '#10b981', ext: '.pdf' }
+
+  // 4. Sosyal medya platformları
+  if (/tiktok\.com|twitter\.com|x\.com|instagram\.com|facebook\.com|reddit\.com|vimeo\.com|dailymotion\.com|twitch\.tv/i.test(combined)) {
+    return 'social'
   }
-  return { name: 'Video Medya', icon: '🎬', color: '#3b82f6', ext: '.mp4' }
+
+  // 5. Dizi, Film ve HLS Master Akışları (Ddizi, HD Film Cehennemi, Dizibox vb.)
+  if (combined.includes('.m3u8') || combined.includes('master.txt') || combined.includes('/hls/') || combined.includes('cdnimages') || combined.includes('playmix') || combined.includes('molystream') || combined.includes('ddizi') || combined.includes('hdfilmcehennemi') || combined.includes('dizibox') || combined.includes('yabancidizi') || combined.includes('sinefy') || combined.includes('sezonlukdizi')) {
+    return 'hls'
+  }
+
+  return 'hls'
+}
+
+function extractCleanTitle(d: any): string {
+  if (d?.title && d.title !== 'Video' && d.title !== 'Dosya' && d.title !== 'İndiriliyor...' && d.title.length > 2) {
+    return d.title
+  }
+  const urlToParse = d?.pageUrl || d?.url || ''
+  try {
+    const u = new URL(urlToParse)
+    const segments = u.pathname.split('/').filter(Boolean)
+    const lastSeg = segments.pop() || ''
+    const clean = decodeURIComponent(lastSeg)
+      .replace(/\.(htm|html|php|mp4|m3u8|txt)$/i, '')
+      .replace(/[-_]+/g, ' ')
+      .trim()
+    if (clean && clean.length > 3 && !/^(master|video|playlist|sublist|index|watch)$/i.test(clean)) {
+      return clean.charAt(0).toUpperCase() + clean.slice(1)
+    }
+    if (segments.length > 0) {
+      const prevSeg = decodeURIComponent(segments.pop() || '').replace(/[-_]+/g, ' ').trim()
+      if (prevSeg && prevSeg.length > 3 && !/^(izle|video|watch|embed)$/i.test(prevSeg)) {
+        return prevSeg.charAt(0).toUpperCase() + prevSeg.slice(1)
+      }
+    }
+  } catch {}
+  return d?.filename ? d.filename.replace(/\.[a-z0-9]+$/i, '') : 'Medya_Indirme'
 }
 
 function DialogApp() {
   const [data, setData] = useState<any>(null)
-  const [formats, setFormats] = useState<any[]>(DEFAULT_VIDEO_FORMATS)
+  const [siteProfile, setSiteProfile] = useState<SiteProfile>('hls')
+  const [formats, setFormats] = useState<any[]>([])
+  const [videoFormats, setVideoFormats] = useState<any[]>([])
+  const [availableHeights, setAvailableHeights] = useState<number[]>([])
   const [loading, setLoading] = useState<boolean>(false)
   const [outDir, setOutDir] = useState<string>('')
   const [diskSpace, setDiskSpace] = useState<{ free: string, total: string } | null>(null)
@@ -57,34 +92,90 @@ function DialogApp() {
   const [customTitle, setCustomTitle] = useState<string>('')
   const [starting, setStarting] = useState<boolean>(false)
 
+  // Gelen veriyi işle ve site profiline göre analiz başlat
   const applyData = (d: any) => {
     if (!d) return
     const rawUrl = normalizeToMasterPlaylist(d.url || '')
     const pageUrl = d.pageUrl || rawUrl
-    const isVideoSite = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(pageUrl)
+    const profile = detectSiteProfile(rawUrl, pageUrl, d.filename)
+    setSiteProfile(profile)
+
+    const isVideoSite = profile === 'youtube' || profile === 'social'
     const targetUrl = isVideoSite ? pageUrl : rawUrl
 
-    setData({ ...d, url: targetUrl, pageUrl })
-    if (d.asAudio) {
+    setData({ ...d, url: targetUrl, pageUrl, rawStreamUrl: rawUrl })
+
+    if (d.asAudio || profile === 'audio') {
       setIsAudioMode(true)
     }
 
-    const initialName = d.title || d.filename || (d.url ? d.url.split('/').pop()?.split('?')[0] : '') || 'İndirilen_Dosya'
-    setCustomTitle(initialName.replace(/\.[a-z0-9]{2,5}$/i, ''))
+    const cleanTitle = extractCleanTitle(d)
+    setCustomTitle(cleanTitle)
 
-    if (d.formats && Array.isArray(d.formats) && d.formats.length > 0) {
-      setFormats(d.formats)
-      if (d.selectedFormat) {
-        setSelectedFormat(d.selectedFormat)
-      } else if (!selectedFormat || selectedFormat === 'best') {
-        const firstVid = d.formats.find((f: any) => !f.isAudioOnly)
-        if (firstVid) setSelectedFormat(firstVid.id)
+    // Profil bazlı format hazırlığı
+    if (profile === 'file') {
+      setFormats([])
+      setVideoFormats([])
+      setAvailableHeights([])
+      setLoading(false)
+    } else if (profile === 'hls') {
+      // Dizi & Film akışları: Sadece gerçekte indirilebilecek 2 temel format sunulur
+      const hlsFormats = [
+        { id: 'best', resolution: '🎬 Tam Film / Dizi Videosu', ext: 'mp4', note: 'Orijinal Video (En Yüksek Çözünürlük)' },
+        { id: 'bestaudio/best', resolution: '🎵 Sadece Ses Parçası', ext: 'mp3', note: 'MP3 Ses Kaydı' }
+      ]
+      setFormats(hlsFormats)
+      setVideoFormats([hlsFormats[0]])
+      setAvailableHeights([])
+      setSelectedFormat('best')
+      setLoading(false)
+    } else if (profile === 'youtube' || profile === 'social') {
+      // YouTube veya Sosyal Medya: Eğer formats zaten geldiyse doğrudan kullan, yoksa arka planda analiz et
+      if (d.formats && Array.isArray(d.formats) && d.formats.length > 0) {
+        processParsedFormats(d.formats, d.videoFormats)
+      } else {
+        // Arka planda gerçek mevcut çözünürlükleri tara
+        setLoading(true)
+        window.api?.analyzeUrl?.(targetUrl)
+          .then((info: any) => {
+            if (info && info.formats) {
+              processParsedFormats(info.formats, info.videoFormats)
+              if (info.title && (!cleanTitle || cleanTitle === 'Medya_Indirme')) {
+                setCustomTitle(info.title)
+              }
+              if (info.thumbnail && !d.thumbnail) {
+                setData((prev: any) => ({ ...prev, thumbnail: info.thumbnail }))
+              }
+            }
+          })
+          .catch((err: any) => {
+            console.warn('[VoltGet Dialog] analyzeUrl fallback:', err)
+          })
+          .finally(() => {
+            setLoading(false)
+          })
       }
-    } else {
-      setFormats(DEFAULT_VIDEO_FORMATS)
     }
+  }
 
-    setLoading(!!d.loading)
+  // Formatları ayıkla ve SADECE mevcut çözünürlükleri listele
+  const processParsedFormats = (allFormats: any[], vFormats?: any[]) => {
+    setFormats(allFormats)
+    const validVideo = (vFormats || allFormats.filter((f: any) => !f.isAudioOnly && f.height))
+      .filter((f: any) => f.height && f.height > 0)
+
+    setVideoFormats(validVideo)
+
+    // Sadece bu videoda GERÇEKTEN var olan yükseklikleri al (Büyükten küçüğe tekil liste)
+    const heights = Array.from(new Set(validVideo.map((f: any) => f.height as number))).sort((a: number, b: number) => b - a)
+    setAvailableHeights(heights)
+
+    // En iyi video formatını varsayılan olarak seç
+    if (validVideo.length > 0) {
+      setSelectedFormat(validVideo[0].id)
+    } else {
+      setSelectedFormat('best')
+    }
   }
 
   useEffect(() => {
@@ -107,7 +198,7 @@ function DialogApp() {
 
     const timer = setTimeout(() => {
       setLoading(false)
-    }, 4500)
+    }, 6000)
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -135,28 +226,16 @@ function DialogApp() {
     }
   }
 
-  const category = useMemo(() => {
-    return detectCategory(data?.url || '', customTitle || data?.filename, isAudioMode)
-  }, [data, customTitle, isAudioMode])
-
-  const domain = useMemo(() => {
-    return extractDomain(data?.pageUrl || data?.url || '')
-  }, [data])
-
   const handleStart = async (action: 'download' | 'queue') => {
-    if (!data || starting) return
+    if (starting || !data) return
     setStarting(true)
 
     try {
-      const rawUrl = normalizeToMasterPlaylist(data.url || '')
+      const rawUrl = data.rawStreamUrl || normalizeToMasterPlaylist(data.url || '')
       const pageUrl = data.pageUrl || rawUrl
-      const isVideoSite = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(pageUrl)
+      const isVideoSite = siteProfile === 'youtube' || siteProfile === 'social'
       const targetUrl = isVideoSite ? pageUrl : (rawUrl || pageUrl)
       const finalTitle = customTitle.trim() || data.title || data.filename || 'Dosya'
-      const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(rawUrl) ||
-                    /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(data.filename || '') ||
-                    data.isGenericDownload || data.type === 'file'
-
       const cookie = data.cookie || ''
       const formatToUse = isAudioMode ? 'bestaudio/best' : selectedFormat
 
@@ -177,7 +256,7 @@ function DialogApp() {
           await window.api.startDownload(downloadOpts)
         }
       } else {
-        if (isGen || rawUrl.endsWith('.pdf')) {
+        if (siteProfile === 'file') {
           await window.api.httpDownload({ url: rawUrl, outDir, filename: finalTitle, cookie })
         } else {
           await window.api.startDownload(downloadOpts)
@@ -194,9 +273,55 @@ function DialogApp() {
     }
   }
 
-  const isGenericFile = (data?.url && /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(data.url)) ||
-                        (data?.filename && /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(data.filename)) ||
-                        data?.isGenericDownload || data?.type === 'file'
+  const domain = useMemo(() => {
+    return extractDomain(data?.pageUrl || data?.url || '')
+  }, [data])
+
+  // Site profiline göre UI rozet ve renkleri
+  const profileMeta = useMemo(() => {
+    switch (siteProfile) {
+      case 'hls':
+        return {
+          badge: '🎬 Dizi & Film Yayını (HLS Master Akışı)',
+          badgeColor: '#a855f7',
+          badgeBg: 'rgba(168, 85, 247, 0.15)',
+          ext: isAudioMode ? '.mp3' : '.mp4',
+          desc: 'Orijinal akıştan video ve ses birleştirilerek tam MP4 formatında kaydedilir.'
+        }
+      case 'youtube':
+        return {
+          badge: '▶️ YouTube Videosu',
+          badgeColor: '#ef4444',
+          badgeBg: 'rgba(239, 68, 68, 0.15)',
+          ext: isAudioMode ? '.mp3' : '.mp4',
+          desc: 'YouTube video ve ses kanalları seçilen çözünürlükte birleştirilir.'
+        }
+      case 'social':
+        return {
+          badge: '📱 Sosyal Medya Medyası',
+          badgeColor: '#0ea5e9',
+          badgeBg: 'rgba(14, 165, 233, 0.15)',
+          ext: isAudioMode ? '.mp3' : '.mp4',
+          desc: 'Platformdaki orijinal yüksek kaliteli medya dosyası indirilir.'
+        }
+      case 'file':
+        return {
+          badge: '📦 Doğrudan Dosya İndirme',
+          badgeColor: '#10b981',
+          badgeBg: 'rgba(16, 185, 129, 0.15)',
+          ext: '.' + (data?.url ? data.url.split('/').pop()?.split('?')[0]?.split('.').pop() || 'bin' : 'bin'),
+          desc: '8 kanallı çok parçalı HTTP hızlandırıcı motor ile doğrudan indirilir.'
+        }
+      case 'audio':
+        return {
+          badge: '🎵 Müzik & Ses Yayını',
+          badgeColor: '#f59e0b',
+          badgeBg: 'rgba(245, 158, 11, 0.15)',
+          ext: '.mp3',
+          desc: 'Orijinal ses yayını MP3 formatında yüksek ses kalitesiyle kaydedilir.'
+        }
+    }
+  }, [siteProfile, isAudioMode, data])
 
   return (
     <div style={{
@@ -240,7 +365,7 @@ function DialogApp() {
             <div style={{ fontWeight: 900, fontSize: 13, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 6, letterSpacing: '0.04em' }}>
               VOLTGET <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 4, background: 'rgba(59, 130, 246, 0.25)', color: '#60a5fa', fontWeight: 800, border: '1px solid rgba(59, 130, 246, 0.4)' }}>PRO</span>
             </div>
-            <div style={{ fontSize: 10, color: '#94a3b8' }}>Ultra Hızlı İndirme Yöneticisi</div>
+            <div style={{ fontSize: 10, color: '#94a3b8' }}>Akıllı İndirme İletişim Kutusu</div>
           </div>
         </div>
 
@@ -293,9 +418,9 @@ function DialogApp() {
         </div>
       </div>
 
-      {/* Medya Önizleme ve Meta Bilgi Kartı */}
+      {/* Siteye Özel Başlık & Bilgi Kartı */}
       <div style={{
-        background: 'rgba(15, 23, 42, 0.75)',
+        background: 'rgba(15, 23, 42, 0.8)',
         padding: '10px 12px',
         borderRadius: 12,
         border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -323,41 +448,36 @@ function DialogApp() {
             width: 48,
             height: 48,
             borderRadius: 10,
-            background: `rgba(${category.color === '#f59e0b' ? '245, 158, 11' : '37, 99, 235'}, 0.15)`,
-            border: `1px solid ${category.color}40`,
+            background: profileMeta.badgeBg,
+            border: `1px solid ${profileMeta.badgeColor}40`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 24,
+            fontSize: 22,
             flexShrink: 0
           }}>
-            {category.icon}
+            {profileMeta.badge.slice(0, 2)}
           </div>
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
             <span style={{
               fontSize: 10,
               fontWeight: 800,
               padding: '2px 7px',
               borderRadius: 6,
-              background: `${category.color}20`,
-              color: category.color,
-              border: `1px solid ${category.color}40`,
+              background: profileMeta.badgeBg,
+              color: profileMeta.badgeColor,
+              border: `1px solid ${profileMeta.badgeColor}40`,
               display: 'flex',
               alignItems: 'center',
               gap: 4
             }}>
-              <span>{category.icon}</span> {category.name}
+              {profileMeta.badge}
             </span>
             {domain && (
               <span style={{ fontSize: 10, color: '#94a3b8', background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: 6 }}>
                 🌐 {domain}
-              </span>
-            )}
-            {data?.duration && (
-              <span style={{ fontSize: 10, color: '#cbd5e1', background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: 6 }}>
-                ⏱️ {data.duration}
               </span>
             )}
           </div>
@@ -368,8 +488,8 @@ function DialogApp() {
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap'
-          }} title={data?.title || data?.filename || data?.url}>
-            {data?.title || data?.filename || data?.url || 'Bağlantı hazır...'}
+          }} title={customTitle || data?.url}>
+            {customTitle || data?.url || 'Bağlantı algılandı...'}
           </div>
         </div>
       </div>
@@ -379,7 +499,7 @@ function DialogApp() {
         <div style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Dosya Adı:
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(15, 23, 42, 0.85)', borderRadius: 8, border: '1px solid rgba(59, 130, 246, 0.5)', overflow: 'hidden', focusWithin: { borderColor: '#3b82f6' } }}>
+        <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(15, 23, 42, 0.85)', borderRadius: 8, border: '1px solid rgba(59, 130, 246, 0.5)', overflow: 'hidden' }}>
           <input
             type="text"
             value={customTitle}
@@ -398,7 +518,7 @@ function DialogApp() {
             }}
           />
           <span style={{ fontSize: 11, fontWeight: 800, color: '#60a5fa', background: 'rgba(59, 130, 246, 0.15)', padding: '8px 10px', borderLeft: '1px solid rgba(255, 255, 255, 0.08)' }}>
-            {category.ext}
+            {profileMeta.ext}
           </span>
         </div>
       </div>
@@ -455,159 +575,280 @@ function DialogApp() {
         </div>
       </div>
 
-      {/* Kalite & Format Seçenekleri */}
-      {!isGenericFile ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 2 }}>
-          {/* Format Mod Sekmeleri: Video vs Ses */}
-          <div style={{ display: 'flex', gap: 6, background: 'rgba(15, 23, 42, 0.6)', padding: 3, borderRadius: 10, border: '1px solid rgba(255, 255, 255, 0.06)' }}>
-            <button
-              onClick={() => setIsAudioMode(false)}
-              style={{
-                flex: 1,
-                padding: '6px 10px',
-                borderRadius: 7,
-                border: 0,
-                background: !isAudioMode ? 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)' : 'transparent',
-                color: !isAudioMode ? '#ffffff' : '#94a3b8',
-                fontSize: 11,
-                fontWeight: 800,
-                cursor: 'pointer',
-                boxShadow: !isAudioMode ? '0 2px 8px rgba(37, 99, 235, 0.4)' : 'none',
-                transition: 'all 0.15s'
-              }}
-            >
-              🎬 Video Olarak İndir
-            </button>
-            <button
-              onClick={() => setIsAudioMode(true)}
-              style={{
-                flex: 1,
-                padding: '6px 10px',
-                borderRadius: 7,
-                border: 0,
-                background: isAudioMode ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'transparent',
-                color: isAudioMode ? '#ffffff' : '#94a3b8',
-                fontSize: 11,
-                fontWeight: 800,
-                cursor: 'pointer',
-                boxShadow: isAudioMode ? '0 2px 8px rgba(245, 158, 11, 0.4)' : 'none',
-                transition: 'all 0.15s'
-              }}
-            >
-              🎵 Sadece Ses (MP3)
-            </button>
-          </div>
-
-          {!isAudioMode ? (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Çözünürlük ve Kalite:
-                </span>
-                {loading && (
-                  <span style={{ fontSize: 10, color: '#38bdf8', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>🔄</span> Formatlar taranıyor...
-                  </span>
-                )}
-              </div>
-
-              {/* Hızlı Kalite Rozetleri */}
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-                {[
-                  { label: '⚡ En İyi', match: 'best' },
-                  { label: '4K (2160p)', match: '2160' },
-                  { label: '1080p Full HD', match: '1080' },
-                  { label: '720p HD', match: '720' },
-                  { label: '480p SD', match: '480' }
-                ].map(pill => {
-                  const found = formats.find(f => f.id === pill.match || f.id.includes(pill.match) || f.resolution?.includes(pill.match))
-                  const targetVal = found ? found.id : pill.match
-                  const isSelected = selectedFormat === targetVal
-                  return (
-                    <button
-                      key={pill.label}
-                      onClick={() => setSelectedFormat(targetVal)}
-                      style={{
-                        background: isSelected ? 'rgba(37, 99, 235, 0.35)' : 'rgba(30, 41, 59, 0.6)',
-                        border: '1px solid ' + (isSelected ? '#3b82f6' : 'rgba(255,255,255,0.08)'),
-                        color: isSelected ? '#60a5fa' : '#94a3b8',
-                        padding: '4px 8px',
-                        borderRadius: 6,
-                        fontSize: 10,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s'
-                      }}
-                    >
-                      {pill.label}
-                    </button>
-                  )
-                })}
-              </div>
-
-              {/* Detaylı Format Açılır Listesi */}
-              <select
-                value={selectedFormat}
-                onChange={e => setSelectedFormat(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: 'rgba(15, 23, 42, 0.95)',
-                  border: '1px solid rgba(59, 130, 246, 0.5)',
-                  color: '#f8fafc',
-                  padding: '8px 10px',
-                  borderRadius: 8,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  outline: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                {formats.map((f: any) => (
-                  <option key={f.id} value={f.id} style={{ background: '#090d16', color: '#fff' }}>
-                    {f.resolution} {f.ext ? `(${f.ext})` : ''} {f.fps ? `• ${f.fps}fps` : ''} {f.note ? `— ${f.note}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <div style={{
-              background: 'rgba(245, 158, 11, 0.1)',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
-              borderRadius: 8,
-              padding: '8px 12px',
-              fontSize: 11,
-              color: '#fde68a',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8
-            }}>
-              <span style={{ fontSize: 20 }}>🎵</span>
-              <div>
-                <div style={{ fontWeight: 800 }}>Saf Ses / MP3 Modu</div>
-                <div style={{ fontSize: 10, opacity: 0.85 }}>Video filtrelenecek ve 320kbps yüksek kalitede MP3 olarak kaydedilecek.</div>
-              </div>
-            </div>
+      {/* SİTEYE GÖRE UYARLANMIŞ İNDİRİLEBİLİR SEÇENEKLER BÖLÜMÜ */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Bu Site İçin İndirilebilir Seçenekler:
+          </span>
+          {loading && (
+            <span style={{ fontSize: 10, color: '#38bdf8', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>🔄</span> Taranıyor...
+            </span>
           )}
         </div>
-      ) : (
-        <div style={{
-          background: 'rgba(59, 130, 246, 0.1)',
-          border: '1px solid rgba(59, 130, 246, 0.3)',
-          borderRadius: 8,
-          padding: '10px 12px',
-          fontSize: 11,
-          color: '#93c5fd',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8
-        }}>
-          <span style={{ fontSize: 20 }}>📦</span>
-          <div>
-            <div style={{ fontWeight: 800 }}>Çok Kanallı Dosya İndirme</div>
-            <div style={{ fontSize: 10, opacity: 0.85 }}>8 parçalı IDM hızlandırıcı ile en yüksek bant genişliğinde indirilecek.</div>
+
+        {/* 1. DURUM: DİZİ & FİLM SİTELERİ (HLS AKIŞLARI - Ddizi, HD Film Cehennemi, Dizibox vb.) */}
+        {siteProfile === 'hls' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div
+              onClick={() => { setIsAudioMode(false); setSelectedFormat('best') }}
+              style={{
+                background: !isAudioMode ? 'rgba(37, 99, 235, 0.18)' : 'rgba(15, 23, 42, 0.6)',
+                border: !isAudioMode ? '1.5px solid #3b82f6' : '1px solid rgba(255, 255, 255, 0.08)',
+                padding: '10px 12px',
+                borderRadius: 10,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                transition: 'all 0.15s'
+              }}
+            >
+              <div style={{ fontSize: 24 }}>🎬</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontWeight: 800, fontSize: 12, color: !isAudioMode ? '#60a5fa' : '#f8fafc' }}>
+                    Tam Bölüm / Film Videosu (MP4)
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: '#2563eb', color: '#fff' }}>
+                    Orijinal Kalite
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                  Video ve ses kanalları birleştirilerek en yüksek netlikte MP4 olarak indirilir.
+                </div>
+              </div>
+            </div>
+
+            <div
+              onClick={() => { setIsAudioMode(true); setSelectedFormat('bestaudio/best') }}
+              style={{
+                background: isAudioMode ? 'rgba(245, 158, 11, 0.18)' : 'rgba(15, 23, 42, 0.6)',
+                border: isAudioMode ? '1.5px solid #f59e0b' : '1px solid rgba(255, 255, 255, 0.08)',
+                padding: '10px 12px',
+                borderRadius: 10,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                transition: 'all 0.15s'
+              }}
+            >
+              <div style={{ fontSize: 24 }}>🎵</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontWeight: 800, fontSize: 12, color: isAudioMode ? '#fbbf24' : '#f8fafc' }}>
+                    Sadece Ses İzi (MP3)
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: '#d97706', color: '#fff' }}>
+                    MP3 Ses
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                  Yalnızca Türkçe dublaj / orijinal ses parçası yüksek kalitede MP3 olarak ayıklanır.
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* 2. DURUM: YOUTUBE & SOSYAL MEDYA (SADECE GERÇEKTEN MEVCUT OLAN ÇÖZÜNÜRLÜKLER) */}
+        {(siteProfile === 'youtube' || siteProfile === 'social') && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Video vs Ses Mod Seçimi */}
+            <div style={{ display: 'flex', gap: 6, background: 'rgba(15, 23, 42, 0.6)', padding: 3, borderRadius: 10, border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+              <button
+                onClick={() => setIsAudioMode(false)}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  borderRadius: 7,
+                  border: 0,
+                  background: !isAudioMode ? 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)' : 'transparent',
+                  color: !isAudioMode ? '#ffffff' : '#94a3b8',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: !isAudioMode ? '0 2px 8px rgba(37, 99, 235, 0.4)' : 'none',
+                  transition: 'all 0.15s'
+                }}
+              >
+                🎬 Video Olarak İndir
+              </button>
+              <button
+                onClick={() => setIsAudioMode(true)}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  borderRadius: 7,
+                  border: 0,
+                  background: isAudioMode ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'transparent',
+                  color: isAudioMode ? '#ffffff' : '#94a3b8',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: isAudioMode ? '0 2px 8px rgba(245, 158, 11, 0.4)' : 'none',
+                  transition: 'all 0.15s'
+                }}
+              >
+                🎵 Sadece Ses (MP3)
+              </button>
+            </div>
+
+            {!isAudioMode ? (
+              <div>
+                {/* SADECE BU VİDEODA VAR OLAN ÇÖZÜNÜRLÜK BUTONLARI */}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                  {/* Her zaman En İyi seçeneği */}
+                  <button
+                    onClick={() => setSelectedFormat(videoFormats[0]?.id || 'best')}
+                    style={{
+                      background: selectedFormat === (videoFormats[0]?.id || 'best') || selectedFormat === 'best'
+                        ? 'rgba(37, 99, 235, 0.35)'
+                        : 'rgba(30, 41, 59, 0.6)',
+                      border: '1px solid ' + (selectedFormat === (videoFormats[0]?.id || 'best') || selectedFormat === 'best' ? '#3b82f6' : 'rgba(255,255,255,0.08)'),
+                      color: selectedFormat === (videoFormats[0]?.id || 'best') || selectedFormat === 'best' ? '#60a5fa' : '#94a3b8',
+                      padding: '4px 8px',
+                      borderRadius: 6,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ⚡ En İyi {availableHeights[0] ? `(${availableHeights[0]}p)` : ''}
+                  </button>
+
+                  {/* Sadece analizde gerçekten bulunan çözünürlükleri dinamik buton yap */}
+                  {availableHeights.map(h => {
+                    const matchFmt = videoFormats.find((f: any) => f.height === h)
+                    const isSelected = matchFmt && selectedFormat === matchFmt.id
+                    let label = `${h}p`
+                    if (h >= 2160) label = '4K (2160p)'
+                    else if (h >= 1440) label = '2K (1440p)'
+                    else if (h === 1080) label = '1080p FHD'
+                    else if (h === 720) label = '720p HD'
+                    else if (h === 480) label = '480p SD'
+
+                    return (
+                      <button
+                        key={h}
+                        onClick={() => matchFmt && setSelectedFormat(matchFmt.id)}
+                        style={{
+                          background: isSelected ? 'rgba(37, 99, 235, 0.35)' : 'rgba(30, 41, 59, 0.6)',
+                          border: '1px solid ' + (isSelected ? '#3b82f6' : 'rgba(255,255,255,0.08)'),
+                          color: isSelected ? '#60a5fa' : '#94a3b8',
+                          padding: '4px 8px',
+                          borderRadius: 6,
+                          fontSize: 10,
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Sadece bu videoda mevcut formatları listeleyen açılır kutu */}
+                <select
+                  value={selectedFormat}
+                  onChange={e => setSelectedFormat(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(15, 23, 42, 0.95)',
+                    border: '1px solid rgba(59, 130, 246, 0.5)',
+                    color: '#f8fafc',
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {videoFormats.length > 0 ? (
+                    videoFormats.map((f: any) => (
+                      <option key={f.id} value={f.id} style={{ background: '#090d16', color: '#fff' }}>
+                        {f.resolution || `${f.height}p`} {f.fps ? `• ${f.fps}fps` : ''} {f.ext ? `(${f.ext})` : ''} {f.note ? `— ${f.note}` : ''}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="best" style={{ background: '#090d16', color: '#fff' }}>
+                      🎬 En İyi Kalite (Otomatik Seçim)
+                    </option>
+                  )}
+                </select>
+              </div>
+            ) : (
+              <div style={{
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                borderRadius: 8,
+                padding: '8px 12px',
+                fontSize: 11,
+                color: '#fde68a',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8
+              }}>
+                <span style={{ fontSize: 18 }}>🎵</span>
+                <div>
+                  <div style={{ fontWeight: 800 }}>En Yüksek Ses Kalitesi (MP3)</div>
+                  <div style={{ fontSize: 10, opacity: 0.85 }}>Video parçası atılarak doğrudan 320 kbps MP3 ses dosyası indirilecektir.</div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 3. DURUM: DOĞRUDAN DOSYA İNDİRME (ZIP, EXE, PDF, ISO VB.) */}
+        {siteProfile === 'file' && (
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.1)',
+            border: '1px solid rgba(16, 185, 129, 0.3)',
+            borderRadius: 10,
+            padding: '12px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12
+          }}>
+            <div style={{ fontSize: 28 }}>📦</div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 12, color: '#34d399' }}>
+                8 Kanallı Yüksek Hızlı HTTP İndirme
+              </div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                Bu dosya doğrudan sunucudan 8 eşzamanlı parçaya bölünerek maksimum bant genişliğiyle indirilecektir.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 4. DURUM: MÜZİK & SES PLATFORMLARI */}
+        {siteProfile === 'audio' && (
+          <div style={{
+            background: 'rgba(245, 158, 11, 0.1)',
+            border: '1px solid rgba(245, 158, 11, 0.3)',
+            borderRadius: 10,
+            padding: '12px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12
+          }}>
+            <div style={{ fontSize: 28 }}>🎵</div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 12, color: '#fbbf24' }}>
+                Yüksek Kaliteli Ses Yayını (MP3)
+              </div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                Orijinal ses yayını MP3 formatında netlik kaybı olmadan doğrudan indirilir.
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div style={{ flex: 1 }} />
 
