@@ -160,7 +160,7 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
         >
           <span style={{ fontSize: 24 }}>🧩</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 12, color: '#fde047' }}>
+            <div style={{ fontWeight: 800, fontSize: 12, color: 'var(--badge-warning-text)' }}>
               {t('installExtBannerTitle')}
             </div>
             <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>

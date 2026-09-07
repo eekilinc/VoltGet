@@ -123,7 +123,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
               🧩
             </div>
             <div>
-              <div style={{ fontWeight: 900, fontSize: 16, letterSpacing: '0.01em', color: '#fff' }}>
+              <div style={{ fontWeight: 900, fontSize: 16, letterSpacing: '0.01em', color: 'var(--text-bright)' }}>
                 {t('extModalTitle')}
               </div>
               <div className="text-muted" style={{ fontSize: 11, marginTop: 1 }}>

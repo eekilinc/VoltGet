@@ -496,7 +496,7 @@ export default function FileExplorer() {
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11, color: 'var(--muted)', marginTop: 4, flexWrap: 'wrap' }}>
                     {file.deletedFromDisk ? (
-                      <span style={{ background: '#450a0a', color: '#fca5a5', padding: '1px 7px', borderRadius: 4, border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 800, fontSize: 10 }}>
+                      <span style={{ background: 'var(--badge-danger-bg)', color: 'var(--badge-danger-text)', padding: '1px 7px', borderRadius: 4, border: '1px solid var(--badge-danger-border)', fontWeight: 800, fontSize: 10 }}>
                         {t('statusDeletedBadge')}
                       </span>
                     ) : (
@@ -534,14 +534,14 @@ export default function FileExplorer() {
                     </button>
                   </>
                 ) : (
-                  <div style={{ flex: 1, fontSize: 11, color: '#fca5a5', display: 'flex', alignItems: 'center' }}>
+                  <div style={{ flex: 1, fontSize: 11, color: 'var(--badge-danger-text)', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
                     {t('fileDeletedNotice')}
                   </div>
                 )}
                 <button
                   onClick={() => setDeleteConfirm(file)}
                   title="Listeden kaldır veya diskten sil"
-                  style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.4)', padding: '7px 10px', borderRadius: 8, color: '#fca5a5', fontSize: 11, cursor: 'pointer' }}
+                  style={{ background: 'var(--badge-danger-bg)', border: '1px solid var(--badge-danger-border)', padding: '7px 10px', borderRadius: 8, color: 'var(--badge-danger-text)', fontSize: 11, cursor: 'pointer' }}
                 >
                   🗑️
                 </button>
@@ -580,7 +580,7 @@ export default function FileExplorer() {
                     <td style={{ padding: '10px 14px', color: 'var(--muted)' }}>{file.folder || t('mainFolder')}</td>
                     <td style={{ padding: '10px 14px', fontWeight: 600 }}>
                       {file.deletedFromDisk ? (
-                        <span style={{ background: '#450a0a', color: '#fca5a5', padding: '2px 7px', borderRadius: 4, border: '1px solid rgba(239, 68, 68, 0.4)', fontSize: 11 }}>
+                        <span style={{ background: 'var(--badge-danger-bg)', color: 'var(--badge-danger-text)', padding: '2px 7px', borderRadius: 4, border: '1px solid var(--badge-danger-border)', fontSize: 11, fontWeight: 700 }}>
                           {t('statusDeletedBadge')}
                         </span>
                       ) : (
@@ -611,7 +611,7 @@ export default function FileExplorer() {
                         <button
                           onClick={() => setDeleteConfirm(file)}
                           title="Listeden kaldır veya diskten sil"
-                          style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.4)', padding: '5px 9px', borderRadius: 6, color: '#fca5a5', fontSize: 11, cursor: 'pointer' }}
+                          style={{ background: 'var(--badge-danger-bg)', border: '1px solid var(--badge-danger-border)', padding: '5px 9px', borderRadius: 6, color: 'var(--badge-danger-text)', fontSize: 11, cursor: 'pointer' }}
                         >
                           Sil
                         </button>

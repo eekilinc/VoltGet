@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAppSettings } from '../context/AppSettingsContext'
+import VoltLogo from './VoltLogo'
 
 export default function AboutPanel() {
   const { t } = useAppSettings()
@@ -46,23 +47,13 @@ export default function AboutPanel() {
           pointerEvents: 'none'
         }} />
 
-        <img
-          src="./assets/icon-128.png"
-          alt="VoltGet"
-          style={{
-            width: 84,
-            height: 84,
-            margin: '0 auto',
-            borderRadius: 22,
-            objectFit: 'contain',
-            boxShadow: '0 12px 36px rgba(37, 99, 235, 0.45)',
-            border: '2px solid rgba(255, 255, 255, 0.15)'
-          }}
-        />
+        <div style={{ margin: '0 auto', width: 84, height: 84, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <VoltLogo size={84} />
+        </div>
 
         <div style={{ fontWeight: 900, fontSize: 24, marginTop: 14, letterSpacing: '0.03em', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <span>⚡ {t('aboutTitle')}</span>
-          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: '#2563eb', color: '#fff', fontWeight: 800 }}>v{appVersion}</span>
+          <span className="brand-title-gradient">⚡ {t('aboutTitle')}</span>
+          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'var(--accent-solid)', color: '#fff', fontWeight: 800 }}>v{appVersion}</span>
         </div>
 
         <div className="text-muted" style={{ fontSize: 13, marginTop: 4, maxWidth: 540, margin: '6px auto 0' }}>
@@ -79,7 +70,7 @@ export default function AboutPanel() {
           <span style={{ fontSize: 11, background: 'var(--panel-2)', border: '1px solid var(--border)', padding: '4px 10px', borderRadius: 20, fontWeight: 700 }}>
             {t('feat1800Sites')}
           </span>
-          <span style={{ fontSize: 11, background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', border: '1px solid rgba(34, 197, 94, 0.3)', padding: '4px 10px', borderRadius: 20, fontWeight: 800 }}>
+          <span style={{ fontSize: 11, background: 'var(--badge-success-bg)', color: 'var(--badge-success-text)', border: '1px solid var(--badge-success-border)', padding: '4px 10px', borderRadius: 20, fontWeight: 800 }}>
             {t('featOpenSource')}
           </span>
         </div>
@@ -173,7 +164,7 @@ export default function AboutPanel() {
         <div className="card-premium" style={{ borderRadius: 16, padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontWeight: 800, fontSize: 13 }}>⚡ {t('ytdlpEngine')}</div>
-            <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: status?.ytdlpVer ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)', color: status?.ytdlpVer ? '#4ade80' : '#f87171', fontWeight: 800 }}>
+            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, background: status?.ytdlpVer ? 'var(--badge-success-bg)' : 'var(--badge-danger-bg)', color: status?.ytdlpVer ? 'var(--badge-success-text)' : 'var(--badge-danger-text)', border: '1px solid ' + (status?.ytdlpVer ? 'var(--badge-success-border)' : 'var(--badge-danger-border)'), fontWeight: 800 }}>
               {status?.ytdlpVer ? t('ready') : t('engineMissing')}
             </span>
           </div>
@@ -188,7 +179,7 @@ export default function AboutPanel() {
         <div className="card-premium" style={{ borderRadius: 16, padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontWeight: 800, fontSize: 13 }}>🎞️ {t('ffmpegProcessor')}</div>
-            <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: status?.ffmpegOk ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)', color: status?.ffmpegOk ? '#4ade80' : '#f87171', fontWeight: 800 }}>
+            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, background: status?.ffmpegOk ? 'var(--badge-success-bg)' : 'var(--badge-danger-bg)', color: status?.ffmpegOk ? 'var(--badge-success-text)' : 'var(--badge-danger-text)', border: '1px solid ' + (status?.ffmpegOk ? 'var(--badge-success-border)' : 'var(--badge-danger-border)'), fontWeight: 800 }}>
               {status?.ffmpegOk ? t('ready') : t('ffmpegMissing')}
             </span>
           </div>
@@ -203,7 +194,7 @@ export default function AboutPanel() {
         <div className="card-premium" style={{ borderRadius: 16, padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontWeight: 800, fontSize: 13 }}>🧩 {t('browserExtension')}</div>
-            <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: extConnected ? 'rgba(34, 197, 94, 0.15)' : 'rgba(234, 179, 8, 0.15)', color: extConnected ? '#4ade80' : '#facc15', fontWeight: 800 }}>
+            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, background: extConnected ? 'var(--badge-success-bg)' : 'var(--badge-warning-bg)', color: extConnected ? 'var(--badge-success-text)' : 'var(--badge-warning-text)', border: '1px solid ' + (extConnected ? 'var(--badge-success-border)' : 'var(--badge-warning-border)'), fontWeight: 800 }}>
               {extConnected ? t('extConnectedStatus') : t('extWaitingStatus')}
             </span>
           </div>

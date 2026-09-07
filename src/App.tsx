@@ -6,6 +6,7 @@ import QueuePanel from './components/QueuePanel'
 import SettingsPanel from './components/SettingsPanel'
 import AboutPanel from './components/AboutPanel'
 import ExtensionInstallModal from './components/ExtensionInstallModal'
+import VoltLogo from './components/VoltLogo'
 import { useAppSettings } from './context/AppSettingsContext'
 
 declare global { interface Window { api: any } }
@@ -311,12 +312,12 @@ export default function App() {
       <div style={{ width:224, background:'var(--panel-3)', borderRight:'1px solid var(--border)', display:'flex', flexDirection:'column', padding:14, flexShrink:0 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, padding:'4px 4px 14px 4px', borderBottom:'1px solid var(--border)', marginBottom:12 }}>
           <div style={{ position:'relative', flexShrink:0 }}>
-            <img src="./assets/icon-48.png" alt="VoltGet" style={{ width:36, height:36, borderRadius:10, objectFit:'contain', boxShadow:'0 4px 16px color-mix(in srgb, var(--accent-solid) 45%, transparent)' }} />
+            <VoltLogo size={36} />
             <span style={{ position:'absolute', bottom:-1, right:-1, width:9, height:9, borderRadius:99, background: extConnected ? '#22c55e' : '#3b82f6', border:'2px solid var(--panel-3)', boxShadow: extConnected ? '0 0 8px #22c55e' : 'none' }} />
           </div>
           <div style={{ minWidth:0 }}>
             <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-              <span style={{ fontWeight:900, fontSize:16, letterSpacing:'-0.02em', background:'linear-gradient(135deg, #ffffff 50%, var(--accent-to))', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>VoltGet</span>
+              <span className="brand-title-gradient" style={{ fontWeight:900, fontSize:16, letterSpacing:'-0.02em' }}>VoltGet</span>
               <span style={{ fontSize:9, fontWeight:900, padding:'1px 5px', borderRadius:4, background:'var(--accent-solid)', color:'#fff' }}>PRO</span>
             </div>
             <div className="text-muted" style={{ fontSize:10, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t('idmAlt')}</div>
@@ -336,9 +337,9 @@ export default function App() {
                 style={{
                   position:'relative',
                   display:'flex', gap:10, alignItems:'center', padding:'10px 12px', borderRadius:12,
-                  border:'1px solid '+(isCurrent ? 'color-mix(in srgb, var(--accent-solid) 45%, rgba(255,255,255,0.08))' : 'transparent'),
-                  background: isCurrent ? 'color-mix(in srgb, var(--accent-solid) 14%, var(--panel-2))' : 'transparent',
-                  color: isCurrent ? '#fff' : 'var(--text)',
+                  border:'1px solid '+(isCurrent ? 'var(--nav-active-border)' : 'transparent'),
+                  background: isCurrent ? 'var(--nav-active-bg)' : 'transparent',
+                  color: isCurrent ? 'var(--nav-active-text)' : 'var(--text)',
                   textAlign:'left',
                   boxShadow: isCurrent ? '0 4px 18px color-mix(in srgb, var(--accent-solid) 12%, transparent)' : 'none',
                   transition:'all 0.16s ease'
@@ -348,7 +349,7 @@ export default function App() {
                 )}
                 <span style={{ fontSize:17 }}>{item.icon}</span>
                 <span style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight: isCurrent ? 800 : 600 }}>{item.label}</div>
+                  <div style={{ fontSize:13, fontWeight: isCurrent ? 800 : 600, color: isCurrent ? 'var(--nav-active-text)' : 'var(--text)' }}>{item.label}</div>
                   <div className="text-muted" style={{ fontSize:10 }}>{item.desc}</div>
                 </span>
                 {item.id==='download' && activeDownloads > 0 && (
@@ -380,9 +381,9 @@ export default function App() {
                 style={{
                   position:'relative',
                   display:'flex', gap:10, alignItems:'center', padding:'9px 12px', borderRadius:12,
-                  border:'1px solid '+(isCurrent ? 'color-mix(in srgb, var(--accent-solid) 45%, rgba(255,255,255,0.08))' : 'transparent'),
-                  background: isCurrent ? 'color-mix(in srgb, var(--accent-solid) 14%, var(--panel-2))' : 'transparent',
-                  color: isCurrent ? '#fff' : 'var(--text)',
+                  border:'1px solid '+(isCurrent ? 'var(--nav-active-border)' : 'transparent'),
+                  background: isCurrent ? 'var(--nav-active-bg)' : 'transparent',
+                  color: isCurrent ? 'var(--nav-active-text)' : 'var(--text)',
                   textAlign:'left',
                   transition:'all 0.16s ease'
                 }}>
@@ -391,7 +392,7 @@ export default function App() {
                 )}
                 <span style={{ fontSize:15 }}>{item.icon}</span>
                 <span>
-                  <div style={{ fontSize:12, fontWeight: isCurrent ? 800 : 600 }}>{item.label}</div>
+                  <div style={{ fontSize:12, fontWeight: isCurrent ? 800 : 600, color: isCurrent ? 'var(--nav-active-text)' : 'var(--text)' }}>{item.label}</div>
                   <div className="text-muted" style={{ fontSize:10 }}>{item.desc}</div>
                 </span>
               </button>
@@ -462,24 +463,24 @@ export default function App() {
 
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
         <div className="glass" style={{ height:54, borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', padding:'0 16px', gap:10 }}>
-          <div style={{ fontWeight:800, fontSize:14 }}>{titles[tab]}</div>
+          <div style={{ fontWeight:800, fontSize:14, color: 'var(--text-bright)' }}>{titles[tab]}</div>
           {totalSpeed && (
             <div style={{
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.2) 0%, rgba(59, 130, 246, 0.1) 100%)',
-              border: '1px solid rgba(59, 130, 246, 0.35)',
+              background: 'var(--badge-info-bg)',
+              border: '1px solid var(--badge-info-border)',
               padding: '4px 10px',
               borderRadius: 20,
-              color: '#60a5fa',
+              color: 'var(--badge-info-text)',
               fontSize: 11,
               fontWeight: 900,
-              boxShadow: '0 0 14px rgba(59, 130, 246, 0.25)'
+              boxShadow: '0 0 14px color-mix(in srgb, var(--accent-solid) 20%, transparent)'
             }}>
               <span style={{ animation: 'pulse 1s infinite' }}>⚡</span>
               <span>{totalSpeed}</span>
-              <span style={{ fontSize: 9, opacity: 0.7 }}>• {jobs.filter(j=>j.status==='downloading').length} aktif</span>
+              <span style={{ fontSize: 9, opacity: 0.8 }}>• {jobs.filter(j=>j.status==='downloading').length} aktif</span>
             </div>
           )}
           <div style={{ flex:1 }}/>
@@ -492,9 +493,9 @@ export default function App() {
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              background: clipboardWatcherActive ? 'rgba(59, 130, 246, 0.12)' : 'var(--panel-2)',
-              color: clipboardWatcherActive ? '#60a5fa' : 'var(--text-muted)',
-              border: '1px solid ' + (clipboardWatcherActive ? 'rgba(59, 130, 246, 0.35)' : 'var(--border)'),
+              background: clipboardWatcherActive ? 'var(--badge-info-bg)' : 'var(--panel-2)',
+              color: clipboardWatcherActive ? 'var(--badge-info-text)' : 'var(--muted)',
+              border: '1px solid ' + (clipboardWatcherActive ? 'var(--badge-info-border)' : 'var(--border)'),
               padding: '6px 11px',
               borderRadius: 10,
               fontSize: 11,
@@ -502,7 +503,7 @@ export default function App() {
               cursor: 'pointer'
             }}
           >
-            <span style={{ width: 7, height: 7, borderRadius: 99, background: clipboardWatcherActive ? '#3b82f6' : '#64748b', boxShadow: clipboardWatcherActive ? '0 0 8px #3b82f6' : 'none' }} />
+            <span style={{ width: 7, height: 7, borderRadius: 99, background: clipboardWatcherActive ? 'var(--accent-solid)' : 'var(--muted)' }} />
             <span>{clipboardWatcherActive ? t('clipboardWatcherOn') : t('clipboardWatcherOff')}</span>
           </button>
 
@@ -512,9 +513,9 @@ export default function App() {
               display:'flex',
               alignItems:'center',
               gap:6,
-              background: extConnected ? 'rgba(34, 197, 94, 0.12)' : 'rgba(234, 179, 8, 0.12)',
-              color: extConnected ? '#86efac' : '#fde047',
-              border: extConnected ? '1px solid rgba(34, 197, 94, 0.35)' : '1px solid rgba(234, 179, 8, 0.35)',
+              background: extConnected ? 'var(--badge-success-bg)' : 'var(--badge-warning-bg)',
+              color: extConnected ? 'var(--badge-success-text)' : 'var(--badge-warning-text)',
+              border: extConnected ? '1px solid var(--badge-success-border)' : '1px solid var(--badge-warning-border)',
               padding:'6px 12px',
               borderRadius:10,
               fontSize:11,

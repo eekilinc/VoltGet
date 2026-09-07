@@ -21,6 +21,26 @@
   --border-2: rgba(255, 255, 255, 0.14);
   --shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
   --glass-bg: rgba(16, 20, 34, 0.72);
+  --brand-title-gradient: linear-gradient(135deg, #ffffff 45%, var(--accent-to));
+  --nav-active-bg: color-mix(in srgb, var(--accent-solid) 18%, var(--panel-2));
+  --nav-active-text: #ffffff;
+  --nav-active-border: color-mix(in srgb, var(--accent-solid) 45%, rgba(255, 255, 255, 0.12));
+
+  --badge-success-bg: rgba(34, 197, 94, 0.15);
+  --badge-success-border: rgba(34, 197, 94, 0.35);
+  --badge-success-text: #4ade80;
+
+  --badge-warning-bg: rgba(234, 179, 8, 0.15);
+  --badge-warning-border: rgba(234, 179, 8, 0.35);
+  --badge-warning-text: #fde047;
+
+  --badge-danger-bg: rgba(239, 68, 68, 0.15);
+  --badge-danger-border: rgba(239, 68, 68, 0.35);
+  --badge-danger-text: #fca5a5;
+
+  --badge-info-bg: rgba(59, 130, 246, 0.15);
+  --badge-info-border: rgba(59, 130, 246, 0.35);
+  --badge-info-text: #60a5fa;
 }
 
 :root[data-theme='light'] {
@@ -34,8 +54,28 @@
   --muted: #64748b;
   --border: rgba(0, 0, 0, 0.08);
   --border-2: rgba(0, 0, 0, 0.14);
-  --shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.09), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  --glass-bg: rgba(255, 255, 255, 0.78);
+  --shadow: 0 14px 34px -10px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --brand-title-gradient: linear-gradient(135deg, #0f172a 35%, var(--accent-solid));
+  --nav-active-bg: color-mix(in srgb, var(--accent-solid) 12%, #ffffff);
+  --nav-active-text: var(--accent-solid);
+  --nav-active-border: color-mix(in srgb, var(--accent-solid) 40%, transparent);
+
+  --badge-success-bg: rgba(22, 163, 74, 0.12);
+  --badge-success-border: rgba(22, 163, 74, 0.3);
+  --badge-success-text: #15803d;
+
+  --badge-warning-bg: rgba(217, 119, 6, 0.12);
+  --badge-warning-border: rgba(217, 119, 6, 0.3);
+  --badge-warning-text: #b45309;
+
+  --badge-danger-bg: rgba(220, 38, 38, 0.12);
+  --badge-danger-border: rgba(220, 38, 38, 0.3);
+  --badge-danger-text: #b91c1c;
+
+  --badge-info-bg: rgba(37, 99, 235, 0.12);
+  --badge-info-border: rgba(37, 99, 235, 0.3);
+  --badge-info-text: #1d4ed8;
 }
 
 html, body, #root { height: 100%; }
@@ -138,6 +178,12 @@ input:focus, select:focus, textarea:focus {
 
 .brand-gradient {
   background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
+}
+
+.brand-title-gradient {
+  background: var(--brand-title-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .glass {

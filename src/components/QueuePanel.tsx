@@ -80,11 +80,11 @@ export default function QueuePanel({
         <div style={{ fontWeight: 800, fontSize: 13 }}>📋 {t('queue')}</div>
         <div style={{ fontSize: 11, background: 'var(--panel-2)', padding: '2px 8px', borderRadius: 20, border: '1px solid var(--border)' }}>
           {jobs.length} • ⬇️ {downloading} • ✓ {done}
-          {deletedFromDiskCount > 0 && <span style={{ color: '#fca5a5', marginLeft: 4 }}>• ⚠️ {deletedFromDiskCount}</span>}
+          {deletedFromDiskCount > 0 && <span style={{ color: 'var(--badge-danger-text)', marginLeft: 4 }}>• ⚠️ {deletedFromDiskCount}</span>}
         </div>
         <div style={{ flex: 1 }} />
         {jobs.some(j => j.status === 'done' || j.status === 'error') && (
-          <button onClick={onClear} style={{ background: '#7f1d1d', color: '#fff', border: 0, padding: '6px 8px', borderRadius: 8, fontSize: 11 }}>
+          <button onClick={onClear} style={{ background: 'var(--badge-danger-bg)', color: 'var(--badge-danger-text)', border: '1px solid var(--badge-danger-border)', padding: '6px 8px', borderRadius: 8, fontSize: 11, cursor: 'pointer' }}>
             🗑️ {t('clear')}
           </button>
         )}
@@ -123,18 +123,23 @@ export default function QueuePanel({
                 fontWeight: 700,
                 whiteSpace: 'nowrap',
                 background: j.status === 'done'
-                  ? (j.deletedFromDisk ? '#450a0a' : '#14532d')
-                  : j.status === 'error' ? '#7f1d1d'
-                  : j.status === 'queued' ? '#422006'
-                  : j.status === 'paused' ? '#1e293b'
-                  : 'color-mix(in srgb, var(--accent-solid) 22%, transparent)',
+                  ? (j.deletedFromDisk ? 'var(--badge-danger-bg)' : 'var(--badge-success-bg)')
+                  : j.status === 'error' ? 'var(--badge-danger-bg)'
+                  : j.status === 'queued' ? 'var(--badge-warning-bg)'
+                  : j.status === 'paused' ? 'var(--badge-info-bg)'
+                  : 'color-mix(in srgb, var(--accent-solid) 16%, var(--panel-2))',
                 color: j.status === 'done'
-                  ? (j.deletedFromDisk ? '#fca5a5' : '#86efac')
-                  : j.status === 'error' ? '#fca5a5'
-                  : j.status === 'queued' ? '#fbbf24'
-                  : j.status === 'paused' ? '#93c5fd'
-                  : 'var(--text)',
-                border: j.deletedFromDisk ? '1px solid rgba(239, 68, 68, 0.4)' : 'none'
+                  ? (j.deletedFromDisk ? 'var(--badge-danger-text)' : 'var(--badge-success-text)')
+                  : j.status === 'error' ? 'var(--badge-danger-text)'
+                  : j.status === 'queued' ? 'var(--badge-warning-text)'
+                  : j.status === 'paused' ? 'var(--badge-info-text)'
+                  : 'var(--accent-solid)',
+                border: '1px solid ' + (j.status === 'done'
+                  ? (j.deletedFromDisk ? 'var(--badge-danger-border)' : 'var(--badge-success-border)')
+                  : j.status === 'error' ? 'var(--badge-danger-border)'
+                  : j.status === 'queued' ? 'var(--badge-warning-border)'
+                  : j.status === 'paused' ? 'var(--badge-info-border)'
+                  : 'var(--border)')
               }}>
                 {label(j)}
               </span>
@@ -165,12 +170,12 @@ export default function QueuePanel({
             {/* Eylem Butonları */}
             <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
               {(j.status === 'downloading' || j.status === 'queued') && (
-                <button onClick={() => onPause?.(j.id)} style={{ background: '#422006', color: '#fbbf24', border: 0, padding: '6px 8px', borderRadius: 8, fontSize: 11 }}>
+                <button onClick={() => onPause?.(j.id)} style={{ background: 'var(--badge-warning-bg)', color: 'var(--badge-warning-text)', border: '1px solid var(--badge-warning-border)', padding: '6px 8px', borderRadius: 8, fontSize: 11, cursor: 'pointer' }}>
                   ⏸ {t('pause')}
                 </button>
               )}
               {(j.status === 'downloading' || j.status === 'queued' || j.status === 'paused') && (
-                <button onClick={() => onCancel(j.id)} style={{ background: '#7f1d1d', color: '#fff', border: 0, padding: '6px 8px', borderRadius: 8, fontSize: 11 }}>
+                <button onClick={() => onCancel(j.id)} style={{ background: 'var(--badge-danger-bg)', color: 'var(--badge-danger-text)', border: '1px solid var(--badge-danger-border)', padding: '6px 8px', borderRadius: 8, fontSize: 11, cursor: 'pointer' }}>
                   {t('cancel')}
                 </button>
               )}

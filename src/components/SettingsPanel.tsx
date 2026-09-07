@@ -87,9 +87,9 @@ export default function SettingsPanel(){
           </div>
           <div style={{
             display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:20,
-            background: extConnected ? 'rgba(34, 197, 94, 0.12)' : 'rgba(234, 179, 8, 0.12)',
-            border: extConnected ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(234, 179, 8, 0.4)',
-            color: extConnected ? '#86efac' : '#fde047',
+            background: extConnected ? 'var(--badge-success-bg)' : 'var(--badge-warning-bg)',
+            border: extConnected ? '1px solid var(--badge-success-border)' : '1px solid var(--badge-warning-border)',
+            color: extConnected ? 'var(--badge-success-text)' : 'var(--badge-warning-text)',
             fontSize:12, fontWeight:800
           }}>
             <span>{extConnected ? '🟢' : '⚪'}</span>
