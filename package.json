@@ -1,6 +1,6 @@
 {
   "name": "voltget",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "VoltGet - High-Speed Download Manager & Media Sniffer (IDM Alternative for Modern Web)",
   "type": "module",
   "main": "dist/electron/main.js",
@@ -31,7 +31,9 @@
       "output": "release"
     },
     "files": [
-      "dist/**/*",
+      "dist/electron/**/*",
+      "dist/renderer/**/*",
+      "dist/bin/**/*",
       "assets/**/*",
       "package.json"
     ],
@@ -76,13 +78,13 @@
     "cross-env": "^7.0.3",
     "electron": "^31.7.7",
     "electron-builder": "^26.15.3",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
     "typescript": "^5.5.0",
     "vite": "^5.4.0",
-    "wait-on": "^7.2.0",
-    "ws": "^8.21.3"
+    "wait-on": "^7.2.0"
   },
   "dependencies": {
-    "react": "^18.3.0",
-    "react-dom": "^18.3.0"
+    "ws": "^8.21.3"
   }
 }
