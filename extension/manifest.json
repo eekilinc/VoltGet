@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Flexplorer Yakalayıcı",
-  "version": "1.1.0",
+  "name": "VoltGet Yakalayıcı",
+  "version": "1.2.0",
   "description": "Sayfadaki video/müzik linklerini yakalar ve IDM tarzı video üstü indirme paneli sunar",
   "permissions": ["webRequest", "storage", "tabs", "scripting", "cookies", "downloads", "contextMenus", "nativeMessaging"],
   "host_permissions": ["<all_urls>"],
@@ -9,6 +9,6 @@
   "content_scripts": [
     { "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_idle", "all_frames": true }
   ],
-  "action": { "default_title": "Flexplorer Yakalayıcı", "default_popup": "popup.html" },
-  "icons": { "16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png", "128": "icon.png" }
+  "action": { "default_title": "VoltGet Yakalayıcı", "default_popup": "popup.html" },
+  "icons": { "16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png", "128": "icon-128.png" }
 }

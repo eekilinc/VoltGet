@@ -189,7 +189,7 @@ export default function App() {
     <div style={{ display:'flex', height:'100vh', background:'var(--bg)', color:'var(--text)' }}>
       <div style={{ width:216, background:'var(--panel-3)', borderRight:'1px solid var(--border)', display:'flex', flexDirection:'column', padding:14 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 4px', marginBottom:14 }}>
-          <div className="brand-gradient" style={{ width:36, height:36, borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, color:'#fff', boxShadow:'0 10px 24px color-mix(in srgb, var(--accent-solid) 35%, transparent)' }}>⚡</div>
+          <img src="./assets/icon-48.png" alt="VoltGet" style={{ width:36, height:36, borderRadius:10, objectFit:'contain', boxShadow:'0 6px 18px rgba(14, 165, 233, 0.35)' }} />
           <div>
             <div style={{ fontWeight:900, fontSize:15, letterSpacing:0.2 }}>{t('appName')}</div>
             <div className="text-muted" style={{ fontSize:11 }}>{t('appTagline')}</div>

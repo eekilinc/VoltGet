@@ -10,7 +10,7 @@ function isDirectChunk(url:string){
   return url.includes('googlevideo.com/videoplayback') || url.includes('manifest.googlevideo.com')
 }
 function isHlsMaster(url:string){
-  return url.includes('master.txt') || (url.includes('/hls/') && (url.includes('cdnimages') || url.includes('playmix')))
+  return url.includes('master.txt') || url.includes('.m3u8') || (url.includes('/hls/') && (url.includes('cdnimages') || url.includes('playmix')))
 }
 function isGenericFile(url:string, type?:string){
   return /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(url) ||

@@ -21,14 +21,16 @@
     if (url.length < 20) return false
     if (url.includes('/video/embed/')) return false
     var PAT = /\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a|flac|wav|mov|flv|zip|rar|7z|pdf|exe|msi|apk|dmg|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)(\?|$)/i
-    var CDN = /(playmix\.uno|hls\d*\.|master\.txt|\/hls\/.*\.(m3u8|txt|mp4)|googlevideo|manifest\.googlevideo|tiktokcdn|cdninstagram|fbcdn|twimg|vimeocdn)/i
+    var CDN = /(playmix|cdnimages|hls\d*\.|master\.txt|\/hls\/.*\.(m3u8|txt|mp4)|googlevideo|manifest\.googlevideo|tiktokcdn|cdninstagram|fbcdn|twimg|vimeocdn)/i
     return PAT.test(url) || CDN.test(url)
   }
 
   var reportedMedia = new Set()
+  var lastReportedMediaUrl = ''
   function reportMedia(url, type) {
     if (!url || isChunkOrSegment(url)) return
     var clean = url.split('?')[0]
+    lastReportedMediaUrl = url
     if (reportedMedia.has(clean)) return
     reportedMedia.add(clean)
 
@@ -52,6 +54,17 @@
   // --- 2. IDM Video Üstü İndirme Butonu (Floating Video Bar) ---
   var activeVideoOverlays = new Map() // videoEl -> overlayDiv
 
+  function syncStreamFromBackground() {
+    try {
+      chrome.runtime.sendMessage({ type: 'get_best_stream', pageUrl: location.href }, function (res) {
+        if (chrome.runtime.lastError) return
+        if (res && res.url) {
+          lastReportedMediaUrl = res.url
+        }
+      })
+    } catch (e) {}
+  }
+
   function getTargetUrlForVideo(videoEl) {
     // 1. YouTube, TikTok, Instagram, Twitter gibi sitelerde doğrudan sayfa URL'si en doğru formattır
     var h = location.hostname
@@ -71,10 +84,15 @@
     var sources = videoEl.querySelectorAll('source')
     for (var i = 0; i < sources.length; i++) {
       var s = sources[i].src
-      if (s && !s.startsWith('blob:')) return s
+      if (s && !s.startsWith('blob:') && !s.startsWith('data:')) return s
     }
 
-    // 4. Son çare sayfa URL'si
+    // 4. Blob video için arka plandan yakalanmış gerçek m3u8 / stream URL'si varsa ONU KULLAN!
+    if (lastReportedMediaUrl) {
+      return lastReportedMediaUrl
+    }
+
+    // 5. Son çare sayfa URL'si
     return location.href
   }
 
@@ -291,6 +309,7 @@
       overlay.style.opacity = '1'
       overlay.style.transform = 'translateY(0)'
       clearTimeout(hideTimeout)
+      syncStreamFromBackground()
     }
 
     function scheduleHide() {

@@ -16,9 +16,37 @@ let mainWindow: BrowserWindow | null = null
 let downloadDialogWindow: BrowserWindow | null = null
 let lastDownloadDialogData: any = null
 
+function getAppIconPath(): string | undefined {
+  const isWin = process.platform === 'win32'
+  const iconNames = isWin ? ['icon.ico', 'icon.png', 'icon-256.png'] : ['icon.png', 'icon-256.png']
+  const baseDirs = [
+    path.join(process.cwd(), 'assets'),
+    path.join(__dirname, '../../assets'),
+    path.join(__dirname, '../assets'),
+    path.join(app.getAppPath(), 'assets'),
+    path.join(path.dirname(app.getPath('exe')), 'assets'),
+    path.join(process.resourcesPath, 'assets')
+  ]
+  for (const dir of baseDirs) {
+    for (const name of iconNames) {
+      const p = path.join(dir, name)
+      if (fs.existsSync(p)) return p
+    }
+  }
+  return undefined
+}
+
+function normalizeToMasterPlaylist(url: string): string {
+  if (!url || typeof url !== 'string') return url
+  return url.replace(/\/(?:txt\/)?[a-zA-Z0-9_.-]*sublist[a-zA-Z0-9_.-]*\.(txt|m3u8).*/i, '/master.$1')
+}
+
 function createDownloadDialogWindow(sniffData: any) {
+  if (sniffData && sniffData.url) {
+    sniffData.url = normalizeToMasterPlaylist(sniffData.url)
+  }
   lastDownloadDialogData = sniffData
-  console.log('[Flexplorer] createDownloadDialogWindow called for:', sniffData?.url?.slice(0, 70))
+  console.log('[VoltGet] createDownloadDialogWindow called for:', sniffData?.url?.slice(0, 70))
 
   if (downloadDialogWindow && !downloadDialogWindow.isDestroyed()) {
     if (downloadDialogWindow.isMinimized()) downloadDialogWindow.restore()
@@ -31,6 +59,7 @@ function createDownloadDialogWindow(sniffData: any) {
   let preloadPath = path.join(__dirname, 'preload.cjs')
   if (!fs.existsSync(preloadPath)) preloadPath = path.join(__dirname, 'preload.js')
 
+  const appIcon = getAppIconPath()
   downloadDialogWindow = new BrowserWindow({
     width: 520,
     height: 530,
@@ -38,6 +67,8 @@ function createDownloadDialogWindow(sniffData: any) {
     backgroundColor: '#0f172a',
     alwaysOnTop: true,
     resizable: false,
+    icon: appIcon,
+    title: 'VoltGet - İndirme Başlat',
     webPreferences: {
       preload: preloadPath,
       nodeIntegration: false,
@@ -164,9 +195,9 @@ function loadQueue():any[] {
 function createWindow() {
   let preloadPath = path.join(__dirname, 'preload.cjs')
   if (!fs.existsSync(preloadPath)) preloadPath = path.join(__dirname, 'preload.js')
-  const iconPath = path.join(app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__dirname, '..'), 'assets', 'icon.png')
+  const appIcon = getAppIconPath()
   mainWindow = new BrowserWindow({
-    width: 1220, height: 760, minWidth: 1020, minHeight: 620, backgroundColor: '#0a0a0f', title: 'Flexplorer - İndirme Yöneticisi', icon: fs.existsSync(iconPath)? iconPath: undefined,
+    width: 1220, height: 760, minWidth: 1020, minHeight: 620, backgroundColor: '#0a0a0f', title: 'VoltGet - Ultra Hızlı İndirme Yöneticisi', icon: appIcon,
     webPreferences: { preload: preloadPath, nodeIntegration: false, contextIsolation: true, sandbox: false }, autoHideMenuBar: true,
   })
   if (isDev) {
@@ -263,11 +294,37 @@ function startSniffServer() {
   sniffServer.on('error',(e:any)=> console.error('[sniff server]',e.message))
 }
 
+const recentStreamsByPage = new Map<string, string>()
+
 async function handleIncomingSniff(data: any) {
+  if (data && data.url) {
+    data.url = normalizeToMasterPlaylist(data.url)
+  }
   const sniffId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
   const sniffData = { ...data, sniffId, time: new Date().toLocaleTimeString() }
 
-  // 1. Ana pencere ve açık olan WebSocket istemcilerine gönder (Yakalayıcı listesinde görünsün)
+  // 1. Gerçek medya akışını (m3u8, mpd, master.txt, mp4) hafızaya al
+  if (sniffData.url && (sniffData.url.includes('.m3u8') || sniffData.url.includes('master.txt') || sniffData.url.includes('.mpd') || sniffData.url.includes('/hls/') || sniffData.url.includes('playmix') || sniffData.url.includes('cdnimages'))) {
+    recentStreamsByPage.set('latest', sniffData.url)
+    if (sniffData.pageUrl) {
+      recentStreamsByPage.set(sniffData.pageUrl, sniffData.url)
+      try {
+        const u = new URL(sniffData.pageUrl)
+        const cleanHost = u.hostname.replace(/^www\./i, '').toLowerCase()
+        recentStreamsByPage.set(cleanHost, sniffData.url)
+        recentStreamsByPage.set(u.hostname, sniffData.url)
+      } catch {}
+    }
+    if (sniffData.url) {
+      try {
+        const u = new URL(sniffData.url)
+        const cleanHost = u.hostname.replace(/^www\./i, '').toLowerCase()
+        recentStreamsByPage.set(cleanHost, sniffData.url)
+      } catch {}
+    }
+  }
+
+  // 2. Ana pencere ve açık olan WebSocket istemcilerine gönder (Yakalayıcı listesinde görünsün)
   if (wss) {
     wss.clients.forEach((client: WebSocket) => {
       if (client.readyState === WebSocket.OPEN) {
@@ -279,13 +336,32 @@ async function handleIncomingSniff(data: any) {
     mainWindow.webContents.send('sniffed-url', sniffData)
   }
 
-  // 2. IDM Davranışı: SADECE kullanıcı video üstü butona bastıysa veya dosya indirmesi başlattıysa pencere aç!
-  if (data.userInitiated) {
-    const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(data.url)
-    const initialTitle = data.filename || data.title || data.url.split('/').pop()?.split('?')[0] || 'Video'
+  // 3. IDM Davranışı: Kullanıcı video üstü butona bastıysa VEYA tarayıcıda dosya indirmesi başladıysa pencere aç!
+  if (data.userInitiated || data.isGenericDownload) {
+    // Embed sayfası geldiyse gerçek stream URL'si ile eşle
+    let resolvedUrl = data.url
+    if (resolvedUrl && (resolvedUrl.includes('/embed/') || resolvedUrl.includes('rapidrame_id') || resolvedUrl.includes('iframe'))) {
+      const pageHost = (() => { try { return new URL(data.pageUrl).hostname.replace(/^www\./i, '').toLowerCase() } catch { return '' } })()
+      const urlHost = (() => { try { return new URL(data.url).hostname.replace(/^www\./i, '').toLowerCase() } catch { return '' } })()
+      const matched = recentStreamsByPage.get(data.pageUrl) ||
+                      recentStreamsByPage.get(data.url) ||
+                      (pageHost ? recentStreamsByPage.get(pageHost) : null) ||
+                      (urlHost ? recentStreamsByPage.get(urlHost) : null) ||
+                      recentStreamsByPage.get('latest')
+      if (matched) {
+        console.log('[VoltGet] mapped embed page to real stream:', matched)
+        resolvedUrl = matched
+      }
+    }
+
+    const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(resolvedUrl) ||
+                  /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(data.filename || '') ||
+                  data.isGenericDownload || data.type === 'file'
+
+    const initialTitle = data.filename || data.title || resolvedUrl.split('/').pop()?.split('?')[0] || (isGen ? 'Dosya' : 'Video')
     
-    // ANINDA kullanılabilir varsayılan formatlar (Kullanıcı 1 salise bile beklemeden hemen indirebilir!)
-    const defaultFormats = isGen || data.url.endsWith('.pdf') ? [] : [
+    // ANINDA kullanılabilir varsayılan formatlar
+    const defaultFormats = isGen || resolvedUrl.endsWith('.pdf') ? [] : [
       { id: 'best', resolution: '🎬 En İyi Kalite (Hızlı İndir)', ext: 'mp4', note: 'Otomatik Önerilen' },
       { id: 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best', resolution: '🎬 1080p Full HD', ext: 'mp4', note: 'Yüksek Çözünürlük' },
       { id: 'bestvideo[height<=720]+bestaudio/best[height<=720]/best', resolution: '🎬 720p HD', ext: 'mp4', note: 'Standart HD' },
@@ -295,19 +371,19 @@ async function handleIncomingSniff(data: any) {
 
     const initialData = {
       ...data,
+      url: resolvedUrl,
       formats: defaultFormats,
       selectedFormat: data.asAudio ? 'bestaudio/best' : 'best',
       title: initialTitle,
-      loading: !isGen && !data.url.endsWith('.pdf')
+      loading: !isGen && !resolvedUrl.endsWith('.pdf')
     }
 
-    // ANINDA PENCEREYİ AÇ (Kullanıcı beklemesin, IDM anında açılır!)
+    // ANINDA PENCEREYİ AÇ (IDM gibi doğrudan ekrana fırlatılır!)
     createDownloadDialogWindow(initialData)
 
     // Arka planda kaliteleri analiz et ve pencereye ilet (En fazla 3.5 saniye bekle):
-    if (!isGen && !data.url.endsWith('.pdf')) {
-      const target = (data.url.includes('googlevideo.com') || data.url.includes('youtube.com')) && data.pageUrl ? data.pageUrl : data.url
-      
+    if (!isGen && !resolvedUrl.endsWith('.pdf')) {
+      const target = (resolvedUrl.includes('googlevideo.com') || resolvedUrl.includes('youtube.com')) && data.pageUrl ? data.pageUrl : resolvedUrl
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500))
       
       Promise.race([analyzeUrl(target), timeoutPromise]).then((res: any) => {
@@ -324,7 +400,7 @@ async function handleIncomingSniff(data: any) {
           downloadDialogWindow.webContents.send('show-download-dialog', analyzed)
         }
       }).catch(err => {
-        console.warn('[Flexplorer] analyze warning/timeout, using default formats:', err?.message || err)
+        console.warn('[VoltGet] analyze warning/timeout, using default formats:', err?.message || err)
         const fallback = {
           ...initialData,
           loading: false,
@@ -338,35 +414,14 @@ async function handleIncomingSniff(data: any) {
     }
     return
   }
-
-  // 3. Arka plan otomatik yakalama: ekrana pencere veya modal fırlatma!
-  // Sadece bildirim ayarı açıksa sessizce bildirim göster
-  const notifyKey = notifyKeyFor(data)
-  if (shouldNotifySniff(notifyKey)) {
-    try {
-      const site = (() => {
-        try { return new URL(data.pageUrl).hostname.replace('www.', '') } catch { return data.type || 'media' }
-      })()
-      const n = new Notification({
-        title: `🎯 Flexplorer: ${site} yakalandı`,
-        body: `${data.type} • Tıkla → Yakalayıcı'da gör`,
-        silent: true
-      })
-      n.on('click', () => {
-        if (mainWindow) {
-          mainWindow.show()
-          mainWindow.focus()
-          mainWindow.webContents.send('open-sniff-item', { sniffId, url: data.url, pageUrl: data.pageUrl })
-          mainWindow.webContents.send('switch-to-sniff-tab')
-        }
-      })
-      n.show()
-    } catch {}
-  }
+  // Video arka plan yakalamalarında masaüstüne bildirim atılmaz (Kullanıcı isteği doğrultusunda sessiz çalışır)
 }
 
 app.whenReady().then(() => {
-  app.setName('Flexplorer')
+  app.setName('VoltGet')
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.voltget.app')
+  }
   ensureDir(getDefaultDownloadDir())
   app.setLoginItemSettings({ openAtLogin: !!appConfig.openAtLogin, openAsHidden: appConfig.startMinimized })
   startSniffServer()
@@ -385,30 +440,77 @@ function parseYtDlpJson(out: string): any {
 
 // Standalone analiz fonksiyonu (IPC handler ve sniff server içinden çağrılabilir)
 async function analyzeUrl(url: string): Promise<any> {
-  if(url.includes('hdfilmcehennemi.mobi/video/embed') || url.includes('/video/embed/')){
-    throw new Error(`Bu sayfa analiz edilmez (embed HTML).`)
+  let normUrl = normalizeToMasterPlaylist(url)
+  if (normUrl.includes('/embed/') || normUrl.includes('rapidrame_id') || normUrl.includes('iframe')) {
+    const matched = recentStreamsByPage.get(normUrl) || recentStreamsByPage.get('latest')
+    if (matched) {
+      normUrl = matched
+    } else {
+      throw new Error('Bu sayfa embed oynatıcı HTML sayfasıdır. Lütfen videoyu sayfada oynatıp video üstündeki indirme butonunu kullanın.')
+    }
   }
-  if(url.includes('master.txt') || url.includes('/hls/') && (url.includes('cdnimages') || url.includes('playmix'))){
-    throw new Error(`Bu HLS master linki analiz edilmez — direkt HLS playlist.`)
+
+  if (normUrl.includes('master.txt') || normUrl.includes('.m3u8') || normUrl.includes('/hls/') || normUrl.includes('playmix') || normUrl.includes('cdnimages')) {
+    const fn = normUrl.split('/').slice(-2, -1)[0] || normUrl.split('/').pop()?.split('?')[0] || 'HLS Video Akışı'
+    return {
+      title: fn.replace(/\.mp4$/i, ''),
+      thumbnail: '',
+      duration: 0,
+      uploader: 'HLS Stream',
+      extractor: 'generic:hls',
+      formats: [
+        { id: 'best', resolution: '🎬 En İyi Kalite (Hızlı İndir)', ext: 'mp4', height: 1080, tbr: 0, filesize: 0, note: 'Otomatik Önerilen' },
+        { id: 'bestaudio/best', resolution: '🎵 Sadece Ses (MP3)', ext: 'mp3', height: 0, tbr: 0, filesize: 0, isAudioOnly: true, note: 'Ses Akışı' }
+      ],
+      videoFormats: [{ id: 'best', resolution: '🎬 En İyi Kalite (Hızlı İndir)', ext: 'mp4', height: 1080, note: 'HLS Akışı' }],
+      audioFormats: [{ id: 'bestaudio/best', resolution: '🎵 Sadece Ses (MP3)', ext: 'mp3', height: 0, isAudioOnly: true, note: 'MP3' }]
+    }
   }
-  const ytdlp=findYtDlp(); const args=['--dump-json','--no-playlist','--js-runtimes','node','--no-warnings',url]
-  return new Promise((resolve, reject)=>{
-    const proc=spawn(ytdlp,args,{shell:false,windowsHide:true}); let out='',err=''
-    proc.stdout.on('data',(d:Buffer)=> out+=d.toString('utf-8')); proc.stderr.on('data',(d:Buffer)=> err+=d.toString('utf-8'))
-    proc.on('close',code=>{
-      if(code===0){ try{ resolve(parseInfo(parseYtDlpJson(out))) }catch(e:any){ reject(`JSON parse hatası: ${e.message}\nÇıktı: ${out.slice(0,800)}\nHata: ${err.slice(0,800)}`) } }
-      else {
-        let hint=''
-        if(err.includes('No supported JavaScript runtime')) hint='\nİpucu: deno kurulmadı ama --js-runtimes node eklendi'
-        else if(err.includes('Unsupported URL') && url.includes('hdfilmcehennemi')) hint='\nİpucu: hdfilmcehennemi yt-dlp ile desteklenmiyor — Yakalayıcı ile master.txt yakalayıp Hızlı İndir kullanın'
-        reject(`${err.slice(0,1500)||`yt-dlp çıkış kodu ${code}`}${hint}\nKomut: ${ytdlp} ${args.join(' ')}`)
+  const isDirectFile = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(normUrl)
+  if (isDirectFile) {
+    const fn = normUrl.split('/').pop()?.split('?')[0] || 'İndirilen Dosya'
+    return {
+      title: fn,
+      thumbnail: '',
+      duration: 0,
+      uploader: 'Doğrudan İndirme',
+      extractor: 'http',
+      formats: [
+        { id: 'direct', resolution: 'Dosya İndirme', ext: fn.split('.').pop() || 'bin', height: 0, tbr: 0, filesize: 0, note: '8 Parçalı Hızlı İndirme' }
+      ],
+      videoFormats: [],
+      audioFormats: []
+    }
+  }
+
+  const ytdlp = findYtDlp()
+  const args = [
+    '--dump-json',
+    '--no-playlist',
+    '--js-runtimes', 'node',
+    '--no-warnings',
+    '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    normUrl
+  ]
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ytdlp, args, { shell: false, windowsHide: true })
+    let out = '', err = ''
+    proc.stdout.on('data', (d: Buffer) => out += d.toString('utf-8'))
+    proc.stderr.on('data', (d: Buffer) => err += d.toString('utf-8'))
+    proc.on('close', code => {
+      if (code === 0) {
+        try { resolve(parseInfo(parseYtDlpJson(out))) }
+        catch (e: any) { reject(`JSON parse hatası: ${e.message}\nÇıktı: ${out.slice(0, 800)}\nHata: ${err.slice(0, 800)}`) }
+      } else {
+        reject(`${err.slice(0, 1500) || `yt-dlp çıkış kodu ${code}`}\nKomut: ${ytdlp} ${args.join(' ')}`)
       }
     })
-    proc.on('error',(e:any)=> reject(`yt-dlp çalıştırılamadı: ${e.message}\nYol: ${ytdlp}`))
+    proc.on('error', (e: any) => reject(`yt-dlp çalıştırılamadı: ${e.message}\nYol: ${ytdlp}`))
   })
 }
 
-ipcMain.handle('analyze-url', async (_e, url: string) => {
+ipcMain.handle('analyze-url', async (_e, rawUrl: string) => {
+  const url = normalizeToMasterPlaylist(rawUrl)
   return analyzeUrl(url)
 })
 function parseInfo(info:any){
@@ -465,77 +567,268 @@ function processPending(){
   doStartDownload(next.id, next.opts)
 }
 function doStartDownload(id:string, opts:any){
-  const baseOut = opts.outDir || getDefaultDownloadDir()
-  const outDir = getSiteFolder(baseOut, opts.url)
-  ensureDir(outDir)
-  const ytdlp=findYtDlp()
-  const args:string[]=['--js-runtimes','node','--no-warnings','--concurrent-fragments','16']
-  if(appConfig.speedLimitKB>0) args.push('--limit-rate', `${appConfig.speedLimitKB}K`)
-  if(opts.asAudio){
-    args.push('-x','--audio-format','mp3','--audio-quality','0')
+  let finalUrl = normalizeToMasterPlaylist(opts.url || '')
+  opts.url = finalUrl
+
+  // 1. Embed veya oynatıcı sayfası geldiyse hafızadaki gerçek akış URL'si ile eşle
+  if (finalUrl.includes('/embed/') || finalUrl.includes('rapidrame_id') || finalUrl.includes('iframe')) {
+    const pageHost = (() => { try { return new URL(opts.pageUrl).hostname.replace(/^www\./i, '').toLowerCase() } catch { return '' } })()
+    const urlHost = (() => { try { return new URL(opts.url).hostname.replace(/^www\./i, '').toLowerCase() } catch { return '' } })()
+    const matched = recentStreamsByPage.get(opts.pageUrl) ||
+                    recentStreamsByPage.get(opts.url) ||
+                    (pageHost ? recentStreamsByPage.get(pageHost) : null) ||
+                    (urlHost ? recentStreamsByPage.get(urlHost) : null) ||
+                    recentStreamsByPage.get('latest')
+    if (matched) {
+      console.log('[VoltGet] doStartDownload resolved embed URL to real stream:', matched)
+      finalUrl = matched
+      opts.url = matched
+    }
   }
-  else if(opts.formatId){
+
+  // 2. Normal dosya indirmesi ise doğrudan 8 parçalı yüksek hızlı HTTP indiriciye aktar
+  const isGeneric = opts.isHttp ||
+                    /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(finalUrl) ||
+                    (opts.filename && /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(opts.filename))
+  if (isGeneric) {
+    const baseOut = opts.outDir || getDefaultDownloadDir()
+    const outDir = getSiteFolder(baseOut, finalUrl)
+    ensureDir(outDir)
+    const filename = opts.filename || finalUrl.split('/').pop()?.split('?')[0] || `file_${Date.now()}`
+    const outPath = path.join(outDir, filename)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('download-started', { id, opts: { ...opts, title: filename }, outDir })
+      mainWindow.webContents.send('switch-to-download-tab')
+    }
+    runMultiPartHttpDownload(id, opts, outDir, outPath, filename)
+    return
+  }
+
+  // 3. Medya / Video indirmesi
+  const baseOut = opts.outDir || getDefaultDownloadDir()
+  const outDir = getSiteFolder(baseOut, finalUrl)
+  ensureDir(outDir)
+  const ytdlp = findYtDlp()
+  const isHls = finalUrl.includes('.m3u8') || finalUrl.includes('master.txt') || finalUrl.includes('/hls/') || finalUrl.includes('playmix') || finalUrl.includes('cdnimages')
+
+  const args: string[] = ['--js-runtimes', 'node', '--no-warnings', '--concurrent-fragments', '16']
+  if (appConfig.speedLimitKB > 0) args.push('--limit-rate', `${appConfig.speedLimitKB}K`)
+
+  // HLS URL'den ID çıkar: ...-Pq7eJSHPqS3.mp4 -> Pq7eJSHPqS3 (Sadece hdfilm / cdn siteleri için)
+  let embedId = ''
+  const isHdFilmSite = finalUrl.includes('cdnimages') || finalUrl.includes('playmix') || finalUrl.includes('hdfilmcehennemi') || (opts.pageUrl && opts.pageUrl.includes('hdfilmcehennemi'))
+  if (isHdFilmSite) {
+    try { const m = finalUrl.match(/-([A-Za-z0-9]{8,12})\.mp4/); if (m) embedId = m[1] } catch {}
+  }
+
+  const isVideoPlatform = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|reddit\.com|twitch\.tv|vimeo\.com|soundcloud\.com/i.test(finalUrl) ||
+                          (opts.pageUrl && /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|reddit\.com|twitch\.tv|vimeo\.com|soundcloud\.com/i.test(opts.pageUrl))
+
+  if (isHls) {
+    args.push('--extractor-args', 'generic:variant_query', '--extractor-args', 'generic:fragment_query', '--hls-use-mpegts')
+    if (isHdFilmSite && embedId) {
+      args.push('--add-header', `Referer:https://hdfilmcehennemi.mobi/video/embed/${embedId}/`)
+      args.push('--add-header', 'Origin:https://hdfilmcehennemi.mobi')
+    } else if (opts.pageUrl && !isVideoPlatform) {
+      try {
+        args.push('--add-header', `Referer:${opts.pageUrl}`)
+        args.push('--add-header', `Origin:${new URL(opts.pageUrl).origin}`)
+      } catch {}
+    }
+    args.push('--downloader', 'm3u8:native', '-N', '8')
+  } else if (opts.pageUrl && !isVideoPlatform) {
+    try {
+      args.push('--add-header', `Referer:${opts.pageUrl}`)
+      args.push('--add-header', `Origin:${new URL(opts.pageUrl).origin}`)
+    } catch {}
+  }
+
+  args.push('--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+  if (opts.cookie) {
+    args.push('--add-header', `Cookie:${opts.cookie}`)
+  }
+
+  if (opts.asAudio) {
+    args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0')
+  } else if (opts.formatId && opts.formatId !== 'best' && opts.formatId !== 'direct') {
     const isAudio = opts.isAudioOnly || opts.formatId.includes('audio')
     if (isAudio) {
       args.push('-f', opts.formatId)
-    } else if (opts.formatId === 'best') {
-      args.push('-f', 'bv*+ba/b')
     } else if (opts.formatId.includes('+') || opts.formatId.includes('/')) {
       args.push('-f', opts.formatId)
     } else {
       args.push('-f', `${opts.formatId}+bestaudio/best`)
     }
-    args.push('--merge-output-format','mp4')
+    args.push('--merge-output-format', 'mp4')
+  } else {
+    // Hem HLS hem standart videolar (YouTube, Twitter, Instagram, TikTok, Reddit vs.) için en iyi video + ses:
+    args.push('-f', 'bv*+ba/b')
+    args.push('--merge-output-format', 'mp4')
   }
-  else {
-    args.push('-f','bv*+ba/b')
-    args.push('--merge-output-format','mp4')
+
+  let filename = opts.filename
+  if (!filename && opts.title && opts.title !== 'Video' && opts.title !== 'Dosya') {
+    const cleanTitle = opts.title.replace(/[\\/:*?"<>|]/g, '_').trim()
+    if (cleanTitle) {
+      filename = `${cleanTitle}.%(ext)s`
+    }
   }
-  const tmpl = opts.filename || appConfig.filenameTemplate || '%(title)s.%(ext)s'
-  const outTemplate = path.join(outDir, tmpl)
-  args.push('-o', outTemplate, '--no-playlist','--newline','--progress', '--continue')
-  if(ffmpegPath!=='ffmpeg') args.push('--ffmpeg-location', ffmpegPath)
-  args.push(opts.url)
-  console.log('[Flexplorer] starting download process:', id, ytdlp, args.join(' '))
-  const proc=spawn(ytdlp,args,{shell:false})
+  const tmpl = filename || appConfig.filenameTemplate || '%(title)s.%(ext)s'
+  const tempDir = path.join(outDir, '.voltget_tmp')
+  ensureDir(tempDir)
+  args.push('-P', `temp:${tempDir}`, '-P', `home:${outDir}`)
+  args.push('-o', tmpl, '--no-playlist', '--newline', '--progress', '--continue')
+  if (ffmpegPath !== 'ffmpeg') args.push('--ffmpeg-location', ffmpegPath)
+  args.push(finalUrl)
+
+  console.log('[VoltGet] starting download process:', id, ytdlp, args.join(' '))
+  const proc = spawn(ytdlp, args, { shell: false })
   activeDownloads.set(id, proc)
-  activeOpts.set(id, opts)
-  // persist queue & notify UI
-  if(mainWindow && !mainWindow.isDestroyed()){
-    if(mainWindow.isMinimized()) mainWindow.restore()
+  activeOpts.set(id, { ...opts, url: finalUrl })
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
     mainWindow.focus()
-    mainWindow.webContents.send('download-started', { id, opts, outDir })
+    mainWindow.webContents.send('download-started', { id, opts: { ...opts, url: finalUrl }, outDir })
     mainWindow.webContents.send('switch-to-download-tab')
   }
-  proc.stdout.on('data',(d:Buffer)=>{
-    const text=d.toString()
-    const m=text.match(/\[download\]\s+(\d+\.?\d*)%.*?of\s+([^\s]+).*?at\s+([^\s]+).*?ETA\s+([^\s]+)/)
-    if(m && mainWindow) mainWindow.webContents.send('download-progress',{id,percent:parseFloat(m[1]),total:m[2],speed:m[3],eta:m[4],raw:text.trim().slice(0,200)})
-    else if(mainWindow && (text.includes('[download]')||text.includes('[ExtractAudio]')||text.includes('[Merger]'))) mainWindow.webContents.send('download-log',{id,text:text.trim().slice(0,300)})
+
+  proc.stdout.on('data', (d: Buffer) => {
+    const text = d.toString()
+    const m = text.match(/\[download\]\s+(\d+\.?\d*)%\s+of\s+(?:~\s*)?([^\s]+)(?:\s+at\s+([^\s]+))?(?:\s+ETA\s+([^\s]+))?/)
+    if (m && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('download-progress', {
+        id,
+        percent: parseFloat(m[1]),
+        total: m[2] || '',
+        speed: m[3] || '',
+        eta: m[4] || '',
+        raw: text.trim().slice(0, 200)
+      })
+    } else if (mainWindow && !mainWindow.isDestroyed() && (text.includes('[download]') || text.includes('[ExtractAudio]') || text.includes('[Merger]'))) {
+      mainWindow.webContents.send('download-log', { id, text: text.trim().slice(0, 300) })
+    }
   })
-  proc.stderr.on('data',(d:Buffer)=>{
+
+  proc.stderr.on('data', (d: Buffer) => {
     const errText = d.toString()
     console.error('[yt-dlp error output]:', errText.slice(0, 300))
-    if(mainWindow) mainWindow.webContents.send('download-log',{id,text:errText.trim().slice(0,400)})
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('download-log', { id, text: errText.trim().slice(0, 400) })
   })
-  proc.on('close',(code)=>{
+
+  proc.on('close', (code) => {
     activeDownloads.delete(id)
     activeOpts.delete(id)
-    if(pausingIds.has(id)){
+    if (pausingIds.has(id)) {
       pausingIds.delete(id)
       processPending()
       return
     }
-    if(mainWindow) mainWindow.webContents.send('download-done',{id,code,outDir})
-    // notification
-    try{
-      if(code===0) new Notification({ title:'İndirme tamamlandı', body: (opts.title||opts.url).slice(0,60)}).show()
-      else new Notification({ title:'İndirme hatası', body: `Kod ${code} • ${opts.url.slice(0,40)}`}).show()
-    }catch{}
+
+    // Geçici voltget klasörünü temizle
+    try {
+      if (fs.existsSync(tempDir)) {
+        const remaining = fs.readdirSync(tempDir)
+        if (remaining.length === 0) fs.rmdirSync(tempDir)
+      }
+    } catch {}
+
+    // Eğer yt-dlp hata verdiyse ve HLS / doğrudan akış ise otomatik FFmpeg fallback çalıştır!
+    if (code !== 0 && isHls) {
+      console.log('[VoltGet] yt-dlp exited with code', code, 'triggering ffmpeg fallback for HLS:', finalUrl)
+      let ffHeaders = 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n'
+      if (embedId) {
+        ffHeaders += `Referer: https://hdfilmcehennemi.mobi/video/embed/${embedId}/\r\nOrigin: https://hdfilmcehennemi.mobi\r\n`
+      } else if (opts.pageUrl && !isVideoPlatform) {
+        try { ffHeaders += `Referer: ${opts.pageUrl}\r\nOrigin: ${new URL(opts.pageUrl).origin}\r\n` } catch {}
+      }
+      if (opts.cookie) ffHeaders += `Cookie: ${opts.cookie}\r\n`
+
+      const rawFileName = opts.filename || (opts.title ? `${opts.title.replace(/[\\/:*?"<>|]/g, '_')}.mp4` : `video_${Date.now()}.mp4`)
+      const actualOut = path.join(outDir, rawFileName)
+      const tempOut = path.join(tempDir, `ff_${id}_${rawFileName}`)
+      const ffArgs = [
+        '-headers', ffHeaders,
+        '-allowed_segment_extensions', 'ALL',
+        '-allowed_extensions', 'ALL',
+        '-extension_picky', '0',
+        '-reconnect', '1',
+        '-reconnect_at_eof', '1',
+        '-reconnect_streamed', '1',
+        '-reconnect_delay_max', '5',
+        '-i', finalUrl,
+        '-c', 'copy',
+        '-bsf:a', 'aac_adtstoasc',
+        tempOut
+      ]
+      
+      console.log('[VoltGet ffmpeg fallback]', ffArgs.join(' ').slice(0, 300))
+      const ffProc = spawn(ffmpegPath, ffArgs)
+      activeDownloads.set(id, ffProc)
+
+      ffProc.stderr.on('data', (d: Buffer) => {
+        const t = d.toString()
+        const tm = t.match(/time=(\d{2}:\d{2}:\d{2}\.\d+)\s+bitrate=\s*([^\s]+)\s+speed=\s*([^\s]+)/)
+        if (tm && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('download-progress', {
+            id,
+            percent: 50,
+            total: 'HLS Akışı',
+            speed: tm[3] || '',
+            eta: tm[1] || '',
+            raw: `FFmpeg indiriyor: ${tm[1]} (${tm[3]})`
+          })
+        } else if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('download-log', { id, text: '[ffmpeg] ' + t.trim().slice(0, 400) })
+        }
+      })
+
+      ffProc.on('close', (ffCode) => {
+        activeDownloads.delete(id)
+        if (ffCode === 0 && fs.existsSync(tempOut)) {
+          try {
+            fs.renameSync(tempOut, actualOut)
+          } catch {
+            try { fs.copyFileSync(tempOut, actualOut); fs.unlinkSync(tempOut) } catch {}
+          }
+        } else {
+          try { fs.unlinkSync(tempOut) } catch {}
+        }
+        try {
+          if (fs.existsSync(tempDir) && fs.readdirSync(tempDir).length === 0) fs.rmdirSync(tempDir)
+        } catch {}
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('download-done', { id, code: ffCode, outDir })
+        try {
+          if (ffCode === 0) new Notification({ title: 'İndirme tamamlandı (VoltGet)', body: (opts.title || finalUrl).slice(0, 60) }).show()
+          else new Notification({ title: 'İndirme hatası', body: `FFmpeg Hata Kodu ${ffCode}` }).show()
+        } catch {}
+        processPending()
+      })
+
+      ffProc.on('error', (e: any) => {
+        activeDownloads.delete(id)
+        try { fs.unlinkSync(tempOut) } catch {}
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('download-error', { id, error: String(e) })
+        processPending()
+      })
+      return
+    }
+
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('download-done', { id, code, outDir })
+    try {
+      if (code === 0) new Notification({ title: 'İndirme tamamlandı (VoltGet)', body: (opts.title || finalUrl).slice(0, 60) }).show()
+      else new Notification({ title: 'İndirme hatası', body: `Kod ${code} • ${finalUrl.slice(0, 40)}` }).show()
+    } catch {}
     processPending()
   })
-  proc.on('error',(e:any)=>{ activeDownloads.delete(id); activeOpts.delete(id); if(mainWindow) mainWindow.webContents.send('download-error',{id,error:String(e)}); processPending() })
+
+  proc.on('error', (e: any) => {
+    activeDownloads.delete(id)
+    activeOpts.delete(id)
+    if (mainWindow) mainWindow.webContents.send('download-error', { id, error: String(e) })
+    processPending()
+  })
 }
 
 ipcMain.handle('start-download', async (_e, opts:any)=>{
@@ -610,19 +903,33 @@ ipcMain.handle('select-folder', async ()=>{ const r=await dialog.showOpenDialog(
 ipcMain.handle('open-folder', async (_e, dir:string)=>{ shell.openPath(dir||getDefaultDownloadDir()) })
 ipcMain.handle('get-default-dir', async ()=> getDefaultDownloadDir())
 
+function isTemporaryOrPartialFile(name: string): boolean {
+  if (!name || typeof name !== 'string') return true
+  if (name.startsWith('.') || name.startsWith('~')) return true
+  // Geçici veya indirme parçaları uzantıları (.part, .ytdl, .tmp, .temp, .crdownload vb.)
+  if (/\.(part|ytdl|tmp|temp|crdownload|download)$/i.test(name)) return true
+  // yt-dlp ara akış veya birleştirilmemiş parçalar: film.f2708.mp4, film.f137.mp4, film.fgroup_closedual-Turkish.mp4, film.temp.mp4
+  if (/\.(f[0-9a-zA-Z_.-]+|temp)\.(mp4|m4a|webm|mkv|aac|ts|m4v)$/i.test(name)) return true
+  // Fragman veya parça dosyaları: part-Frag1, part_0, etc.
+  if (/part[-_]?(?:frag)?[0-9]+/i.test(name)) return true
+  return false
+}
+
 function scanDownloadedFiles(dir: string, baseDir: string): any[] {
   if (!fs.existsSync(dir)) return []
   const results: any[] = []
   try {
     const entries = fs.readdirSync(dir, { withFileTypes: true })
     for (const entry of entries) {
-      if (entry.name.startsWith('.') || entry.name.startsWith('.tmp_')) continue
+      if (entry.name.startsWith('.') || entry.name.startsWith('.tmp') || entry.name.startsWith('.voltget_')) continue
       const fullPath = path.join(dir, entry.name)
       if (entry.isDirectory()) {
         results.push(...scanDownloadedFiles(fullPath, baseDir))
       } else if (entry.isFile()) {
+        if (isTemporaryOrPartialFile(entry.name)) continue
         try {
           const stat = fs.statSync(fullPath)
+          if (stat.size === 0) continue // 0 baytlık boş/henüz yazılmamış dosyaları gösterme
           const ext = path.extname(entry.name).slice(1).toLowerCase()
           const relative = path.relative(baseDir, fullPath)
           const folder = path.dirname(relative) === '.' ? 'Ana Klasör' : path.dirname(relative)
@@ -716,7 +1023,7 @@ ipcMain.handle('download-yt-dlp', async ()=>{
   const binDir=path.dirname(ytDlpPath); ensureDir(binDir)
   const url=process.platform==='win32'?'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe':'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp'
   return new Promise((resolve,reject)=>{
-    const https=require('https'); const file=fs.createWriteStream(ytDlpPath)
+    const file=fs.createWriteStream(ytDlpPath)
     https.get(url,(res:any)=>{
       if(res.statusCode===302||res.statusCode===301){ https.get(res.headers.location,(r2:any)=>{ r2.pipe(file); r2.on('end',()=>{ file.close(); if(process.platform!=='win32') fs.chmodSync(ytDlpPath,0o755); resolve(ytDlpPath)})}).on('error',reject)}
       else { res.pipe(file); res.on('end',()=>{ file.close(); if(process.platform!=='win32') fs.chmodSync(ytDlpPath,0o755); resolve(ytDlpPath)})}
@@ -724,84 +1031,23 @@ ipcMain.handle('download-yt-dlp', async ()=>{
   })
 })
 ipcMain.handle('sniffed-url', async (_e, data:any)=>{ if(mainWindow) mainWindow.webContents.send('sniffed-url', data); return true })
-ipcMain.handle('direct-download', async (_e, opts:any)=>{
-  const outDir=getSiteFolder(opts.outDir||getDefaultDownloadDir(), opts.url); ensureDir(outDir)
-  const filename=opts.filename||`video_${Date.now()}.mp4`; const outPath=path.join(outDir, filename)
-  const ytdlp=findYtDlp(); const id=Date.now().toString(36)
-  if(!canStart()){
-    pendingQueue.push({id, opts:{...opts, url:opts.url, outDir: outDir, filename}});
-    if(mainWindow) {
-      mainWindow.webContents.send('download-queued',{id, opts});
-      mainWindow.webContents.send('switch-to-download-tab');
+ipcMain.handle('direct-download', async (_e, opts: any) => {
+  if (!opts?.url) throw new Error('URL eksik')
+  opts.url = normalizeToMasterPlaylist(opts.url)
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+  if (!canStart()) {
+    pendingQueue.push({ id, opts })
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('download-queued', { id, opts, position: pendingQueue.length })
+      mainWindow.webContents.send('switch-to-download-tab')
     }
-    return {id, queued:true}
+    return { id, queued: true, position: pendingQueue.length }
   }
-  if(mainWindow) mainWindow.webContents.send('switch-to-download-tab')
-  const args:string[]=['--js-runtimes','node','--no-warnings',
-    '--extractor-args','generic:variant_query','--extractor-args','generic:fragment_query','--hls-use-mpegts','--concurrent-fragments','16','--extractor-args','generic:impersonate=chrome']
-  if(appConfig.speedLimitKB>0) args.push('--limit-rate', `${appConfig.speedLimitKB}K`)
-  const headers:string[]=[]
-  // HLS URL'den ID çıkar: ...-Pq7eJSHPqS3.mp4 -> Pq7eJSHPqS3
-  let embedId = ''
-  try{ const m=opts.url.match(/-([A-Za-z0-9]{8,12})\.mp4/); if(m) embedId=m[1] }catch{}
-  // HLS için tek doğru Referer: embed ID'li olan — çoklu Referer 404 yapıyor
-  const isHlsUrl = opts.url.includes('cdnimages') || opts.url.includes('playmix') || opts.url.includes('master.txt') || opts.url.includes('/hls/')
-  if(isHlsUrl && embedId){
-    headers.push(`Referer:https://hdfilmcehennemi.mobi/video/embed/${embedId}/`)
-    headers.push(`Origin:https://hdfilmcehennemi.mobi`)
-  } else if(opts.pageUrl){
-    try{ headers.push(`Referer:${opts.pageUrl}`); headers.push(`Origin:${new URL(opts.pageUrl).origin}`) }catch{}
-  } else if(embedId){
-    headers.push(`Referer:https://hdfilmcehennemi.mobi/video/embed/${embedId}/`)
+  doStartDownload(id, opts)
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('switch-to-download-tab')
   }
-  if(opts.cookie) headers.push(`Cookie:${opts.cookie}`)
-  headers.forEach(h=> { args.push('--add-header', h) })
-  args.push('--add-header','User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-  if(!opts.cookie) args.push('--cookies-from-browser','chrome')
-  if(opts.url.includes('master.txt') || opts.url.includes('/hls/') || opts.url.includes('cdnimages')) args.push('--hls-use-mpegts')
-  args.push('-o', outPath, '--continue', opts.url)
-  console.log('[direct-download]', ytdlp, args.join(' '))
-  const proc=spawn(ytdlp, args)
-  activeDownloads.set(id, proc)
-  activeOpts.set(id, opts)
-  proc.stdout.on('data',(d:Buffer)=>{ const t=d.toString(); if(t.includes('[download]') && mainWindow) mainWindow.webContents.send('download-log',{id,text:t.trim().slice(0,400)}) })
-  proc.stderr.on('data',(d:Buffer)=>{ const txt=d.toString(); if(mainWindow) mainWindow.webContents.send('download-log',{id,text:txt.trim().slice(0,500)}); console.error('[yt-dlp]', txt.slice(0,500)) })
-  proc.on('close',code=>{
-    activeDownloads.delete(id)
-    activeOpts.delete(id)
-    if(pausingIds.has(id)){ pausingIds.delete(id); processPending(); return }
-    const isHls = opts.url.includes('master.txt') || opts.url.includes('/hls/') || opts.url.includes('playmix') || opts.url.includes('cdnimages')
-    if(code!==0 && isHls){
-      console.log('[direct-download] yt-dlp failed code',code,'try ffmpeg fallback for HLS')
-      let ffHeaders = `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n`
-      let eid=''; try{ const mm=opts.url.match(/-([A-Za-z0-9]{8,12})\.mp4/); if(mm) eid=mm[1] }catch{}
-      const isHls2 = opts.url.includes('cdnimages') || opts.url.includes('playmix') || opts.url.includes('master.txt')
-      if(isHls2 && eid) ffHeaders+=`Referer: https://hdfilmcehennemi.mobi/video/embed/${eid}/\r\nOrigin: https://hdfilmcehennemi.mobi\r\n`
-      else if(opts.pageUrl){ try{ ffHeaders+=`Referer: ${opts.pageUrl}\r\nOrigin: ${new URL(opts.pageUrl).origin}\r\n` }catch{} }
-      else if(eid) ffHeaders+=`Referer: https://hdfilmcehennemi.mobi/video/embed/${eid}/\r\n`
-      if(opts.cookie) ffHeaders+=`Cookie: ${opts.cookie}\r\n`
-      const ffArgs=['-headers', ffHeaders, '-i', opts.url, '-c','copy', '-bsf:a','aac_adtstoasc', outPath]
-      console.log('[ffmpeg fallback]', ffArgs.join(' ').slice(0,300))
-      const ffProc=spawn('ffmpeg', ffArgs)
-      activeDownloads.set(id+'_ff', ffProc)
-      ffProc.stderr.on('data',(d:Buffer)=>{ const t=d.toString(); if(mainWindow) mainWindow.webContents.send('download-log',{id,text:'[ffmpeg] '+t.trim().slice(0,500)}); console.log('[ffmpeg]',t.slice(0,500)) })
-      ffProc.on('close',ffCode=>{
-        activeDownloads.delete(id+'_ff')
-        if(mainWindow) mainWindow.webContents.send('download-done',{id,code:ffCode,outDir})
-        try{ new Notification({title: ffCode===0?'İndirme bitti (ffmpeg)':'Hata', body: opts.url.slice(0,50)}).show()}catch{}
-        if(ffCode!==0 && mainWindow) mainWindow.webContents.send('download-log',{id,text:`[ffmpeg] HATA ${ffCode} — Cookie/CF gerekli olabilir. Chrome'da videoyu tekrar oynatıp hemen indirin, veya Ayarlar'da çerez iznini kontrol edin.`})
-        processPending()
-      })
-      ffProc.on('error',(e:any)=>{ activeDownloads.delete(id+'_ff'); if(mainWindow) mainWindow.webContents.send('download-error',{id,error:String(e)}); processPending() })
-      return
-    }
-    if(mainWindow) mainWindow.webContents.send('download-done',{id,code,outDir})
-    try{ new Notification({title: code===0?'İndirme bitti':'Hata', body: opts.url.slice(0,50)}).show()}catch{}
-    if(code!==0 && mainWindow) mainWindow.webContents.send('download-log',{id,text:`HATA: ${code} - Cookie/Referer/expire. Videoyu tekrar oynatıp taze yakalayın, Hızlı İndir'e hemen basın.`})
-    processPending()
-  })
-  proc.on('error',(e:any)=>{ activeDownloads.delete(id); activeOpts.delete(id); if(mainWindow) mainWindow.webContents.send('download-error',{id,error:String(e)}); processPending() })
-  return {id, outPath}
+  return { id, outDir: getSiteFolder(opts.outDir || getDefaultDownloadDir(), opts.url) }
 })
 ipcMain.handle('get-queue', async ()=> loadQueue())
 ipcMain.handle('save-queue', async (_e, jobs:any[])=> saveQueue(jobs))
@@ -962,8 +1208,9 @@ async function runMultiPartHttpDownload(id:string, opts:any, outDir:string, outP
       return
     }
 
-    // Parçaları birleştir
-    const finalStream = fs.createWriteStream(outPath)
+    // Parçaları birleştir: Birleştirme tempDir içinde tamamlandıktan sonra asıl hedefe taşınır!
+    const tempMergedPath = path.join(tempDir, `merged_${id}`)
+    const finalStream = fs.createWriteStream(tempMergedPath)
     for (let i = 0; i < partsCount; i++) {
       const partFile = path.join(tempDir, `part_${i}`)
       if (fs.existsSync(partFile)) {
@@ -972,6 +1219,12 @@ async function runMultiPartHttpDownload(id:string, opts:any, outDir:string, outP
       }
     }
     finalStream.end()
+    await new Promise<void>((res) => finalStream.on('finish', () => res()))
+    try {
+      fs.renameSync(tempMergedPath, outPath)
+    } catch {
+      try { fs.copyFileSync(tempMergedPath, outPath); fs.unlinkSync(tempMergedPath) } catch {}
+    }
 
     // Geçici klasörü temizle
     try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch {}
@@ -980,7 +1233,7 @@ async function runMultiPartHttpDownload(id:string, opts:any, outDir:string, outP
     activeOpts.delete(id)
 
     if (mainWindow) mainWindow.webContents.send('download-done', { id, code: 0, outDir })
-    try { new Notification({ title: 'Flexplorer: İndirme bitti (8 Parça)', body: filename.slice(0, 50) }).show() } catch {}
+    try { new Notification({ title: 'VoltGet: İndirme bitti (8 Parça)', body: filename.slice(0, 50) }).show() } catch {}
     processPending()
 
   } catch (err: any) {
@@ -997,7 +1250,8 @@ async function runMultiPartHttpDownload(id:string, opts:any, outDir:string, outP
 }
 
 function runHttpDownload(id:string, opts:any, outDir:string, outPath:string, filename:string){
-  const file = fs.createWriteStream(outPath)
+  const tempOutPath = outPath + '.part'
+  const file = fs.createWriteStream(tempOutPath)
   const protocol = opts.url.startsWith('https') ? https : http
   const startTime = Date.now()
   const req = protocol.get(opts.url, { 
@@ -1007,13 +1261,13 @@ function runHttpDownload(id:string, opts:any, outDir:string, outPath:string, fil
     } 
   }, (res:any)=>{
     if(res.statusCode===301||res.statusCode===302||res.statusCode===303||res.statusCode===307){
-      file.close(); fs.unlink(outPath, ()=>{})
+      file.close(); fs.unlink(tempOutPath, ()=>{})
       const nextOpts = { ...opts, url: res.headers.location }
       runHttpDownload(id, nextOpts, outDir, outPath, filename)
       return
     }
     if (res.statusCode >= 400) {
-      file.destroy(); fs.unlink(outPath, ()=>{}); activeDownloads.delete(id); activeOpts.delete(id)
+      file.destroy(); fs.unlink(tempOutPath, ()=>{}); activeDownloads.delete(id); activeOpts.delete(id)
       if(mainWindow) mainWindow.webContents.send('download-error', {id, error: `HTTP ${res.statusCode}: ${res.statusMessage}`})
       processPending()
       return
@@ -1028,17 +1282,23 @@ function runHttpDownload(id:string, opts:any, outDir:string, outPath:string, fil
     })
     res.pipe(file)
   }).on('error', (e:any)=>{
-    file.destroy(); fs.unlink(outPath, ()=>{}); activeDownloads.delete(id); activeOpts.delete(id)
+    file.destroy(); fs.unlink(tempOutPath, ()=>{}); activeDownloads.delete(id); activeOpts.delete(id)
     if(mainWindow) mainWindow.webContents.send('download-error', {id, error: String(e)})
     processPending()
   })
-  activeDownloads.set(id, { kill: ()=> req.destroy() })
+  activeDownloads.set(id, { kill: ()=> { req.destroy(); try { fs.unlinkSync(tempOutPath) } catch {} } })
   activeOpts.set(id, { ...opts, isHttp: true, outDir, outPath, filename })
   file.on('finish', ()=>{
-    file.close(); activeDownloads.delete(id); activeOpts.delete(id)
+    file.close()
+    try {
+      fs.renameSync(tempOutPath, outPath)
+    } catch {
+      try { fs.copyFileSync(tempOutPath, outPath); fs.unlinkSync(tempOutPath) } catch {}
+    }
+    activeDownloads.delete(id); activeOpts.delete(id)
     if(pausingIds.has(id)){ pausingIds.delete(id); processPending(); return }
     if(mainWindow) mainWindow.webContents.send('download-done', {id, code:0, outDir})
-    try{ new Notification({title: 'Flexplorer: İndirme bitti', body: filename.slice(0,50)}).show()}catch{}
+    try{ new Notification({title: 'VoltGet: İndirme bitti', body: filename.slice(0,50)}).show()}catch{}
     processPending()
   })
 }

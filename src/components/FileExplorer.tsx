@@ -29,6 +29,15 @@ function formatDate(ms: number): string {
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+function isTemporaryOrPartialFile(name: string): boolean {
+  if (!name || typeof name !== 'string') return true
+  if (name.startsWith('.') || name.startsWith('~')) return true
+  if (/\.(part|ytdl|tmp|temp|crdownload|download)$/i.test(name)) return true
+  if (/\.(f[0-9a-zA-Z_.-]+|temp)\.(mp4|m4a|webm|mkv|aac|ts|m4v)$/i.test(name)) return true
+  if (/part[-_]?(?:frag)?[0-9]+/i.test(name)) return true
+  return false
+}
+
 export default function FileExplorer() {
   const { t } = useAppSettings()
   const toast = useToast()
@@ -48,7 +57,7 @@ export default function FileExplorer() {
       const defaultDir = await window.api.getDefaultDir()
       setDir(defaultDir)
       const list = await window.api.listFiles(defaultDir)
-      setFiles(list || [])
+      setFiles((list || []).filter((f: DownloadedFile) => !isTemporaryOrPartialFile(f.name)))
     } catch (err: any) {
       toast.error('Dosyalar yüklenirken hata oluştu: ' + err.message)
     } finally {
@@ -58,6 +67,12 @@ export default function FileExplorer() {
 
   useEffect(() => {
     loadFiles()
+    const cleanup = window.api?.onDone?.(() => {
+      loadFiles()
+    })
+    return () => {
+      if (typeof cleanup === 'function') cleanup()
+    }
   }, [])
 
   const categoryIcons: Record<string, string> = {
@@ -73,6 +88,7 @@ export default function FileExplorer() {
   const filteredFiles = useMemo(() => {
     return files
       .filter(f => {
+        if (isTemporaryOrPartialFile(f.name)) return false
         if (category !== 'all' && f.category !== category) return false
         if (search.trim()) {
           const q = search.toLowerCase()

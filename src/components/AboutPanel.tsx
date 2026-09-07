@@ -5,7 +5,7 @@ export default function AboutPanel(){
   return (
     <div style={{ flex:1, padding:18, overflow:'auto', display:'flex', flexDirection:'column', gap:14 }}>
       <div className="card-premium glow-accent" style={{ borderRadius:20, padding:24, textAlign:'center' }}>
-        <div className="brand-gradient" style={{ width:78, height:78, margin:'0 auto', borderRadius:20, display:'flex', alignItems:'center', justifyContent:'center', fontSize:36, color:'#fff' }}>⚡</div>
+        <img src="./assets/icon-128.png" alt="VoltGet" style={{ width:78, height:78, margin:'0 auto', borderRadius:20, objectFit:'contain', boxShadow:'0 12px 32px rgba(14, 165, 233, 0.45)' }} />
         <div style={{ fontWeight:900, fontSize:22, marginTop:14 }}>{t('appName')}</div>
         <div className="text-muted" style={{ fontSize:12 }}>{t('appTagline')}</div>
         <div style={{ display:'inline-block', marginTop:10, fontSize:11, background:'var(--panel-2)', border:'1px solid var(--border)', padding:'5px 12px', borderRadius:20 }}>v1.1 • {t('idmAlt')}</div>

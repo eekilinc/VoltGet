@@ -9,6 +9,11 @@ const DEFAULT_VIDEO_FORMATS = [
   { id: 'bestvideo[height<=480]+bestaudio/best[height<=480]/best', resolution: '🎬 480p SD', ext: 'mp4', note: 'Hızlı İndirme' },
 ]
 
+function normalizeToMasterPlaylist(url: string): string {
+  if (!url || typeof url !== 'string') return url
+  return url.replace(/\/(?:txt\/)?[a-zA-Z0-9_.-]*sublist[a-zA-Z0-9_.-]*\.(txt|m3u8).*/i, '/master.$1')
+}
+
 function DialogApp() {
   const [data, setData] = useState<any>(null)
   const [formats, setFormats] = useState<any[]>(DEFAULT_VIDEO_FORMATS)
@@ -20,7 +25,7 @@ function DialogApp() {
 
   const applyData = (d: any) => {
     if (!d) return
-    const rawUrl = d.url || ''
+    const rawUrl = normalizeToMasterPlaylist(d.url || '')
     const pageUrl = d.pageUrl || rawUrl
     const isVideoSite = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(pageUrl)
     const targetUrl = isVideoSite ? pageUrl : rawUrl
@@ -82,26 +87,27 @@ function DialogApp() {
     setStarting(true)
 
     try {
-      const rawUrl = data.url || ''
+      const rawUrl = normalizeToMasterPlaylist(data.url || '')
       const pageUrl = data.pageUrl || rawUrl
       const isVideoSite = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(pageUrl)
       const targetUrl = isVideoSite ? pageUrl : (rawUrl || pageUrl)
-      const title = data.title || data.filename || 'Video'
-      const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(rawUrl)
+      const title = data.title || data.filename || 'Dosya'
+      const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(rawUrl) ||
+                    /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(data.filename || '') ||
+                    data.isGenericDownload || data.type === 'file'
       const isHls = rawUrl.includes('master.txt') || rawUrl.includes('.m3u8') || rawUrl.includes('playmix') || rawUrl.includes('cdnimages')
 
       console.log('[download-dialog] handleStart:', { targetUrl, rawUrl, pageUrl, isAudioMode, selectedFormat, isGen, isHls })
 
+      const cookie = data.cookie || ''
       if (isGen || rawUrl.endsWith('.pdf')) {
-        await window.api.httpDownload({ url: rawUrl, outDir, filename: data.filename || title })
-      } else if (isHls && !isVideoSite) {
-        await window.api.directDownload({ url: rawUrl, outDir, pageUrl, title })
+        await window.api.httpDownload({ url: rawUrl, outDir, filename: data.filename || title, cookie })
       } else if (isAudioMode) {
-        await window.api.startDownload({ url: targetUrl, outDir, asAudio: true, title: `[Ses] ${title}` })
-      } else if (selectedFormat) {
-        await window.api.startDownload({ url: targetUrl, outDir, formatId: selectedFormat, title })
+        await window.api.startDownload({ url: targetUrl, outDir, asAudio: true, pageUrl, cookie, title: `[Ses] ${title}` })
+      } else if (selectedFormat && selectedFormat !== 'best') {
+        await window.api.startDownload({ url: targetUrl, outDir, formatId: selectedFormat, pageUrl, cookie, title })
       } else {
-        await window.api.directDownload({ url: targetUrl, outDir, pageUrl, title })
+        await window.api.startDownload({ url: targetUrl, outDir, formatId: 'best', pageUrl, cookie, title })
       }
 
       // Başarılı olduğunda pencereyi kapat
@@ -115,7 +121,9 @@ function DialogApp() {
     }
   }
 
-  const isGenericFile = data?.url && /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(data.url)
+  const isGenericFile = (data?.url && /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(data.url)) ||
+                        (data?.filename && /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(data.filename)) ||
+                        data?.isGenericDownload || data?.type === 'file'
 
   return (
     <div style={{
@@ -136,8 +144,8 @@ function DialogApp() {
       {/* Üst Başlık Çubuğu */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: 10 }}>
         <div style={{ fontWeight: 900, fontSize: 13, color: '#60a5fa', display: 'flex', alignItems: 'center', gap: 8, letterSpacing: '0.02em' }}>
-          <span style={{ fontSize: 16 }}>⚡</span>
-          <span>FLEXPLORER • İNDİRME YÖNETİCİSİ</span>
+          <img src="./assets/icon-32.png" alt="logo" style={{ width: 18, height: 18, borderRadius: 4 }} onError={(e:any)=>{ e.target.style.display='none' }} />
+          <span>VOLTGET • İNDİRME YÖNETİCİSİ</span>
         </div>
         <button
           onClick={() => window.close()}

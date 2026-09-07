@@ -7,7 +7,7 @@ const ARCHIVE_PAT = /\.(zip|rar|7z|gz|tar|iso|torrent)($|\?)/i
 const INSTALLER_PAT = /\.(exe|msi|apk|dmg|pkg|deb|rpm)($|\?)/i
 const ANY_FILE = /\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a|flac|wav|flv|mov|zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i
 const EXCLUDE = /(youtube\.com\/s\/search\/audio|generate_204|google.*\/search|chrome-extension|s\.pinimg|doubleclick|googletag|analytics|collect\?|beacon|\.jpg(\?|$)|image\d+\.jpg|\.png(\?|$)|favicon|\.css(\?|$)|\.js(\?|$)|adservice|ads\.|track|pixel)/i
-const SITE_CDN = /(playmix\.uno|hls\d*\.|master\.(txt|m3u8)|\/hls\/.*\.(m3u8|txt|mp4)|googlevideo|manifest\.googlevideo|\.m3u8(\?|$)|\.mpd(\?|$)|videoplayback\?)/i
+const SITE_CDN = /(playmix|cdnimages|hls\d*|master\.(txt|m3u8)|\/hls\/.*\.(m3u8|txt|mp4)|googlevideo|manifest\.googlevideo|\.m3u8(\?|$)|\.mpd(\?|$)|videoplayback\?)/i
 
 // Segment ve chunk filtreleri (Flood engelleme)
 function isChunkOrSegment(url) {
@@ -41,6 +41,11 @@ function detectType(url) {
   return 'file'
 }
 
+function normalizeToMasterPlaylist(url) {
+  if (!url || typeof url !== 'string') return url
+  return url.replace(/\/(?:txt\/)?[a-zA-Z0-9_.-]*sublist[a-zA-Z0-9_.-]*\.(txt|m3u8).*/i, '/master.$1')
+}
+
 // WebSocket bağlantısı yönetimi
 let socket = null
 let isConnecting = false
@@ -51,7 +56,7 @@ function initWebSocket() {
   try {
     socket = new WebSocket('ws://127.0.0.1:8765')
     socket.onopen = () => {
-      console.log('[Flexplorer] WebSocket connected to desktop app')
+      console.log('[VoltGet] WebSocket connected to desktop app')
       isConnecting = false
     }
     socket.onclose = () => {
@@ -71,6 +76,9 @@ function initWebSocket() {
 initWebSocket()
 
 async function sendToFlexplorer(data, opts = {}) {
+  if (data && data.url) {
+    data.url = normalizeToMasterPlaylist(data.url)
+  }
   const userInitiated = !!opts.userInitiated || !!data.userInitiated
   if (!userInitiated && !opts.force && !shouldSend(data.url, data.pageUrl)) {
     return
@@ -143,6 +151,14 @@ async function sendToFlexplorer(data, opts = {}) {
   await chrome.storage.local.set({ items: items.slice(0, 80) })
 }
 
+const tabMediaMap = new Map() // tabId -> [{ url, type, time }]
+const domainMediaMap = new Map() // domain -> [{ url, type, time }]
+let lastSniffedStream = null // { url, type, pageUrl, time }
+
+function cleanDomain(u) {
+  try { return new URL(u).hostname.replace(/^www\./i, '').toLowerCase() } catch { return '' }
+}
+
 // Ağ isteklerini dinle (Sadece ana medyalar, segmentler elenir)
 chrome.webRequest.onBeforeRequest.addListener((details) => {
   const url = details.url
@@ -155,30 +171,118 @@ chrome.webRequest.onBeforeRequest.addListener((details) => {
   if (!isMedia && !isFile) return
   if (['stylesheet', 'image', 'font', 'ping', 'script'].includes(details.type)) return
 
+  const normalizedUrl = normalizeToMasterPlaylist(url)
+  const detectedType = detectType(normalizedUrl)
+  const mediaEntry = { url: normalizedUrl, type: detectedType, time: Date.now() }
+
+  if (isMedia) {
+    lastSniffedStream = mediaEntry
+  }
+
+  if (details.tabId >= 0) {
+    const list = tabMediaMap.get(details.tabId) || []
+    if (!list.some(x => x.url === normalizedUrl)) {
+      list.unshift(mediaEntry)
+      tabMediaMap.set(details.tabId, list.slice(0, 20))
+    }
+  }
+
   chrome.tabs.get(details.tabId, (tab) => {
     const pageUrl = tab?.url || ''
+    const dom = cleanDomain(pageUrl)
+    if (dom && isMedia) {
+      const dlist = domainMediaMap.get(dom) || []
+      if (!dlist.some(x => x.url === normalizedUrl)) {
+        dlist.unshift(mediaEntry)
+        domainMediaMap.set(dom, dlist.slice(0, 20))
+      }
+    }
+
     const isVideoSite = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com/i.test(pageUrl)
-    const targetUrl = isVideoSite ? pageUrl : url
-    sendToFlexplorer({ url: targetUrl, type: detectType(url), pageUrl }, { userInitiated: false })
+    const targetUrl = isVideoSite ? pageUrl : normalizedUrl
+    sendToFlexplorer({ url: targetUrl, type: detectedType, pageUrl }, { userInitiated: false })
   })
 }, { urls: ["<all_urls>"] })
 
 // Content script mesajlarını dinle (Video üstü buton veya sayfa tarayıcı)
-chrome.runtime.onMessage.addListener((msg) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === 'get_best_stream') {
+    const tabId = sender?.tab?.id
+    const pageUrl = msg.pageUrl || sender?.tab?.url || ''
+    const dom = cleanDomain(pageUrl)
+    
+    let candidate = null
+    if (tabId && tabMediaMap.has(tabId)) {
+      const list = tabMediaMap.get(tabId)
+      candidate = list?.find(x => x.type === 'm3u8' || x.type === 'mpd' || x.url.includes('master.txt') || x.url.includes('.mp4')) || list?.[0]
+    }
+    if (!candidate && dom && domainMediaMap.has(dom)) {
+      const list = domainMediaMap.get(dom)
+      candidate = list?.find(x => x.type === 'm3u8' || x.type === 'mpd' || x.url.includes('master.txt') || x.url.includes('.mp4')) || list?.[0]
+    }
+    if (!candidate && lastSniffedStream && (Date.now() - lastSniffedStream.time < 180000)) {
+      candidate = lastSniffedStream
+    }
+    if (candidate && candidate.url) {
+      candidate = { ...candidate, url: normalizeToMasterPlaylist(candidate.url) }
+    }
+    sendResponse(candidate || null)
+    return true
+  }
+
   if (msg?.type === 'sniffed') {
-    // Arka plan sessiz yakalama
-    sendToFlexplorer(msg.data, { userInitiated: false })
+    const cleanUrl = normalizeToMasterPlaylist(msg.data.url)
+    const cleanData = { ...msg.data, url: cleanUrl }
+    if (sender?.tab?.id) {
+      const list = tabMediaMap.get(sender.tab.id) || []
+      if (!list.some(x => x.url === cleanUrl)) {
+        list.unshift({ url: cleanUrl, type: cleanData.type, time: Date.now() })
+        tabMediaMap.set(sender.tab.id, list.slice(0, 20))
+      }
+    }
+    sendToFlexplorer(cleanData, { userInitiated: false })
   } else if (msg?.type === 'user_request_download') {
-    // KULLANICI VİDEO ÜSTÜ BUTONA BASTI! (IDM davranışı)
-    sendToFlexplorer(msg.data, { force: true, userInitiated: true })
+    let downloadData = { ...msg.data }
+    if (downloadData.url) downloadData.url = normalizeToMasterPlaylist(downloadData.url)
+    const isVideoPortal = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(downloadData.pageUrl || '')
+    
+    // Eğer video portalı değilse ve gelen URL bir embed sayfasıysa veya m3u8/mp4 değilse,
+    // bu sekme veya alan adı için yakalanmış en taze gerçek akış URL'sini kullan!
+    const isStreamUrl = downloadData.url.includes('master.txt') || downloadData.url.includes('.m3u8') || downloadData.url.includes('.mpd') || downloadData.url.includes('/hls/') || downloadData.url.includes('.mp4')
+    const isEmbedOrPage = !isStreamUrl && (downloadData.url.includes('/embed/') || downloadData.url.includes('rapidrame_id') || !MEDIA_PAT.test(downloadData.url))
+    if (!isVideoPortal && isEmbedOrPage) {
+      const tabId = sender?.tab?.id
+      const dom = cleanDomain(downloadData.pageUrl || '')
+      
+      let candidate = null
+      if (tabId && tabMediaMap.has(tabId)) {
+        const list = tabMediaMap.get(tabId)
+        candidate = list?.find(x => x.type === 'm3u8' || x.type === 'mpd' || x.url.includes('master.txt') || x.url.includes('.mp4')) || list?.[0]
+      }
+      if (!candidate && dom && domainMediaMap.has(dom)) {
+        const list = domainMediaMap.get(dom)
+        candidate = list?.find(x => x.type === 'm3u8' || x.type === 'mpd' || x.url.includes('master.txt') || x.url.includes('.mp4')) || list?.[0]
+      }
+      if (!candidate && lastSniffedStream && (Date.now() - lastSniffedStream.time < 180000)) {
+        candidate = lastSniffedStream
+      }
+
+      if (candidate) {
+        const realStreamUrl = normalizeToMasterPlaylist(candidate.url)
+        console.log('[VoltGet] Replacing embed URL with real stream URL:', realStreamUrl)
+        downloadData.url = realStreamUrl
+        downloadData.type = candidate.type || 'm3u8'
+      }
+    }
+    sendToFlexplorer(downloadData, { force: true, userInitiated: true })
   }
 })
 
 // Sağ tık menüsü
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({ id: 'flex-link', title: 'Flexplorer ile indir', contexts: ['link', 'video', 'audio', 'image'] })
-    chrome.contextMenus.create({ id: 'flex-page', title: 'Bu sayfadaki videoyu Flexplorer ile indir', contexts: ['page'] })
+    chrome.contextMenus.create({ id: 'flex-link', title: 'VoltGet ile indir', contexts: ['link', 'video', 'audio', 'image'] })
+    chrome.contextMenus.create({ id: 'flex-page', title: 'Bu sayfadaki medyayı VoltGet ile indir', contexts: ['page'] })
   })
 })
 
@@ -188,33 +292,84 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   sendToFlexplorer({ url, type: detectType(url), pageUrl: tab?.url || info.pageUrl || '' }, { force: true, userInitiated: true })
 })
 
-// Tarayıcı doğrudan indirmelerini yakala (IDM Download Intercept)
-chrome.downloads.onCreated.addListener(async (item) => {
+// Tarayıcı doğrudan dosya indirmelerini yakala (IDM Download Intercept)
+const interceptedDownloadUrls = new Map() // url -> timestamp
+
+function notifyVoltGetGenericDownload(item, rawName) {
+  const url = item.finalUrl || item.url
+  const lastTime = interceptedDownloadUrls.get(url) || 0
+  if (Date.now() - lastTime < 3500) return
+  interceptedDownloadUrls.set(url, Date.now())
+
+  const type = detectType(rawName) || detectType(url) || 'file'
+  sendToFlexplorer({
+    url: url,
+    filename: rawName,
+    title: rawName,
+    fileSize: item.fileSize || 0,
+    type: type,
+    pageUrl: item.referrer || '',
+    isGenericDownload: true
+  }, { force: true, userInitiated: true })
+}
+
+// 1. Erken yakalama: Doğrudan dosya bağlantısına tıklandığında hemen iptal et
+chrome.downloads.onCreated.addListener((item) => {
   try {
     const url = item.finalUrl || item.url
     if (!url || url.startsWith('blob:') || url.startsWith('data:') || url.startsWith('chrome') || url.startsWith('edge')) return
     if (EXCLUDE.test(url)) return
 
+    const cleanUrl = url.split('?')[0]
+    if (ANY_FILE.test(cleanUrl) && !cleanUrl.endsWith('.html') && !cleanUrl.endsWith('.htm')) {
+      chrome.downloads.cancel(item.id, () => {
+        chrome.downloads.erase({ id: item.id }, () => {})
+      })
+      const rawName = cleanUrl.split('/').pop() || 'indirilen_dosya'
+      notifyVoltGetGenericDownload(item, rawName)
+    }
+  } catch (e) {}
+})
+
+// 2. Tam başlık & MIME tespiti yapıldığında yakalama (IDM Davranışı)
+chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+  try {
+    const url = item.finalUrl || item.url
+    if (!url || url.startsWith('blob:') || url.startsWith('data:') || url.startsWith('chrome') || url.startsWith('edge')) {
+      if (typeof suggest === 'function') suggest()
+      return
+    }
+    if (EXCLUDE.test(url)) {
+      if (typeof suggest === 'function') suggest()
+      return
+    }
+
+    const rawName = item.filename ? item.filename.split(/[\\/]/).pop() : (url.split('/').pop()?.split('?')[0] || 'indirilen_dosya')
+    const isDocOrArchive = ANY_FILE.test(url) || ANY_FILE.test(rawName)
     const mime = (item.mime || '').toLowerCase()
-    const name = (item.filename || '').toLowerCase()
-    const byExt = ANY_FILE.test(url) || ANY_FILE.test(name)
-    const byMime = mime && !mime.startsWith('text/') && !mime.includes('html') && !mime.includes('javascript') && !mime.startsWith('image/')
-    const bigEnough = (item.fileSize || 0) > 128 * 1024
-    if (!byExt && !(byMime && bigEnough) && !(item.fileSize > 1024 * 1024)) return
+    const isBinary = mime && !mime.startsWith('text/') && !mime.includes('html') && !mime.includes('javascript')
+    const isLarge = item.fileSize && item.fileSize > 256 * 1024
 
-    try {
-      await chrome.downloads.cancel(item.id)
-      await chrome.downloads.erase({ id: item.id })
-    } catch (e) {}
+    // Dosya uzantısı, binary mime türü veya büyük boyuttaysa tarayıcı indirmesini iptal edip VoltGet'e aktar!
+    if (isDocOrArchive || isBinary || isLarge) {
+      chrome.downloads.cancel(item.id, () => {
+        chrome.downloads.erase({ id: item.id }, () => {})
+      })
 
-    const type = detectType(url) || detectType(name) || 'file'
-    sendToFlexplorer({
-      url,
-      type,
-      pageUrl: item.referrer || '',
-      filename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined
-    }, { force: true, userInitiated: true })
+      if (typeof suggest === 'function') {
+        try { suggest({ filename: rawName }) } catch (e) {}
+      }
+
+      notifyVoltGetGenericDownload(item, rawName)
+      return
+    }
+
+    // Normal sayfa ise Chrome olağan devam etsin
+    if (typeof suggest === 'function') suggest({ filename: item.filename })
   } catch (e) {
-    console.log('[Flexplorer] download intercept', e.message)
+    console.log('[VoltGet] download intercept error', e.message)
+    if (typeof suggest === 'function') suggest()
   }
 })
+
+

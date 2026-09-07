@@ -1,7 +1,7 @@
 {
   "name": "flexplorer",
   "version": "1.0.0",
-  "description": "Flexplorer - İndirme Yöneticisi + Dosya Gezgini (video/müzik yakalama)",
+  "description": "VoltGet - Ultra Hızlı İndirme Yöneticisi + IDM Alternatifi (Video/Müzik/Dosya Yakalayıcı)",
   "type": "module",
   "main": "dist/electron/main.js",
   "scripts": {
@@ -22,11 +22,11 @@
     "ffmpeg",
     "video downloader"
   ],
-  "author": "Flexplorer",
+  "author": "VoltGet",
   "license": "MIT",
   "build": {
-    "appId": "com.flexplorer.app",
-    "productName": "Flexplorer",
+    "appId": "com.voltget.app",
+    "productName": "VoltGet",
     "directories": {
       "output": "release"
     },
@@ -45,7 +45,7 @@
       }
     ],
     "win": {
-      "icon": "assets/icon.png",
+      "icon": "assets/icon.ico",
       "target": [
         {
           "target": "nsis",
