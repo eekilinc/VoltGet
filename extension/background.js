@@ -62,9 +62,10 @@ function normalizeToMasterPlaylist(url) {
   return url
 }
 
-// WebSocket bağlantısı yönetimi
+// WebSocket bağlantısı yönetimi (Keepalive ile Service Worker uyanık tutulur)
 let socket = null
 let isConnecting = false
+let keepAliveTimer = null
 
 function initWebSocket() {
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return
@@ -74,22 +75,31 @@ function initWebSocket() {
     socket.onopen = () => {
       console.log('[VoltGet] WebSocket connected to desktop app')
       isConnecting = false
+      if (keepAliveTimer) clearInterval(keepAliveTimer)
+      keepAliveTimer = setInterval(() => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: 'ping' }))
+        }
+      }, 15000)
     }
     socket.onclose = () => {
+      if (keepAliveTimer) clearInterval(keepAliveTimer)
       socket = null
       isConnecting = false
-      setTimeout(initWebSocket, 3000)
+      setTimeout(initWebSocket, 2500)
     }
     socket.onerror = () => {
       if (socket) socket.close()
     }
   } catch (e) {
     isConnecting = false
-    setTimeout(initWebSocket, 3000)
+    setTimeout(initWebSocket, 2500)
   }
 }
 
 initWebSocket()
+if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(initWebSocket)
+if (chrome.runtime.onInstalled) chrome.runtime.onInstalled.addListener(initWebSocket)
 
 async function sendToFlexplorer(data, opts = {}) {
   if (data && data.url) {

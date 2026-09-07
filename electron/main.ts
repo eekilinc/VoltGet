@@ -292,6 +292,8 @@ function shouldNotifySniff(key:string){
   return true
 }
 
+let lastExtensionActivity = 0
+
 function getExtensionConnectedCount(): number {
   if (!wss) return 0
   let count = 0
@@ -303,7 +305,9 @@ function getExtensionConnectedCount(): number {
 
 function broadcastExtensionStatus() {
   const count = getExtensionConnectedCount()
-  const status = { connected: count > 0, count }
+  const isRecent = (Date.now() - lastExtensionActivity) < 60000
+  const isConnected = count > 0 || isRecent
+  const status = { connected: isConnected, count: Math.max(count, isConnected ? 1 : 0) }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('extension-status-changed', status)
   }
@@ -317,37 +321,52 @@ function startSniffServer() {
     if (req.url === '/sniff' && req.method === 'POST') {
       let body=''; req.on('data', c=> body+=c); req.on('end', async ()=>{
         try{
+          lastExtensionActivity = Date.now()
+          broadcastExtensionStatus()
           const data = JSON.parse(body)
           await handleIncomingSniff(data)
           res.writeHead(200,{'Content-Type':'application/json'}); res.end(JSON.stringify({ok:true}))
         }catch(e:any){ res.writeHead(400); res.end(String(e)) }
       }); return
     }
-    if (req.url === '/status'){ res.writeHead(200,{'Content-Type':'application/json'}); res.end(JSON.stringify({ok:true, app:'Flexplorer', sniff:true, extensionConnected: getExtensionConnectedCount() > 0})); return }
+    if (req.url === '/status'){
+      lastExtensionActivity = Date.now()
+      broadcastExtensionStatus()
+      res.writeHead(200,{'Content-Type':'application/json'});
+      res.end(JSON.stringify({ok:true, app:'VoltGet', sniff:true, extensionConnected: true}));
+      return
+    }
     res.writeHead(404); res.end('not found')
   })
   sniffServer.listen(8765,'127.0.0.1',()=>{
-    console.log('[Flexplorer] sniff server http://127.0.0.1:8765/sniff')
+    console.log('[VoltGet] sniff server http://127.0.0.1:8765/sniff')
     wss = new WebSocketServer({ server: sniffServer! });
     wss.on('connection', ws => {
-      console.log('[Flexplorer] WebSocket connected');
+      lastExtensionActivity = Date.now()
+      console.log('[VoltGet] WebSocket connected');
       broadcastExtensionStatus();
       ws.on('message', async (message: string) => {
         try {
+          lastExtensionActivity = Date.now()
           const msg = JSON.parse(message.toString());
+          if (msg.type === 'ping') {
+            try { ws.send(JSON.stringify({ type: 'pong' })) } catch {}
+            broadcastExtensionStatus();
+            return
+          }
           if (msg.type === 'sniffed-url') {
             await handleIncomingSniff(msg.data);
           }
         } catch (e: any) {
-          console.error('[Flexplorer] WebSocket message error', e);
+          console.error('[VoltGet] WebSocket message error', e);
         }
       });
       ws.on('close', () => {
-        console.log('[Flexplorer] WebSocket disconnected');
+        console.log('[VoltGet] WebSocket disconnected');
         broadcastExtensionStatus();
       });
       ws.on('error', (e: Error) => {
-        console.error('[Flexplorer] WebSocket error', e);
+        console.error('[VoltGet] WebSocket error', e);
         broadcastExtensionStatus();
       });
     });
@@ -526,18 +545,33 @@ async function handleIncomingSniff(data: any) {
   // Video arka plan yakalamalarında masaüstüne bildirim atılmaz (Kullanıcı isteği doğrultusunda sessiz çalışır)
 }
 
-app.whenReady().then(() => {
-  app.setName('VoltGet')
-  if (process.platform === 'win32') {
-    app.setAppUserModelId('com.voltget.app')
-  }
-  ensureDir(getDefaultDownloadDir())
-  app.setLoginItemSettings({ openAtLogin: !!appConfig.openAtLogin, openAsHidden: appConfig.startMinimized })
-  startSniffServer()
-  createWindow()
-})
-app.on('window-all-closed', () => { try{ wss?.close(); sniffServer?.close()}catch{}; if (process.platform !== 'darwin') app.quit() })
-app.on('before-quit', () => { try{ wss?.close(); sniffServer?.close()}catch{} })
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  console.log('[VoltGet] Another instance is already running. Focusing existing window...')
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+
+  app.whenReady().then(() => {
+    app.setName('VoltGet')
+    if (process.platform === 'win32') {
+      app.setAppUserModelId('com.voltget.app')
+    }
+    ensureDir(getDefaultDownloadDir())
+    app.setLoginItemSettings({ openAtLogin: !!appConfig.openAtLogin, openAsHidden: appConfig.startMinimized })
+    startSniffServer()
+    createWindow()
+  })
+
+  app.on('window-all-closed', () => { try{ wss?.close(); sniffServer?.close()}catch{}; if (process.platform !== 'darwin') app.quit() })
+  app.on('before-quit', () => { try{ wss?.close(); sniffServer?.close()}catch{} })
+}
 
 function findYtDlp(): string { if (fs.existsSync(ytDlpPath)) return ytDlpPath; return 'yt-dlp' }
 function parseYtDlpJson(out: string): any {
