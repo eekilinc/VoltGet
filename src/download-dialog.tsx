@@ -11,6 +11,9 @@ const DEFAULT_VIDEO_FORMATS = [
 
 function normalizeToMasterPlaylist(url: string): string {
   if (!url || typeof url !== 'string') return url
+  if (/molystream\.org\/embed\/([a-zA-Z0-9_-]+)($|\?)/i.test(url)) {
+    return url.replace(/molystream\.org\/embed\/([a-zA-Z0-9_-]+)($|\?)/i, 'https://dbx.molystream.org/embed/$1/q/1')
+  }
   return url.replace(/\/(?:txt\/)?[a-zA-Z0-9_.-]*sublist[a-zA-Z0-9_.-]*\.(txt|m3u8).*/i, '/master.$1')
 }
 
@@ -95,7 +98,7 @@ function DialogApp() {
       const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(rawUrl) ||
                     /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(data.filename || '') ||
                     data.isGenericDownload || data.type === 'file'
-      const isHls = rawUrl.includes('master.txt') || rawUrl.includes('.m3u8') || rawUrl.includes('playmix') || rawUrl.includes('cdnimages')
+      const isHls = rawUrl.includes('master.txt') || rawUrl.includes('.m3u8') || rawUrl.includes('playmix') || rawUrl.includes('cdnimages') || rawUrl.includes('/q/') || rawUrl.includes('molystream')
 
       console.log('[download-dialog] handleStart:', { targetUrl, rawUrl, pageUrl, isAudioMode, selectedFormat, isGen, isHls })
 

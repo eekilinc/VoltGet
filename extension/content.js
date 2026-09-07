@@ -87,13 +87,23 @@
       if (s && !s.startsWith('blob:') && !s.startsWith('data:')) return s
     }
 
-    // 4. Blob video için arka plandan yakalanmış gerçek m3u8 / stream URL'si varsa ONU KULLAN!
+    // 4. Sayfadaki iframe kaynakları (molystream, embed player vs.)
+    try {
+      var iframes = document.querySelectorAll('iframe')
+      for (var j = 0; j < iframes.length; j++) {
+        var isrc = iframes[j].src
+        if (isrc && (isrc.includes('molystream') || isrc.includes('/embed/') || isrc.includes('/video/'))) {
+          return isrc
+        }
+      }
+    } catch (e) {}
+
+    // 5. Blob video için arka plandan yakalanmış gerçek m3u8 / stream URL'si varsa ONU KULLAN!
     if (lastReportedMediaUrl) {
       return lastReportedMediaUrl
     }
 
-    // Embed/oynatıcı iframe sayfalarının URL'si video linki değildir, boş dön
-    return ''
+    return location.href
   }
 
   function createVideoOverlay(videoEl) {
@@ -231,25 +241,8 @@
                             h.includes('facebook.com') || h.includes('vimeo.com') || h.includes('dailymotion.com')
 
         var realUrl = (bestStream && bestStream.url) ? bestStream.url : getTargetUrlForVideo(videoEl)
-
-        if (!realUrl && isVideoPortal) {
-          realUrl = location.href
-        }
-
-        // Eğer hala gerçek video akışı bulunamadıysa (video henüz oynatılmamışsa)
         if (!realUrl) {
-          directBtn.innerHTML = `
-            <span style="color:#f87171; font-size:12px;">⚠️</span>
-            <span style="color:#f87171;">Lütfen önce videoyu oynatın!</span>
-          `
-          try { videoEl.play() } catch (e) {}
-          setTimeout(function () {
-            directBtn.innerHTML = `
-              <span style="display:flex;align-items:center;justify-content:center;width:16px;height:16px;background:#2563eb;border-radius:4px;color:#fff;font-size:10px;font-weight:900;">⚡</span>
-              <span>Bu videoyu indir</span>
-            `
-          }, 3500)
-          return
+          realUrl = location.href
         }
 
         directBtn.innerHTML = `
@@ -274,7 +267,7 @@
             <span style="display:flex;align-items:center;justify-content:center;width:16px;height:16px;background:#2563eb;border-radius:4px;color:#fff;font-size:10px;font-weight:900;">⚡</span>
             <span>Bu videoyu indir</span>
           `
-        }, 3000)
+        }, 2500)
       })
     }
 

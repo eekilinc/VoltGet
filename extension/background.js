@@ -35,16 +35,22 @@ function shouldSend(url, pageUrl) {
 }
 
 function detectType(url) {
-  const m = url.match(/\.([a-z0-9]{2,5})($|\?)/i)
-  if (m) return m[1].toLowerCase()
-  if (url.includes('videoplayback') || url.includes('googlevideo')) return 'mp4'
-  if (url.includes('master.txt') || url.includes('.m3u8')) return 'm3u8'
+  if (url.includes('/q/') || url.includes('master.txt') || url.includes('.m3u8') || url.includes('/hls/')) return 'm3u8'
   if (url.includes('.mpd')) return 'mpd'
+  if (url.includes('videoplayback') || url.includes('googlevideo')) return 'mp4'
+  const clean = url.split('?')[0].split('#')[0]
+  const lastPart = clean.split('/').pop() || ''
+  const m = lastPart.match(/\.([a-z0-9]{2,5})$/i)
+  if (m) return m[1].toLowerCase()
   return 'file'
 }
 
 function normalizeToMasterPlaylist(url) {
   if (!url || typeof url !== 'string') return url
+  // molystream embed -> molystream hls playlist
+  if (/molystream\.org\/embed\/([a-zA-Z0-9_-]+)($|\?)/i.test(url)) {
+    return url.replace(/molystream\.org\/embed\/([a-zA-Z0-9_-]+)($|\?)/i, 'https://dbx.molystream.org/embed/$1/q/1')
+  }
   // sublist*.txt or sublist*.m3u8 -> master.txt or master.m3u8
   if (/\/(?:txt\/)?[a-zA-Z0-9_.-]*sublist[a-zA-Z0-9_.-]*\.(txt|m3u8)/i.test(url)) {
     return url.replace(/\/(?:txt\/)?[a-zA-Z0-9_.-]*sublist[a-zA-Z0-9_.-]*\.(txt|m3u8).*/i, '/master.$1')
@@ -232,8 +238,8 @@ chrome.webRequest.onBeforeRequest.addListener((details) => {
 
 function pickBestStreamFromList(list) {
   if (!list || !list.length) return null
-  // 1. En yüksek öncelik: master akışlar (Hem video hem ses içeren ana playlist)
-  const master = list.find(x => /master\.(txt|m3u8)|manifest\.mpd/i.test(x.url))
+  // 1. En yüksek öncelik: master akışlar veya /q/ akışları (Hem video hem ses içeren ana playlist)
+  const master = list.find(x => /master\.(txt|m3u8)|manifest\.mpd|\/q\/\d+/i.test(x.url))
   if (master) return master
 
   // 2. İkinci öncelik: playlist.m3u8 veya index.m3u8 (video/audio alt kanalı olmayan ana oynatma listesi)
@@ -245,7 +251,7 @@ function pickBestStreamFromList(list) {
   if (mp4) return mp4
 
   // 4. Genel m3u8 akışları (ses olmayan alt akışları hariç tutmaya çalış)
-  const anyM3u8 = list.find(x => (x.type === 'm3u8' || x.url.includes('.m3u8')) && !/(?:_aud|audio)/i.test(x.url))
+  const anyM3u8 = list.find(x => (x.type === 'm3u8' || x.url.includes('.m3u8') || x.url.includes('/q/')) && !/(?:_aud|audio)/i.test(x.url))
   if (anyM3u8) return anyM3u8
 
   return list[0]
@@ -296,7 +302,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     
     // Eğer video portalı değilse ve gelen URL doğrudan bir medya akışı (.m3u8, .mp4, master.txt) DEĞİLSE
     // (örneğin embed sayfası, player linki, .html, .php vs. ise hafızadaki gerçek stream ile değiştir)
-    const isDirectMedia = /\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a)($|\?)/i.test(downloadData.url) || downloadData.url.includes('master.txt')
+    const isDirectMedia = /\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a)($|\?)/i.test(downloadData.url) || downloadData.url.includes('master.txt') || downloadData.url.includes('/q/')
     if (!isVideoPortal && !isDirectMedia) {
       const tabId = sender?.tab?.id
       const dom = cleanDomain(downloadData.pageUrl || '')

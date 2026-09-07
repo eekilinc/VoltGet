@@ -38,6 +38,10 @@ function getAppIconPath(): string | undefined {
 
 function normalizeToMasterPlaylist(url: string): string {
   if (!url || typeof url !== 'string') return url
+  // molystream embed -> molystream hls playlist
+  if (/molystream\.org\/embed\/([a-zA-Z0-9_-]+)($|\?)/i.test(url)) {
+    return url.replace(/molystream\.org\/embed\/([a-zA-Z0-9_-]+)($|\?)/i, 'https://dbx.molystream.org/embed/$1/q/1')
+  }
   // sublist*.txt or sublist*.m3u8 -> master.txt or master.m3u8
   if (/\/(?:txt\/)?[a-zA-Z0-9_.-]*sublist[a-zA-Z0-9_.-]*\.(txt|m3u8)/i.test(url)) {
     return url.replace(/\/(?:txt\/)?[a-zA-Z0-9_.-]*sublist[a-zA-Z0-9_.-]*\.(txt|m3u8).*/i, '/master.$1')
@@ -353,17 +357,28 @@ function startSniffServer() {
 
 function isMasterPlaylistUrl(u: string): boolean {
   if (!u || typeof u !== 'string') return false
-  return /master\.(txt|m3u8)|manifest\.mpd/i.test(u) ||
+  return /master\.(txt|m3u8)|manifest\.mpd|\/q\/\d+/i.test(u) ||
          (/(playlist|index)\.m3u8/i.test(u) && !/(?:video|audio|_vid|_aud|tracks-v)/i.test(u))
+}
+
+function isStreamUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false
+  return /\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a|flac|wav|mov|flv)($|\?)/i.test(url) ||
+         url.includes('/q/') ||
+         url.includes('master.txt') ||
+         url.includes('/hls/') ||
+         url.includes('playmix') ||
+         url.includes('cdnimages') ||
+         url.includes('videoplayback') ||
+         url.includes('googlevideo.com')
 }
 
 function isPlayerOrEmbedUrl(url: string): boolean {
   if (!url || typeof url !== 'string') return false
-  if (/\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a|flac|wav|zip|rar|7z|tar|gz|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx)($|\?)/i.test(url)) return false
-  return /\/(embed|player|oynat|video\/embed|iframe|watch|play|v)\//i.test(url) ||
+  if (isStreamUrl(url)) return false
+  if (/\.(zip|rar|7z|tar|gz|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(url)) return false
+  return /\/(embed|player|oynat|video\/embed|iframe)\//i.test(url) ||
          url.includes('rapidrame_id') ||
-         url.includes('molystream') ||
-         url.includes('ddizi') ||
          /\.(html|htm|php|asp|aspx)($|\?)/i.test(url)
 }
 
@@ -376,8 +391,8 @@ async function handleIncomingSniff(data: any) {
   const sniffId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
   const sniffData = { ...data, sniffId, time: new Date().toLocaleTimeString() }
 
-  // 1. Gerçek medya akışını (m3u8, mpd, master.txt, mp4) hafızaya al (Master olanları alt parçaların ezmesini engelle)
-  if (sniffData.url && (sniffData.url.includes('.m3u8') || sniffData.url.includes('master.txt') || sniffData.url.includes('.mpd') || sniffData.url.includes('/hls/') || sniffData.url.includes('playmix') || sniffData.url.includes('cdnimages'))) {
+  // 1. Gerçek medya akışını (m3u8, mpd, master.txt, mp4, /q/) hafızaya al (Master olanları alt parçaların ezmesini engelle)
+  if (sniffData.url && isStreamUrl(sniffData.url)) {
     const isMaster = isMasterPlaylistUrl(sniffData.url)
     const existingLatest = recentStreamsByPage.get('latest')
     if (isMaster || !existingLatest || !isMasterPlaylistUrl(existingLatest)) {
@@ -434,26 +449,17 @@ async function handleIncomingSniff(data: any) {
                       (pageHost ? recentStreamsByPage.get(pageHost) : null) ||
                       (urlHost ? recentStreamsByPage.get(urlHost) : null) ||
                       recentStreamsByPage.get('latest')
-      if (matched && !isPlayerOrEmbedUrl(matched)) {
+      if (matched && isStreamUrl(matched)) {
         console.log('[VoltGet] mapped embed/player page to real stream:', matched)
         resolvedUrl = matched
         data.url = matched
-      } else {
-        console.log('[VoltGet] cannot open dialog for embed page before video stream is captured:', resolvedUrl)
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('download-log', {
-            id: 'info',
-            text: '⚠️ Oynatıcı algılandı. Lütfen videoyu sayfada 1-2 saniye oynatıp indirme butonuna tekrar basın.'
-          })
-        }
-        return
       }
     }
 
     // Web scripti veya stillerini indirme penceresinde açma
-    if (/\.(js|mjs|cjs|jsx|ts|tsx|css|scss|html|htm|php|asp|aspx|jsp|json|xml|map)($|\?)/i.test(resolvedUrl) ||
-        /\.(js|mjs|cjs|jsx|ts|tsx|css|scss|html|htm|php|asp|aspx|jsp|json|xml|map)($|\?)/i.test(data.filename || '')) {
-      console.log('[VoltGet] Ignored web script/page in sniff handler:', resolvedUrl)
+    if (/\.(js|mjs|cjs|jsx|ts|tsx|css|scss|map)($|\?)/i.test(resolvedUrl) ||
+        /\.(js|mjs|cjs|jsx|ts|tsx|css|scss|map)($|\?)/i.test(data.filename || '')) {
+      console.log('[VoltGet] Ignored web script in sniff handler:', resolvedUrl)
       return
     }
 
@@ -546,14 +552,12 @@ async function analyzeUrl(url: string): Promise<any> {
   let normUrl = normalizeToMasterPlaylist(url)
   if (isPlayerOrEmbedUrl(normUrl)) {
     const matched = recentStreamsByPage.get(normUrl) || recentStreamsByPage.get('latest')
-    if (matched && !isPlayerOrEmbedUrl(matched)) {
+    if (matched && isStreamUrl(matched)) {
       normUrl = matched
-    } else {
-      throw new Error('Bu sayfa embed/oynatıcı sayfasıdır. Lütfen videoyu sayfada 1-2 saniye oynatıp video üstündeki indirme butonunu kullanın.')
     }
   }
 
-  if (normUrl.includes('master.txt') || normUrl.includes('.m3u8') || normUrl.includes('/hls/') || normUrl.includes('playmix') || normUrl.includes('cdnimages')) {
+  if (normUrl.includes('master.txt') || normUrl.includes('.m3u8') || normUrl.includes('/hls/') || normUrl.includes('playmix') || normUrl.includes('cdnimages') || normUrl.includes('/q/') || normUrl.includes('molystream')) {
     const fn = normUrl.split('/').slice(-2, -1)[0] || normUrl.split('/').pop()?.split('?')[0] || 'HLS Video Akışı'
     return {
       title: fn.replace(/\.mp4$/i, ''),
@@ -682,30 +686,21 @@ function doStartDownload(id:string, opts:any){
                     (pageHost ? recentStreamsByPage.get(pageHost) : null) ||
                     (urlHost ? recentStreamsByPage.get(urlHost) : null) ||
                     recentStreamsByPage.get('latest')
-    if (matched && !isPlayerOrEmbedUrl(matched)) {
+    if (matched && isStreamUrl(matched)) {
       console.log('[VoltGet] doStartDownload resolved embed URL to real stream:', matched)
       finalUrl = matched
       opts.url = matched
-    } else {
-      console.error('[VoltGet] cannot download embed page without stream:', finalUrl)
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('download-log', {
-          id,
-          text: '⚠️ Bu adres doğrudan bir video akışı değildir. Lütfen videonun sayfada 1-2 saniye oynatıldığından emin olun.'
-        })
-      }
-      return
     }
   }
 
-  // 2. Web scripti (.js) veya web sayfası indirme girişimlerini kesinlikle engelle
-  if (/\.(js|mjs|cjs|jsx|ts|tsx|css|scss|html|htm|php|asp|aspx|jsp|json|xml|map)($|\?)/i.test(finalUrl) ||
-      /\.(js|mjs|cjs|jsx|ts|tsx|css|scss|html|htm|php|asp|aspx|jsp|json|xml|map)($|\?)/i.test(opts.filename || '')) {
-    console.log('[VoltGet] Rejected script/page download attempt:', finalUrl)
+  // 2. Web scripti (.js) veya stil indirme girişimlerini kesinlikle engelle
+  if (/\.(js|mjs|cjs|jsx|ts|tsx|css|scss|map)($|\?)/i.test(finalUrl) ||
+      /\.(js|mjs|cjs|jsx|ts|tsx|css|scss|map)($|\?)/i.test(opts.filename || '')) {
+    console.log('[VoltGet] Rejected script download attempt:', finalUrl)
     return
   }
 
-  // 2. Normal dosya indirmesi ise doğrudan 8 parçalı yüksek hızlı HTTP indiriciye aktar
+  // 3. Normal dosya indirmesi ise doğrudan 8 parçalı yüksek hızlı HTTP indiriciye aktar
   const isGeneric = opts.isHttp ||
                     /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(finalUrl) ||
                     (opts.filename && /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(opts.filename))
@@ -723,12 +718,12 @@ function doStartDownload(id:string, opts:any){
     return
   }
 
-  // 3. Medya / Video indirmesi
+  // 4. Medya / Video indirmesi
   const baseOut = opts.outDir || getDefaultDownloadDir()
   const outDir = getSiteFolder(baseOut, finalUrl)
   ensureDir(outDir)
   const ytdlp = findYtDlp()
-  const isHls = finalUrl.includes('.m3u8') || finalUrl.includes('master.txt') || finalUrl.includes('/hls/') || finalUrl.includes('playmix') || finalUrl.includes('cdnimages')
+  const isHls = finalUrl.includes('.m3u8') || finalUrl.includes('master.txt') || finalUrl.includes('/hls/') || finalUrl.includes('playmix') || finalUrl.includes('cdnimages') || finalUrl.includes('/q/') || finalUrl.includes('molystream')
 
   const args: string[] = ['--js-runtimes', 'node', '--no-warnings', '--concurrent-fragments', '16']
   if (appConfig.speedLimitKB > 0) args.push('--limit-rate', `${appConfig.speedLimitKB}K`)
@@ -748,6 +743,9 @@ function doStartDownload(id:string, opts:any){
     if (isHdFilmSite && embedId) {
       args.push('--add-header', `Referer:https://hdfilmcehennemi.mobi/video/embed/${embedId}/`)
       args.push('--add-header', 'Origin:https://hdfilmcehennemi.mobi')
+    } else if (finalUrl.includes('molystream')) {
+      args.push('--add-header', 'Referer:https://dbx.molystream.org/')
+      args.push('--add-header', 'Origin:https://dbx.molystream.org')
     } else if (opts.pageUrl && !isVideoPlatform) {
       try {
         args.push('--add-header', `Referer:${opts.pageUrl}`)
