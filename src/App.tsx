@@ -10,7 +10,21 @@ import { useAppSettings } from './context/AppSettingsContext'
 
 declare global { interface Window { api: any } }
 
-type Job = { id:string, url:string, title:string, percent:number, speed:string, eta:string, total:string, status:'downloading'|'done'|'error'|'queued'|'paused', log:string, opts?:any }
+export type Job = {
+  id: string
+  url: string
+  title: string
+  percent: number
+  speed: string
+  eta: string
+  total: string
+  status: 'downloading'|'done'|'error'|'queued'|'paused'
+  log: string
+  opts?: any
+  filePath?: string
+  fileName?: string
+  deletedFromDisk?: boolean
+}
 
 export default function App() {
   const { t } = useAppSettings()
@@ -33,8 +47,21 @@ export default function App() {
         setClipboardWatcherActive(c.clipboardWatcher)
       }
     })
-    window.api.getQueue().then((saved:any[])=>{
-      if(saved?.length) setJobs(saved.filter((j:any)=> j.status==='done'||j.status==='error'||j.status==='paused').slice(0,20))
+    window.api.getQueue().then(async (saved: any[]) => {
+      if (saved?.length) {
+        const initialJobs = saved.filter((j: any) => j.status === 'done' || j.status === 'error' || j.status === 'paused').slice(0, 30)
+        const verifiedJobs = await Promise.all(initialJobs.map(async (j: any) => {
+          const fp = j.filePath || j.opts?.outPath || (j.opts?.filename && j.opts?.outDir ? `${j.opts.outDir}\\${j.opts.filename}` : '')
+          if (j.status === 'done' && fp && window.api?.checkFileExists) {
+            try {
+              const exists = await window.api.checkFileExists(fp)
+              return { ...j, filePath: fp, deletedFromDisk: !exists }
+            } catch {}
+          }
+          return { ...j, filePath: fp || j.filePath }
+        }))
+        setJobs(verifiedJobs)
+      }
     })
     const onP = (d: any) => {
       setJobs(j => {
@@ -69,7 +96,19 @@ export default function App() {
         return n
       })
     }
-    const onD = (d: any) => setJobs(j => { const n = j.map(x => x.id === d.id ? { ...x, status: (d.code === 0 ? 'done' : 'error') as Job['status'], percent: d.code === 0 ? 100 : x.percent, log: d.code === 0 ? 'Tamamlandı ✓ — ' + d.outDir : x.log } : x); window.api.saveQueue(n); return n })
+    const onD = (d: any) => setJobs(j => {
+      const n = j.map(x => x.id === d.id ? {
+        ...x,
+        status: (d.code === 0 ? 'done' : 'error') as Job['status'],
+        percent: d.code === 0 ? 100 : x.percent,
+        log: d.code === 0 ? 'Tamamlandı ✓' : x.log,
+        filePath: d.filePath || x.filePath || x.opts?.outPath,
+        fileName: d.fileName || x.fileName || x.opts?.filename,
+        deletedFromDisk: false
+      } : x)
+      window.api.saveQueue(n)
+      return n
+    })
     const onE = (d: any) => setJobs(j => { const n = j.map(x => x.id === d.id ? { ...x, status: 'error' as Job['status'], log: d.error } : x); window.api.saveQueue(n); return n })
     const onL = (d: any) => setJobs(j => j.map(x => x.id === d.id ? { ...x, log: d.text } : x))
     const onQ = (d: any) => {
@@ -223,6 +262,29 @@ export default function App() {
     const res = await window.api.retryDownload(job.opts)
     const id = res.id
     setJobs(j=> { const n=j.filter(x=> x.id!==job.id); const queued=!!res.queued; return [{ id, url: job.url, title: job.title, percent:0, speed:'-', eta:'-', total:'', status: queued?'queued':'downloading', log: queued?'Sırada…':'Yeniden başlatıldı...', opts: job.opts } as Job, ...n] })
+  }
+
+  const handleRemoveJob = async (id: string) => {
+    try {
+      await window.api?.removeFromHistory?.(id)
+    } catch {}
+    setJobs(j => {
+      const n = j.filter(x => x.id !== id)
+      window.api.saveQueue(n)
+      return n
+    })
+  }
+
+  const handleDeleteJob = async (job: Job, deleteFromDisk: boolean) => {
+    const targetPath = job.filePath || job.opts?.outPath
+    try {
+      await window.api?.deleteFile?.({ filePath: targetPath, deleteFromDisk, id: job.id })
+    } catch {}
+    setJobs(j => {
+      const n = j.filter(x => x.id !== job.id)
+      window.api.saveQueue(n)
+      return n
+    })
   }
 
   const titles: Record<string,string> = {
@@ -435,6 +497,10 @@ export default function App() {
         onResume={async (job)=>{ const res = await window.api.resumeDownload({ id: job.id, opts: job.opts }); setJobs(j=> j.map(x=> x.id===job.id ? {...x, status: res?.queued?'queued':'downloading', log: res?.queued?'Sırada…':'Devam ediyor...'} : x)) }}
         onRetry={(job)=>handleRetry(job as any)}
         onOpenFolder={()=>window.api.openFolder(outDir)}
+        onOpenFile={(filePath)=>window.api.openFile(filePath)}
+        onShowInFolder={(filePath)=>window.api.showInFolder(filePath)}
+        onRemoveJob={handleRemoveJob}
+        onDeleteJob={handleDeleteJob}
         onClear={()=> setJobs(j=> { const n=j.filter(x=> x.status==='downloading'||x.status==='queued'||x.status==='paused'); window.api.saveQueue(n); return n })} />
 
       {/* IDM Tarzı Gelişmiş Dosya Özellikleri ve İndirme Penceresi (Download Properties Dialog) */}

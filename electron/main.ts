@@ -281,13 +281,15 @@ function saveConfig(c:AppConfig){ try{ ensureDir(path.dirname(configPath())); fs
 let appConfig = loadConfig()
 
 function getDefaultDownloadDir() {
-  // config overrides? for now use Downloads/Flexplorer
   try {
     const c = loadConfig()
     // @ts-ignore custom outDir in config
     if ((c as any).customOutDir && fs.existsSync((c as any).customOutDir)) return (c as any).customOutDir
   } catch {}
-  return path.join(os.homedir(), 'Downloads', 'Flexplorer')
+  const legacyDir = path.join(os.homedir(), 'Downloads', 'Flexplorer')
+  const modernDir = path.join(os.homedir(), 'Downloads', 'VoltGet')
+  if (fs.existsSync(legacyDir)) return legacyDir
+  return modernDir
 }
 function ensureDir(dir: string) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
@@ -316,6 +318,110 @@ function saveQueue(jobs:any[]){
 function loadQueue():any[] {
   try{ if(fs.existsSync(queuePath())) return JSON.parse(fs.readFileSync(queuePath(),'utf-8')) }catch{}
   return []
+}
+
+interface DownloadHistoryItem {
+  id: string
+  url: string
+  title: string
+  fileName: string
+  filePath: string
+  fileSize: number
+  date: number
+  category: 'video' | 'audio' | 'document' | 'archive' | 'installer' | 'other'
+}
+
+function historyPath() { return path.join(app.getPath('userData'), 'download_history.json') }
+
+function loadHistory(): DownloadHistoryItem[] {
+  try {
+    if (fs.existsSync(historyPath())) return JSON.parse(fs.readFileSync(historyPath(), 'utf-8'))
+  } catch {}
+  return []
+}
+
+function saveHistory(items: DownloadHistoryItem[]) {
+  try {
+    ensureDir(path.dirname(historyPath()))
+    fs.writeFileSync(historyPath(), JSON.stringify(items.slice(0, 500), null, 2))
+  } catch (e) { console.error(e) }
+}
+
+function getCategoryFromExt(extWithOrWithoutDot: string): DownloadHistoryItem['category'] {
+  const ext = (extWithOrWithoutDot || '').replace(/^\./, '').toLowerCase()
+  if (['mp4','mkv','webm','avi','mov','flv','ts','m4v'].includes(ext)) return 'video'
+  if (['mp3','m4a','flac','wav','aac','ogg','wma'].includes(ext)) return 'audio'
+  if (['pdf','doc','docx','xls','xlsx','ppt','pptx','txt','epub','csv'].includes(ext)) return 'document'
+  if (['zip','rar','7z','tar','gz','iso','torrent'].includes(ext)) return 'archive'
+  if (['exe','msi','apk','dmg','deb','rpm'].includes(ext)) return 'installer'
+  return 'other'
+}
+
+function addDownloadToHistory(item: Partial<DownloadHistoryItem> & { id: string, filePath: string }) {
+  const list = loadHistory()
+  const fileName = item.fileName || path.basename(item.filePath)
+  const category = item.category || getCategoryFromExt(path.extname(item.filePath))
+  let fileSize = item.fileSize || 0
+  if (!fileSize && fs.existsSync(item.filePath)) {
+    try { fileSize = fs.statSync(item.filePath).size } catch {}
+  }
+  const existingIdx = list.findIndex(x => x.id === item.id || (x.filePath && x.filePath.toLowerCase() === item.filePath.toLowerCase()))
+  const entry: DownloadHistoryItem = {
+    id: item.id,
+    url: item.url || '',
+    title: item.title || fileName,
+    fileName,
+    filePath: item.filePath,
+    fileSize,
+    date: item.date || Date.now(),
+    category
+  }
+  if (existingIdx >= 0) {
+    list[existingIdx] = { ...list[existingIdx], ...entry }
+  } else {
+    list.unshift(entry)
+  }
+  saveHistory(list)
+  return entry
+}
+
+function removeDownloadFromHistory(idOrPath: string) {
+  const list = loadHistory()
+  const filtered = list.filter(x => x.id !== idOrPath && x.filePath !== idOrPath)
+  saveHistory(filtered)
+  return filtered
+}
+
+function syncHistoryFromQueue() {
+  try {
+    const q = loadQueue()
+    let changed = false
+    const h = loadHistory()
+    for (const job of q) {
+      if (job.status === 'done') {
+        const fp = job.filePath || job.opts?.outPath || (job.opts?.filename && job.opts?.outDir ? path.join(job.opts.outDir, job.opts.filename) : '')
+        if (fp && !h.some(x => x.id === job.id || (x.filePath && x.filePath.toLowerCase() === fp.toLowerCase()))) {
+          let sz = 0
+          if (fs.existsSync(fp)) {
+            try { sz = fs.statSync(fp).size } catch {}
+          }
+          const fn = job.opts?.filename || path.basename(fp)
+          h.push({
+            id: job.id,
+            url: job.url || job.opts?.url || '',
+            title: job.title || fn,
+            fileName: fn,
+            filePath: fp,
+            fileSize: sz,
+            date: Date.now(),
+            category: getCategoryFromExt(path.extname(fp))
+          })
+          changed = true
+        }
+      }
+    }
+    if (changed) saveHistory(h)
+  } catch {}
 }
 
 let tray: Tray | null = null
@@ -1166,8 +1272,17 @@ function doStartDownload(id:string, opts:any){
     mainWindow.webContents.send('switch-to-download-tab')
   }
 
+  let downloadedFilePath = ''
+
   proc.stdout?.on('data', (d: Buffer) => {
     const text = d.toString()
+    const mDest = text.match(/\[(?:download|Merger|ExtractAudio)\]\s+(?:Destination:\s+|Merging formats into\s+["']?|)(.+?\.[a-zA-Z0-9]{2,5})(?:["']|\s*$)/m)
+    if (mDest && mDest[1]) {
+      const cand = mDest[1].trim()
+      if (path.isAbsolute(cand)) downloadedFilePath = cand
+      else downloadedFilePath = path.join(outDir, cand)
+    }
+
     const m = text.match(/\[download\]\s+(\d+\.?\d*)%\s+of\s+(?:~\s*)?([^\s]+)(?:\s+at\s+([^\s]+))?(?:\s+ETA\s+([^\s]+))?/)
     if (m && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('download-progress', {
@@ -1271,7 +1386,31 @@ function doStartDownload(id:string, opts:any){
         try {
           if (fs.existsSync(tempDir) && fs.readdirSync(tempDir).length === 0) fs.rmdirSync(tempDir)
         } catch {}
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('download-done', { id, code: ffCode, outDir })
+
+        let statSize = 0
+        if (ffCode === 0 && fs.existsSync(actualOut)) {
+          try { statSize = fs.statSync(actualOut).size } catch {}
+          addDownloadToHistory({
+            id,
+            url: finalUrl,
+            title: opts.title || path.basename(actualOut),
+            fileName: path.basename(actualOut),
+            filePath: actualOut,
+            fileSize: statSize,
+            date: Date.now()
+          })
+        }
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('download-done', {
+            id,
+            code: ffCode,
+            outDir,
+            filePath: ffCode === 0 ? actualOut : undefined,
+            fileName: path.basename(actualOut),
+            size: statSize
+          })
+        }
         try {
           if (ffCode === 0) new Notification({ title: 'İndirme tamamlandı (VoltGet)', body: (opts.title || finalUrl).slice(0, 60) }).show()
           else new Notification({ title: 'İndirme hatası', body: `FFmpeg Hata Kodu ${ffCode}` }).show()
@@ -1288,7 +1427,47 @@ function doStartDownload(id:string, opts:any){
       return
     }
 
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('download-done', { id, code, outDir })
+    if (code === 0) {
+      if (!downloadedFilePath || !fs.existsSync(downloadedFilePath)) {
+        try {
+          const files = fs.readdirSync(outDir)
+            .map(f => ({ name: f, path: path.join(outDir, f), mtime: fs.statSync(path.join(outDir, f)).mtimeMs }))
+            .filter(f => !f.name.startsWith('.') && !isTemporaryOrPartialFile(f.name))
+            .sort((a, b) => b.mtime - a.mtime)
+          if (files.length > 0 && (Date.now() - files[0].mtime) < 45000) {
+            downloadedFilePath = files[0].path
+          }
+        } catch {}
+      }
+
+      let statSize = 0
+      if (downloadedFilePath && fs.existsSync(downloadedFilePath)) {
+        try { statSize = fs.statSync(downloadedFilePath).size } catch {}
+        addDownloadToHistory({
+          id,
+          url: finalUrl,
+          title: opts.title || path.basename(downloadedFilePath),
+          fileName: path.basename(downloadedFilePath),
+          filePath: downloadedFilePath,
+          fileSize: statSize,
+          date: Date.now()
+        })
+      }
+    }
+
+    let fileSize = 0
+    try { if (downloadedFilePath && fs.existsSync(downloadedFilePath)) fileSize = fs.statSync(downloadedFilePath).size } catch {}
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('download-done', {
+        id,
+        code,
+        outDir,
+        filePath: downloadedFilePath || undefined,
+        fileName: downloadedFilePath ? path.basename(downloadedFilePath) : undefined,
+        size: fileSize
+      })
+    }
     try {
       if (code === 0) new Notification({ title: 'İndirme tamamlandı (VoltGet)', body: (opts.title || finalUrl).slice(0, 60) }).show()
       else new Notification({ title: 'İndirme hatası', body: `Kod ${code} • ${finalUrl.slice(0, 40)}` }).show()
@@ -1476,38 +1655,98 @@ function scanDownloadedFiles(dir: string, baseDir: string): any[] {
   return results
 }
 
-ipcMain.handle('list-files', async (_e, customDir?: string) => {
-  const targetDir = customDir || getDefaultDownloadDir()
-  ensureDir(targetDir)
-  const files = scanDownloadedFiles(targetDir, targetDir)
-  return files.sort((a, b) => b.mtime - a.mtime)
+ipcMain.handle('list-files', async (_e, mode?: string, customDir?: string) => {
+  if (mode === 'all') {
+    const targetDir = customDir || getDefaultDownloadDir()
+    ensureDir(targetDir)
+    const files = scanDownloadedFiles(targetDir, targetDir)
+    return files.sort((a, b) => b.mtime - a.mtime)
+  }
+
+  // Default: 'voltget' (Sadece VoltGet ile indirilen dosyalar ve disk kontrolü)
+  syncHistoryFromQueue()
+  const history = loadHistory()
+  return history.map(item => {
+    const exists = fs.existsSync(item.filePath)
+    let size = item.fileSize || 0
+    let mtime = item.date || Date.now()
+    if (exists) {
+      try {
+        const s = fs.statSync(item.filePath)
+        if (s.size > 0) size = s.size
+        mtime = s.mtimeMs
+      } catch {}
+    }
+    const ext = path.extname(item.filePath).slice(1).toLowerCase()
+    return {
+      id: item.id,
+      name: item.fileName || path.basename(item.filePath),
+      path: item.filePath,
+      relativePath: item.fileName || path.basename(item.filePath),
+      folder: path.dirname(item.filePath),
+      size,
+      mtime,
+      ext,
+      category: item.category || getCategoryFromExt(ext),
+      url: item.url,
+      exists,
+      deletedFromDisk: !exists
+    }
+  }).sort((a, b) => b.mtime - a.mtime)
+})
+
+ipcMain.handle('check-file-exists', async (_e, filePath: string) => {
+  if (!filePath) return false
+  return fs.existsSync(filePath)
 })
 
 ipcMain.handle('open-file', async (_e, filePath: string) => {
-  if (fs.existsSync(filePath)) {
+  if (filePath && fs.existsSync(filePath)) {
     return shell.openPath(filePath)
   }
   return 'Dosya bulunamadı'
 })
 
 ipcMain.handle('show-in-folder', async (_e, filePath: string) => {
-  if (fs.existsSync(filePath)) {
+  if (filePath && fs.existsSync(filePath)) {
     shell.showItemInFolder(filePath)
     return true
   }
   return false
 })
 
-ipcMain.handle('delete-file', async (_e, filePath: string) => {
+ipcMain.handle('remove-from-history', async (_e, idOrPath: string) => {
+  if (!idOrPath) return false
+  removeDownloadFromHistory(idOrPath)
+  const q = loadQueue()
+  const updated = q.filter(x => x.id !== idOrPath && x.filePath !== idOrPath && x.opts?.outPath !== idOrPath)
+  if (updated.length !== q.length) saveQueue(updated)
+  return true
+})
+
+ipcMain.handle('delete-file', async (_e, payload: any) => {
+  const filePath = typeof payload === 'string' ? payload : payload?.filePath
+  const deleteFromDisk = typeof payload === 'object' ? payload?.deleteFromDisk !== false : true
+  const id = typeof payload === 'object' ? payload?.id : undefined
   try {
-    if (fs.existsSync(filePath)) {
+    if (deleteFromDisk && filePath && fs.existsSync(filePath)) {
       await shell.trashItem(filePath)
-      return { success: true }
     }
-    return { success: false, error: 'Dosya bulunamadı' }
+    if (id || filePath) {
+      removeDownloadFromHistory(id || filePath)
+      const q = loadQueue()
+      const updated = q.filter(x => x.id !== id && x.filePath !== filePath && x.opts?.outPath !== filePath)
+      if (updated.length !== q.length) saveQueue(updated)
+    }
+    return { success: true }
   } catch (err: any) {
     try {
-      fs.unlinkSync(filePath)
+      if (deleteFromDisk && filePath && fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath)
+      }
+      if (id || filePath) {
+        removeDownloadFromHistory(id || filePath)
+      }
       return { success: true }
     } catch (e: any) {
       return { success: false, error: e.message }
@@ -1809,7 +2048,28 @@ async function runMultiPartHttpDownload(id:string, opts:any, outDir:string, outP
     activeDownloads.delete(id)
     activeOpts.delete(id)
 
-    if (mainWindow) mainWindow.webContents.send('download-done', { id, code: 0, outDir })
+    let statSize = 0
+    try { if (fs.existsSync(outPath)) statSize = fs.statSync(outPath).size } catch {}
+    addDownloadToHistory({
+      id,
+      url: opts.url,
+      title: filename,
+      fileName: filename,
+      filePath: outPath,
+      fileSize: statSize,
+      date: Date.now()
+    })
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('download-done', {
+        id,
+        code: 0,
+        outDir,
+        filePath: outPath,
+        fileName: filename,
+        size: statSize
+      })
+    }
     try { new Notification({ title: 'VoltGet: İndirme bitti (8 Parça)', body: filename.slice(0, 50) }).show() } catch {}
     processPending()
 
@@ -1874,7 +2134,29 @@ function runHttpDownload(id:string, opts:any, outDir:string, outPath:string, fil
     }
     activeDownloads.delete(id); activeOpts.delete(id)
     if(pausingIds.has(id)){ pausingIds.delete(id); processPending(); return }
-    if(mainWindow) mainWindow.webContents.send('download-done', {id, code:0, outDir})
+
+    let statSize = 0
+    try { if (fs.existsSync(outPath)) statSize = fs.statSync(outPath).size } catch {}
+    addDownloadToHistory({
+      id,
+      url: opts.url,
+      title: filename,
+      fileName: filename,
+      filePath: outPath,
+      fileSize: statSize,
+      date: Date.now()
+    })
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('download-done', {
+        id,
+        code: 0,
+        outDir,
+        filePath: outPath,
+        fileName: filename,
+        size: statSize
+      })
+    }
     try{ new Notification({title: 'VoltGet: İndirme bitti', body: filename.slice(0,50)}).show()}catch{}
     processPending()
   })

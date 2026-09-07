@@ -3,6 +3,7 @@ import { useAppSettings } from '../context/AppSettingsContext'
 import { useToast } from '../context/ToastContext'
 
 export interface DownloadedFile {
+  id?: string
   name: string
   path: string
   relativePath: string
@@ -11,8 +12,13 @@ export interface DownloadedFile {
   mtime: number
   ext: string
   category: 'video' | 'audio' | 'document' | 'archive' | 'installer' | 'other'
+  url?: string
+  exists?: boolean
+  deletedFromDisk?: boolean
 }
 
+type SourceMode = 'voltget' | 'all'
+type StatusFilter = 'all' | 'existing' | 'deleted'
 type CategoryType = 'all' | 'video' | 'audio' | 'document' | 'archive' | 'installer'
 type SortType = 'date_desc' | 'date_asc' | 'size_desc' | 'size_asc' | 'name_asc'
 
@@ -25,6 +31,7 @@ function formatBytes(bytes: number): string {
 }
 
 function formatDate(ms: number): string {
+  if (!ms) return '-'
   const d = new Date(ms)
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
@@ -44,19 +51,21 @@ export default function FileExplorer() {
   const [dir, setDir] = useState<string>('')
   const [files, setFiles] = useState<DownloadedFile[]>([])
   const [loading, setLoading] = useState<boolean>(true)
+  const [sourceMode, setSourceMode] = useState<SourceMode>('voltget')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [search, setSearch] = useState<string>('')
   const [category, setCategory] = useState<CategoryType>('all')
   const [sort, setSort] = useState<SortType>('date_desc')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [deleteConfirm, setDeleteConfirm] = useState<DownloadedFile | null>(null)
 
-  const loadFiles = async () => {
+  const loadFiles = async (mode: SourceMode = sourceMode) => {
     if (!window.api?.listFiles) return
     setLoading(true)
     try {
       const defaultDir = await window.api.getDefaultDir()
       setDir(defaultDir)
-      const list = await window.api.listFiles(defaultDir)
+      const list = await window.api.listFiles(mode, defaultDir)
       setFiles((list || []).filter((f: DownloadedFile) => !isTemporaryOrPartialFile(f.name)))
     } catch (err: any) {
       toast.error('Dosyalar yüklenirken hata oluştu: ' + err.message)
@@ -66,14 +75,14 @@ export default function FileExplorer() {
   }
 
   useEffect(() => {
-    loadFiles()
+    loadFiles(sourceMode)
     const cleanup = window.api?.onDone?.(() => {
-      loadFiles()
+      loadFiles(sourceMode)
     })
     return () => {
       if (typeof cleanup === 'function') cleanup()
     }
-  }, [])
+  }, [sourceMode])
 
   const categoryIcons: Record<string, string> = {
     all: '📂',
@@ -85,34 +94,46 @@ export default function FileExplorer() {
     other: '📁'
   }
 
+  const counts = useMemo(() => {
+    const existing = files.filter(f => !f.deletedFromDisk).length
+    const deleted = files.filter(f => f.deletedFromDisk).length
+    return { all: files.length, existing, deleted }
+  }, [files])
+
   const filteredFiles = useMemo(() => {
     return files
       .filter(f => {
         if (isTemporaryOrPartialFile(f.name)) return false
+        if (statusFilter === 'existing' && f.deletedFromDisk) return false
+        if (statusFilter === 'deleted' && !f.deletedFromDisk) return false
         if (category !== 'all' && f.category !== category) return false
         if (search.trim()) {
           const q = search.toLowerCase()
-          return f.name.toLowerCase().includes(q) || f.folder.toLowerCase().includes(q)
+          return f.name.toLowerCase().includes(q) || (f.folder && f.folder.toLowerCase().includes(q))
         }
         return true
       })
       .sort((a, b) => {
         switch (sort) {
-          case 'date_desc': return b.mtime - a.mtime
-          case 'date_asc': return a.mtime - b.mtime
+          case 'date_desc': return (b.mtime || 0) - (a.mtime || 0)
+          case 'date_asc': return (a.mtime || 0) - (b.mtime || 0)
           case 'size_desc': return b.size - a.size
           case 'size_asc': return a.size - b.size
           case 'name_asc': return a.name.localeCompare(b.name)
           default: return 0
         }
       })
-  }, [files, category, search, sort])
+  }, [files, statusFilter, category, search, sort])
 
   const totalBytes = useMemo(() => {
-    return filteredFiles.reduce((acc, f) => acc + f.size, 0)
+    return filteredFiles.filter(f => !f.deletedFromDisk).reduce((acc, f) => acc + f.size, 0)
   }, [filteredFiles])
 
   const handleOpenFile = async (file: DownloadedFile) => {
+    if (file.deletedFromDisk) {
+      toast.warning('Bu dosya yerel diskten silinmiş veya taşınmış')
+      return
+    }
     try {
       await window.api.openFile(file.path)
       toast.info(`"${file.name}" açılıyor...`)
@@ -122,10 +143,14 @@ export default function FileExplorer() {
   }
 
   const handleShowInFolder = async (file: DownloadedFile) => {
+    if (file.deletedFromDisk) {
+      toast.warning('Dosya diskte bulunamadı')
+      return
+    }
     try {
       const ok = await window.api.showInFolder(file.path)
       if (ok) {
-        toast.info('Klasörde gösterildi')
+        toast.info('Klasörde gösterildi ve seçildi')
       } else {
         toast.warning('Dosya bulunamadı')
       }
@@ -134,12 +159,12 @@ export default function FileExplorer() {
     }
   }
 
-  const handleDelete = async (file: DownloadedFile) => {
+  const handleDeleteFromDisk = async (file: DownloadedFile) => {
     try {
-      const res = await window.api.deleteFile(file.path)
+      const res = await window.api.deleteFile({ filePath: file.path, deleteFromDisk: true, id: file.id })
       if (res?.success) {
-        setFiles(prev => prev.filter(f => f.path !== file.path))
-        toast.success(`"${file.name}" silindi (Geri Dönüşüm Kutusuna taşındı)`)
+        setFiles(prev => prev.filter(f => f.path !== file.path && f.id !== file.id))
+        toast.success(`"${file.name}" diskten silindi (Geri Dönüşüm Kutusuna taşındı)`)
       } else {
         toast.error('Silinemedi: ' + (res?.error || 'Bilinmeyen hata'))
       }
@@ -150,9 +175,23 @@ export default function FileExplorer() {
     }
   }
 
+  const handleRemoveFromListOnly = async (file: DownloadedFile) => {
+    try {
+      const res = await window.api.deleteFile({ filePath: file.path, deleteFromDisk: false, id: file.id })
+      if (res?.success) {
+        setFiles(prev => prev.filter(f => f.path !== file.path && f.id !== file.id))
+        toast.info(`"${file.name}" listeden kaldırıldı (dosya diskte kaldı)`)
+      }
+    } catch (e: any) {
+      toast.error('Hata: ' + e.message)
+    } finally {
+      setDeleteConfirm(null)
+    }
+  }
+
   return (
     <div style={{ flex: 1, padding: 18, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Üst Başlık & İstatistik Paneli */}
+      {/* Üst Başlık & Kaynak Modu Seçici */}
       <div className="card-premium glow-accent" style={{ borderRadius: 18, padding: 18 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -160,32 +199,121 @@ export default function FileExplorer() {
               📁
             </span>
             <div>
-              <div style={{ fontWeight: 900, fontSize: 16 }}>{t('files')} - İndirilenler Gezgini</div>
+              <div style={{ fontWeight: 900, fontSize: 16 }}>{t('files')} - İndirilen Dosyalar</div>
               <div className="text-muted" style={{ fontSize: 12, marginTop: 2, wordBreak: 'break-all' }}>{dir}</div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Kaynak Modu Değiştirici: VoltGet İndirmeleri vs Tüm Klasör */}
+            <div style={{ display: 'flex', background: 'var(--panel-2)', padding: 3, borderRadius: 10, border: '1px solid var(--border)' }}>
+              <button
+                onClick={() => setSourceMode('voltget')}
+                style={{
+                  border: 0,
+                  padding: '7px 12px',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  background: sourceMode === 'voltget' ? 'var(--accent-solid)' : 'transparent',
+                  color: sourceMode === 'voltget' ? '#fff' : 'var(--text-muted)',
+                  cursor: 'pointer'
+                }}
+                title="Yalnızca VoltGet ile indirilen dosyaları listeler"
+              >
+                ⚡ VoltGet İndirmeleri
+              </button>
+              <button
+                onClick={() => setSourceMode('all')}
+                style={{
+                  border: 0,
+                  padding: '7px 12px',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  background: sourceMode === 'all' ? 'var(--accent-solid)' : 'transparent',
+                  color: sourceMode === 'all' ? '#fff' : 'var(--text-muted)',
+                  cursor: 'pointer'
+                }}
+                title="İndirilenler klasöründeki tüm dosyaları tarar"
+              >
+                📂 Tüm Klasör
+              </button>
+            </div>
+
             <button
-              onClick={loadFiles}
-              style={{ background: 'var(--panel-2)', color: 'var(--text)', border: '1px solid var(--border)', padding: '8px 14px', borderRadius: 10, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+              onClick={() => loadFiles(sourceMode)}
+              style={{ background: 'var(--panel-2)', color: 'var(--text)', border: '1px solid var(--border)', padding: '8px 14px', borderRadius: 10, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
             >
               🔄 Yenile
             </button>
             <button
               onClick={() => window.api.openFolder(dir)}
               className="brand-gradient"
-              style={{ color: '#fff', border: 0, padding: '8px 14px', borderRadius: 10, fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}
+              style={{ color: '#fff', border: 0, padding: '8px 14px', borderRadius: 10, fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
             >
               📂 Klasörü Aç
             </button>
           </div>
         </div>
 
-        {/* Bilgi Çubuğu */}
-        <div style={{ display: 'flex', gap: 16, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--muted)' }}>
-          <div>Toplam Gösterilen: <strong style={{ color: 'var(--text)' }}>{filteredFiles.length}</strong> dosya</div>
-          <div>Toplam Boyut: <strong style={{ color: 'var(--accent-solid)' }}>{formatBytes(totalBytes)}</strong></div>
+        {/* Bilgi Çubuğu & Durum Filtreleri */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--muted)', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <div>Gösterilen: <strong style={{ color: 'var(--text)' }}>{filteredFiles.length}</strong> dosya</div>
+            <div>Mevcut Boyut: <strong style={{ color: 'var(--accent-solid)' }}>{formatBytes(totalBytes)}</strong></div>
+          </div>
+
+          {/* Disk Durumu Filtresi */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button
+              onClick={() => setStatusFilter('all')}
+              style={{
+                background: statusFilter === 'all' ? 'var(--panel)' : 'transparent',
+                color: statusFilter === 'all' ? 'var(--text)' : 'var(--text-muted)',
+                border: '1px solid ' + (statusFilter === 'all' ? 'var(--accent-solid)' : 'transparent'),
+                padding: '4px 9px',
+                borderRadius: 7,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              Tümü ({counts.all})
+            </button>
+            <button
+              onClick={() => setStatusFilter('existing')}
+              style={{
+                background: statusFilter === 'existing' ? 'rgba(34, 197, 94, 0.15)' : 'transparent',
+                color: statusFilter === 'existing' ? '#86efac' : 'var(--text-muted)',
+                border: '1px solid ' + (statusFilter === 'existing' ? '#22c55e' : 'transparent'),
+                padding: '4px 9px',
+                borderRadius: 7,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              ✓ Mevcut ({counts.existing})
+            </button>
+            {counts.deleted > 0 && (
+              <button
+                onClick={() => setStatusFilter('deleted')}
+                style={{
+                  background: statusFilter === 'deleted' ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
+                  color: statusFilter === 'deleted' ? '#fca5a5' : 'var(--text-muted)',
+                  border: '1px solid ' + (statusFilter === 'deleted' ? '#ef4444' : 'transparent'),
+                  padding: '4px 9px',
+                  borderRadius: 7,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                ⚠️ Diskten Silinmiş ({counts.deleted})
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -197,13 +325,13 @@ export default function FileExplorer() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Dosya adına göre ara..."
+              placeholder="Dosya adına veya uzantıya göre ara..."
               style={{ width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 12 }}
             />
             {search && (
               <button
                 onClick={() => setSearch('')}
-                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 0, color: 'var(--muted)', fontSize: 14 }}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 0, color: 'var(--muted)', fontSize: 14, cursor: 'pointer' }}
               >
                 ✕
               </button>
@@ -236,7 +364,8 @@ export default function FileExplorer() {
                 borderRadius: 7,
                 fontSize: 12,
                 background: viewMode === 'grid' ? 'var(--accent-solid)' : 'transparent',
-                color: viewMode === 'grid' ? '#fff' : 'var(--text)'
+                color: viewMode === 'grid' ? '#fff' : 'var(--text)',
+                cursor: 'pointer'
               }}
               title="Izgara Görünümü"
             >
@@ -250,7 +379,8 @@ export default function FileExplorer() {
                 borderRadius: 7,
                 fontSize: 12,
                 background: viewMode === 'list' ? 'var(--accent-solid)' : 'transparent',
-                color: viewMode === 'list' ? '#fff' : 'var(--text)'
+                color: viewMode === 'list' ? '#fff' : 'var(--text)',
+                cursor: 'pointer'
               }}
               title="Liste Görünümü"
             >
@@ -265,8 +395,8 @@ export default function FileExplorer() {
             { id: 'all', label: 'Tümü' },
             { id: 'video', label: 'Videolar' },
             { id: 'audio', label: 'Müzik / Ses' },
+            { id: 'archive', label: 'Arşivler (Zip/Rar)' },
             { id: 'document', label: 'Belgeler' },
-            { id: 'archive', label: 'Arşivler' },
             { id: 'installer', label: 'Kurulumlar' },
           ].map(cat => (
             <button
@@ -282,7 +412,8 @@ export default function FileExplorer() {
                 fontWeight: 600,
                 border: '1px solid ' + (category === cat.id ? 'var(--accent-solid)' : 'var(--border)'),
                 background: category === cat.id ? 'color-mix(in srgb, var(--accent-solid) 18%, var(--panel-2))' : 'var(--panel-2)',
-                color: category === cat.id ? 'var(--text)' : 'var(--muted)'
+                color: category === cat.id ? 'var(--text)' : 'var(--muted)',
+                cursor: 'pointer'
               }}
             >
               <span>{categoryIcons[cat.id]}</span>
@@ -303,15 +434,23 @@ export default function FileExplorer() {
           <div style={{ fontSize: 32, marginBottom: 12 }}>📁</div>
           <div style={{ fontSize: 14, fontWeight: 700 }}>Dosya bulunamadı</div>
           <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
-            {search ? 'Arama kriterlerinize uygun dosya bulunamadı.' : 'Bu kategoride henüz indirilmiş bir dosya yok.'}
+            {search ? 'Arama kriterlerinize uygun dosya bulunamadı.' : 'Bu filtrede henüz gösterilecek bir dosya yok.'}
           </div>
+          {sourceMode === 'voltget' && (
+            <button
+              onClick={() => setSourceMode('all')}
+              style={{ marginTop: 14, background: 'var(--panel-2)', color: 'var(--text)', border: '1px solid var(--border)', padding: '8px 14px', borderRadius: 10, fontSize: 12, cursor: 'pointer' }}
+            >
+              📂 Tüm İndirilenler Klasörünü Tara
+            </button>
+          )}
         </div>
       ) : viewMode === 'grid' ? (
         /* Izgara (Grid) Görünümü */
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
           {filteredFiles.map(file => (
             <div
-              key={file.path}
+              key={file.path || file.id}
               className="card-premium"
               style={{
                 borderRadius: 14,
@@ -319,6 +458,7 @@ export default function FileExplorer() {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 10,
+                border: file.deletedFromDisk ? '1px solid rgba(239, 68, 68, 0.35)' : undefined,
                 transition: 'transform 0.15s ease, border-color 0.15s ease'
               }}
             >
@@ -328,8 +468,8 @@ export default function FileExplorer() {
                     width: 38,
                     height: 38,
                     borderRadius: 10,
-                    background: 'var(--panel-2)',
-                    border: '1px solid var(--border)',
+                    background: file.deletedFromDisk ? 'rgba(239, 68, 68, 0.12)' : 'var(--panel-2)',
+                    border: '1px solid ' + (file.deletedFromDisk ? 'rgba(239, 68, 68, 0.3)' : 'var(--border)'),
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -348,16 +488,23 @@ export default function FileExplorer() {
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
-                      color: 'var(--text)'
+                      color: file.deletedFromDisk ? 'var(--text-muted)' : 'var(--text)',
+                      textDecoration: file.deletedFromDisk ? 'line-through' : 'none'
                     }}
                   >
                     {file.name}
                   </div>
-                  <div style={{ display: 'flex', gap: 8, fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                    <span>{formatBytes(file.size)}</span>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11, color: 'var(--muted)', marginTop: 4, flexWrap: 'wrap' }}>
+                    {file.deletedFromDisk ? (
+                      <span style={{ background: '#450a0a', color: '#fca5a5', padding: '1px 7px', borderRadius: 4, border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 800, fontSize: 10 }}>
+                        ⚠️ Diskten Silindi
+                      </span>
+                    ) : (
+                      <span>{formatBytes(file.size)}</span>
+                    )}
                     <span>•</span>
-                    <span style={{ background: 'var(--panel-2)', padding: '1px 6px', borderRadius: 4, border: '1px solid var(--border)' }}>
-                      {file.folder}
+                    <span style={{ background: 'var(--panel-2)', padding: '1px 6px', borderRadius: 4, border: '1px solid var(--border)', fontSize: 10 }}>
+                      {file.folder || 'Ana Klasör'}
                     </span>
                   </div>
                 </div>
@@ -369,24 +516,32 @@ export default function FileExplorer() {
 
               {/* Hızlı Butonlar */}
               <div style={{ display: 'flex', gap: 6, marginTop: 'auto', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
-                <button
-                  onClick={() => handleOpenFile(file)}
-                  className="brand-gradient"
-                  style={{ flex: 1, border: 0, padding: '7px 10px', borderRadius: 8, color: '#fff', fontSize: 11, fontWeight: 800 }}
-                >
-                  ▶️ Aç / Oynat
-                </button>
-                <button
-                  onClick={() => handleShowInFolder(file)}
-                  title="Klasörde Göster"
-                  style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', padding: '7px 10px', borderRadius: 8, color: 'var(--text)', fontSize: 11 }}
-                >
-                  📂 Konum
-                </button>
+                {!file.deletedFromDisk ? (
+                  <>
+                    <button
+                      onClick={() => handleOpenFile(file)}
+                      className="brand-gradient"
+                      style={{ flex: 1, border: 0, padding: '7px 10px', borderRadius: 8, color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      ▶️ Aç
+                    </button>
+                    <button
+                      onClick={() => handleShowInFolder(file)}
+                      title="Klasörde Göster (Dosya Seçili Açılır)"
+                      style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', padding: '7px 10px', borderRadius: 8, color: 'var(--text)', fontSize: 11, cursor: 'pointer' }}
+                    >
+                      📂 Konum
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ flex: 1, fontSize: 11, color: '#fca5a5', display: 'flex', alignItems: 'center' }}>
+                    Dosya diskte mevcut değil
+                  </div>
+                )}
                 <button
                   onClick={() => setDeleteConfirm(file)}
-                  title="Sil (Çöp Kutusu)"
-                  style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', padding: '7px 10px', borderRadius: 8, color: '#ef4444', fontSize: 11 }}
+                  title="Listeden kaldır veya diskten sil"
+                  style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.4)', padding: '7px 10px', borderRadius: 8, color: '#fca5a5', fontSize: 11, cursor: 'pointer' }}
                 >
                   🗑️
                 </button>
@@ -403,7 +558,7 @@ export default function FileExplorer() {
                 <tr style={{ background: 'var(--panel-2)', borderBottom: '1px solid var(--border)', color: 'var(--muted)' }}>
                   <th style={{ padding: '12px 14px' }}>Dosya Adı</th>
                   <th style={{ padding: '12px 14px' }}>Klasör</th>
-                  <th style={{ padding: '12px 14px' }}>Boyut</th>
+                  <th style={{ padding: '12px 14px' }}>Boyut / Durum</th>
                   <th style={{ padding: '12px 14px' }}>Tarih</th>
                   <th style={{ padding: '12px 14px', textAlign: 'right' }}>İşlemler</th>
                 </tr>
@@ -411,38 +566,52 @@ export default function FileExplorer() {
               <tbody>
                 {filteredFiles.map(file => (
                   <tr
-                    key={file.path}
+                    key={file.path || file.id}
                     style={{ borderBottom: '1px solid var(--border)' }}
                   >
-                    <td style={{ padding: '10px 14px', maxWidth: 300 }}>
+                    <td style={{ padding: '10px 14px', maxWidth: 320 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span>{categoryIcons[file.category] || '📄'}</span>
-                        <span title={file.name} style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span title={file.name} style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: file.deletedFromDisk ? 'var(--text-muted)' : 'var(--text)', textDecoration: file.deletedFromDisk ? 'line-through' : 'none' }}>
                           {file.name}
                         </span>
                       </div>
                     </td>
-                    <td style={{ padding: '10px 14px', color: 'var(--muted)' }}>{file.folder}</td>
-                    <td style={{ padding: '10px 14px', color: 'var(--accent-solid)', fontWeight: 600 }}>{formatBytes(file.size)}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--muted)' }}>{file.folder || 'Ana Klasör'}</td>
+                    <td style={{ padding: '10px 14px', fontWeight: 600 }}>
+                      {file.deletedFromDisk ? (
+                        <span style={{ background: '#450a0a', color: '#fca5a5', padding: '2px 7px', borderRadius: 4, border: '1px solid rgba(239, 68, 68, 0.4)', fontSize: 11 }}>
+                          ⚠️ Diskten Silindi
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--accent-solid)' }}>{formatBytes(file.size)}</span>
+                      )}
+                    </td>
                     <td style={{ padding: '10px 14px', color: 'var(--muted)' }}>{formatDate(file.mtime)}</td>
                     <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', gap: 6 }}>
-                        <button
-                          onClick={() => handleOpenFile(file)}
-                          className="brand-gradient"
-                          style={{ border: 0, padding: '5px 8px', borderRadius: 6, color: '#fff', fontSize: 11, fontWeight: 700 }}
-                        >
-                          Aç
-                        </button>
-                        <button
-                          onClick={() => handleShowInFolder(file)}
-                          style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', padding: '5px 8px', borderRadius: 6, color: 'var(--text)', fontSize: 11 }}
-                        >
-                          Konum
-                        </button>
+                        {!file.deletedFromDisk && (
+                          <>
+                            <button
+                              onClick={() => handleOpenFile(file)}
+                              className="brand-gradient"
+                              style={{ border: 0, padding: '5px 9px', borderRadius: 6, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                            >
+                              Aç
+                            </button>
+                            <button
+                              onClick={() => handleShowInFolder(file)}
+                              title="Klasörde seçili gösterir"
+                              style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', padding: '5px 9px', borderRadius: 6, color: 'var(--text)', fontSize: 11, cursor: 'pointer' }}
+                            >
+                              Konum
+                            </button>
+                          </>
+                        )}
                         <button
                           onClick={() => setDeleteConfirm(file)}
-                          style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', padding: '5px 8px', borderRadius: 6, color: '#ef4444', fontSize: 11 }}
+                          title="Listeden kaldır veya diskten sil"
+                          style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.4)', padding: '5px 9px', borderRadius: 6, color: '#fca5a5', fontSize: 11, cursor: 'pointer' }}
                         >
                           Sil
                         </button>
@@ -456,13 +625,13 @@ export default function FileExplorer() {
         </div>
       )}
 
-      {/* Silme Onay Modalı */}
+      {/* Silme & Kaldırma Seçenekleri Modalı */}
       {deleteConfirm && (
         <div style={{
           position: 'fixed',
           inset: 0,
           zIndex: 999999,
-          background: 'rgba(0,0,0,0.7)',
+          background: 'rgba(0,0,0,0.75)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -477,44 +646,74 @@ export default function FileExplorer() {
               display: 'flex',
               flexDirection: 'column',
               gap: 14,
-              border: '1px solid #ef4444',
+              border: '1px solid var(--accent-solid)',
               boxShadow: '0 20px 50px rgba(0,0,0,0.8)'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#ef4444', fontWeight: 900, fontSize: 15 }}>
-              <span>🗑️</span> Dosyayı Sil
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--accent-solid)', fontWeight: 900, fontSize: 15 }}>
+              <span>🗑️</span> Dosyayı Kaldır veya Sil
             </div>
-            <div style={{ fontSize: 12, lineHeight: 1.5 }}>
-              Bu dosyayı silmek istediğinizden emin misiniz? Dosya işletim sisteminin <strong>Geri Dönüşüm Kutusuna</strong> taşınacaktır.
+            <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text)' }}>
+              Bu indirme için hangi işlemi uygulamak istersiniz?
             </div>
-            <div style={{ background: 'var(--panel-2)', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 11, wordBreak: 'break-all' }}>
-              {deleteConfirm.name}
+            <div style={{ background: 'var(--panel-2)', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 11, wordBreak: 'break-all' }}>
+              <strong>{deleteConfirm.name}</strong>
+              <div style={{ color: 'var(--text-muted)', fontSize: 10, marginTop: 2 }}>{deleteConfirm.path}</div>
             </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
               <button
-                onClick={() => handleDelete(deleteConfirm)}
-                style={{
-                  flex: 1,
-                  background: '#dc2626',
-                  color: '#fff',
-                  border: 0,
-                  padding: '10px 14px',
-                  borderRadius: 10,
-                  fontWeight: 800,
-                  fontSize: 12
-                }}
-              >
-                Evet, Çöp Kutusuna Taşı
-              </button>
-              <button
-                onClick={() => setDeleteConfirm(null)}
+                onClick={() => handleRemoveFromListOnly(deleteConfirm)}
                 style={{
                   background: 'var(--panel-2)',
                   color: 'var(--text)',
                   border: '1px solid var(--border)',
-                  padding: '10px 16px',
+                  padding: '10px 14px',
                   borderRadius: 10,
-                  fontSize: 12
+                  fontSize: 12,
+                  fontWeight: 700,
+                  textAlign: 'left',
+                  cursor: 'pointer'
+                }}
+              >
+                📋 Sadece Listeden Kaldır
+                <div style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Dosyayı yerel diskte tutar, yalnızca VoltGet geçmişinden siler.
+                </div>
+              </button>
+
+              {!deleteConfirm.deletedFromDisk && (
+                <button
+                  onClick={() => handleDeleteFromDisk(deleteConfirm)}
+                  style={{
+                    background: 'rgba(220, 38, 38, 0.15)',
+                    color: '#fca5a5',
+                    border: '1px solid rgba(220, 38, 38, 0.35)',
+                    padding: '10px 14px',
+                    borderRadius: 10,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    textAlign: 'left',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ❌ Diskten de Sil (Geri Dönüşüm Kutusuna)
+                  <div style={{ fontSize: 10, fontWeight: 400, color: '#fca5a5', marginTop: 2 }}>
+                    Dosyayı Windows Geri Dönüşüm Kutusuna taşır ve listeden çıkarır.
+                  </div>
+                </button>
+              )}
+
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                style={{
+                  background: 'transparent',
+                  color: 'var(--text-muted)',
+                  border: 0,
+                  padding: '8px 14px',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  marginTop: 2
                 }}
               >
                 Vazgeç
