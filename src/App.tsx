@@ -308,34 +308,48 @@ export default function App() {
 
   return (
     <div style={{ display:'flex', height:'100vh', background:'var(--bg)', color:'var(--text)' }}>
-      <div style={{ width:216, background:'var(--panel-3)', borderRight:'1px solid var(--border)', display:'flex', flexDirection:'column', padding:14 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 4px', marginBottom:14 }}>
-          <img src="./assets/icon-48.png" alt="VoltGet" style={{ width:36, height:36, borderRadius:10, objectFit:'contain', boxShadow:'0 6px 18px rgba(14, 165, 233, 0.35)' }} />
-          <div>
-            <div style={{ fontWeight:900, fontSize:15, letterSpacing:0.2 }}>{t('appName')}</div>
-            <div className="text-muted" style={{ fontSize:11 }}>{t('appTagline')}</div>
+      <div style={{ width:224, background:'var(--panel-3)', borderRight:'1px solid var(--border)', display:'flex', flexDirection:'column', padding:14, flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'4px 4px 14px 4px', borderBottom:'1px solid var(--border)', marginBottom:12 }}>
+          <div style={{ position:'relative', flexShrink:0 }}>
+            <img src="./assets/icon-48.png" alt="VoltGet" style={{ width:36, height:36, borderRadius:10, objectFit:'contain', boxShadow:'0 4px 16px color-mix(in srgb, var(--accent-solid) 45%, transparent)' }} />
+            <span style={{ position:'absolute', bottom:-1, right:-1, width:9, height:9, borderRadius:99, background: extConnected ? '#22c55e' : '#3b82f6', border:'2px solid var(--panel-3)', boxShadow: extConnected ? '0 0 8px #22c55e' : 'none' }} />
+          </div>
+          <div style={{ minWidth:0 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+              <span style={{ fontWeight:900, fontSize:16, letterSpacing:'-0.02em', background:'linear-gradient(135deg, #ffffff 50%, var(--accent-to))', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>VoltGet</span>
+              <span style={{ fontSize:9, fontWeight:900, padding:'1px 5px', borderRadius:4, background:'var(--accent-solid)', color:'#fff' }}>PRO</span>
+            </div>
+            <div className="text-muted" style={{ fontSize:10, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t('idmAlt')}</div>
           </div>
         </div>
 
-        <nav style={{ display:'flex', flexDirection:'column', gap:6 }}>
+        <nav style={{ display:'flex', flexDirection:'column', gap:5 }}>
           {[
             { id:'download', icon:'⬇️', label:t('navDownload'), desc:t('navDownloadDesc') },
             { id:'sniff', icon:'🎯', label:t('navSniff'), desc:t('navSniffDesc') },
             { id:'explorer', icon:'📁', label:t('navExplorer'), desc:t('navExplorerDesc') },
           ].map(item=>{
             const activeDownloads = jobs.filter(j=> j.status==='downloading'||j.status==='queued').length
+            const isCurrent = tab === item.id
             return (
               <button key={item.id} onClick={()=>setTab(item.id as any)}
                 style={{
-                  display:'flex', gap:10, alignItems:'center', padding:'11px 12px', borderRadius:12,
-                  border:'1px solid '+(tab===item.id?'color-mix(in srgb, var(--accent-solid) 55%, transparent)':'transparent'),
-                  background: tab===item.id ? 'color-mix(in srgb, var(--accent-solid) 16%, var(--panel))' : 'transparent',
-                  color:'var(--text)', textAlign:'left'
+                  position:'relative',
+                  display:'flex', gap:10, alignItems:'center', padding:'10px 12px', borderRadius:12,
+                  border:'1px solid '+(isCurrent ? 'color-mix(in srgb, var(--accent-solid) 45%, rgba(255,255,255,0.08))' : 'transparent'),
+                  background: isCurrent ? 'color-mix(in srgb, var(--accent-solid) 14%, var(--panel-2))' : 'transparent',
+                  color: isCurrent ? '#fff' : 'var(--text)',
+                  textAlign:'left',
+                  boxShadow: isCurrent ? '0 4px 18px color-mix(in srgb, var(--accent-solid) 12%, transparent)' : 'none',
+                  transition:'all 0.16s ease'
                 }}>
-                <span style={{ fontSize:18 }}>{item.icon}</span>
+                {isCurrent && (
+                  <div style={{ position:'absolute', left:0, top:8, bottom:8, width:3, borderRadius:'0 4px 4px 0', background:'var(--accent-solid)', boxShadow:'0 0 10px var(--accent-solid)' }} />
+                )}
+                <span style={{ fontSize:17 }}>{item.icon}</span>
                 <span style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:700 }}>{item.label}</div>
-                  <div className="text-muted" style={{ fontSize:11 }}>{item.desc}</div>
+                  <div style={{ fontSize:13, fontWeight: isCurrent ? 800 : 600 }}>{item.label}</div>
+                  <div className="text-muted" style={{ fontSize:10 }}>{item.desc}</div>
                 </span>
                 {item.id==='download' && activeDownloads > 0 && (
                   <span style={{
@@ -354,23 +368,35 @@ export default function App() {
             )
           })}
         </nav>
-        <div style={{ height:1, background:'var(--border)', margin:'12px 0' }}/>
-        <nav style={{ display:'flex', flexDirection:'column', gap:6 }}>
+        <div style={{ height:1, background:'var(--border)', margin:'10px 0' }}/>
+        <nav style={{ display:'flex', flexDirection:'column', gap:5 }}>
           {[
             { id:'settings', icon:'⚙️', label:t('navSettings'), desc:t('navSettingsDesc') },
             { id:'about', icon:'ℹ️', label:t('navAbout'), desc:t('navAboutDesc') },
-          ].map(item=>(
-            <button key={item.id} onClick={()=>setTab(item.id as any)}
-              style={{
-                display:'flex', gap:10, alignItems:'center', padding:'10px 12px', borderRadius:12,
-                border:'1px solid '+(tab===item.id?'color-mix(in srgb, var(--accent-solid) 55%, transparent)':'transparent'),
-                background: tab===item.id ? 'color-mix(in srgb, var(--accent-solid) 16%, var(--panel))' : 'transparent',
-                color:'var(--text)', textAlign:'left'
-              }}>
-              <span style={{ fontSize:16 }}>{item.icon}</span>
-              <span><div style={{ fontSize:12, fontWeight:600 }}>{item.label}</div><div className="text-muted" style={{ fontSize:10 }}>{item.desc}</div></span>
-            </button>
-          ))}
+          ].map(item=>{
+            const isCurrent = tab === item.id
+            return (
+              <button key={item.id} onClick={()=>setTab(item.id as any)}
+                style={{
+                  position:'relative',
+                  display:'flex', gap:10, alignItems:'center', padding:'9px 12px', borderRadius:12,
+                  border:'1px solid '+(isCurrent ? 'color-mix(in srgb, var(--accent-solid) 45%, rgba(255,255,255,0.08))' : 'transparent'),
+                  background: isCurrent ? 'color-mix(in srgb, var(--accent-solid) 14%, var(--panel-2))' : 'transparent',
+                  color: isCurrent ? '#fff' : 'var(--text)',
+                  textAlign:'left',
+                  transition:'all 0.16s ease'
+                }}>
+                {isCurrent && (
+                  <div style={{ position:'absolute', left:0, top:7, bottom:7, width:3, borderRadius:'0 4px 4px 0', background:'var(--accent-solid)', boxShadow:'0 0 10px var(--accent-solid)' }} />
+                )}
+                <span style={{ fontSize:15 }}>{item.icon}</span>
+                <span>
+                  <div style={{ fontSize:12, fontWeight: isCurrent ? 800 : 600 }}>{item.label}</div>
+                  <div className="text-muted" style={{ fontSize:10 }}>{item.desc}</div>
+                </span>
+              </button>
+            )
+          })}
         </nav>
 
         <div style={{ flex:1 }}/>
@@ -388,7 +414,7 @@ export default function App() {
             display:'flex',
             alignItems:'center',
             gap:10,
-            transition:'all 0.15s'
+            transition:'all 0.16s ease'
           }}
           onMouseEnter={e=> { e.currentTarget.style.transform = 'translateY(-1px)' }}
           onMouseLeave={e=> { e.currentTarget.style.transform = 'translateY(0)' }}
@@ -403,16 +429,32 @@ export default function App() {
               {extConnected ? 'Eklenti Bağlı ✓' : 'Eklenti Kurulumu ⚡'}
             </div>
             <div className="text-muted" style={{ fontSize:9, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-              {extConnected ? 'IDM Yakalayıcı Aktif' : '15 saniyede yükle'}
+              {extConnected ? 'IDM Yakalayıcı Aktif' : 'Chrome & Firefox'}
             </div>
           </div>
         </div>
 
         {status && (
-          <div className="card-premium" style={{ borderRadius:12, padding:10, fontSize:11 }}>
-            <div style={{ display:'flex', justifyContent:'space-between' }}><span>yt-dlp</span><span style={{ color:(status.binExists||status.pathExists)?'#22c55e':'#f87171' }}>{(status.binExists||status.pathExists)?'✓':'✗'}</span></div>
-            <div style={{ display:'flex', justifyContent:'space-between' }}><span>ffmpeg</span><span style={{ color: status.ffmpegOk?'#22c55e':'#f87171' }}>{status.ffmpegOk?'✓':'✗'}</span></div>
-            <div className="text-muted" style={{ fontSize:10, marginTop:4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{outDir}</div>
+          <div style={{ borderRadius:12, padding:'10px 12px', fontSize:11, background:'var(--panel-2)', border:'1px solid var(--border)' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+              <span style={{ fontSize:11, fontWeight:700, display:'flex', alignItems:'center', gap:5 }}>
+                <span>⚡</span> Motor Durumu
+              </span>
+              <span style={{ fontSize:10, color:'#22c55e', fontWeight:800 }}>HAZIR</span>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', padding:'3px 6px', background:'var(--panel-3)', borderRadius:6, fontSize:10 }}>
+                <span className="text-muted">yt-dlp</span>
+                <span style={{ color:(status.binExists||status.pathExists)?'#22c55e':'#f87171', fontWeight:800 }}>{(status.binExists||status.pathExists)?'✓':'✗'}</span>
+              </div>
+              <div style={{ display:'flex', justifyContent:'space-between', padding:'3px 6px', background:'var(--panel-3)', borderRadius:6, fontSize:10 }}>
+                <span className="text-muted">ffmpeg</span>
+                <span style={{ color:status.ffmpegOk?'#22c55e':'#f87171', fontWeight:800 }}>{status.ffmpegOk?'✓':'✗'}</span>
+              </div>
+            </div>
+            <div className="text-muted" style={{ fontSize:9, marginTop:6, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', opacity:0.75 }} title={outDir}>
+              📂 {outDir}
+            </div>
           </div>
         )}
         <div className="text-muted" style={{ fontSize:10, marginTop:10, textAlign:'center' }}>v{appVersion} • {t('idmAlt')}</div>

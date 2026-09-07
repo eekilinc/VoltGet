@@ -169,8 +169,7 @@ You can access the extension folder in two convenient ways:
 
 ### 2. Load into Your Browser
 
-Compatible with all Chromium-based browsers: **Google Chrome**, **Microsoft Edge**, **Brave**, **Opera**, and **Vivaldi**.
-
+#### 🌐 Option A: Google Chrome, Microsoft Edge, Brave, Opera & Chromium
 1. Open your browser and go to the extensions management page:
    - **Chrome / Brave**: `chrome://extensions`
    - **Microsoft Edge**: `edge://extensions`
@@ -178,7 +177,14 @@ Compatible with all Chromium-based browsers: **Google Chrome**, **Microsoft Edge
 2. Turn on **Developer mode** (*Geliştirici modu*) using the switch in the top-right corner.
 3. Click the **Load unpacked** (*Paketlenmemiş öğe yükle*) button in the top toolbar.
 4. Select the `extension` folder (opened from VoltGet or located in your repository).
-5. 🎉 **Done!** Open any video website (YouTube, movie platforms, social media, etc.) — the sleek **⚡ VoltGet ile İndir** button will appear directly over the video player!
+
+#### 🦊 Option B: Mozilla Firefox, LibreWolf, Waterfox & Floorp
+1. Open Firefox and go to the debugging page:
+   `about:debugging#/runtime/this-firefox`
+2. Click the **Load Temporary Add-on...** (*Geçici Eklenti Yükle...*) button.
+3. Select the `manifest.json` file inside the `extension-firefox` folder (opened directly via VoltGet's Firefox tab).
+
+🎉 **Done!** Open any video website (YouTube, movie platforms, social media, etc.) — the sleek **⚡ VoltGet ile İndir** button will appear directly over the video player, and browser downloads will be intercepted!
 
 ---
 

@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "VoltGet Yakalayıcı",
+  "version": "1.2.0",
+  "description": "Sayfadaki video/müzik linklerini yakalar ve IDM tarzı video üstü indirme paneli sunar",
+  "permissions": [
+    "webRequest",
+    "storage",
+    "tabs",
+    "scripting",
+    "cookies",
+    "downloads",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_title": "VoltGet Yakalayıcı",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "16": "icon-16.png",
+    "32": "icon-32.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "voltget-sniffer@voltget.com",
+      "strict_min_version": "109.0"
+    }
+  }
+}

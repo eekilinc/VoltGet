@@ -2184,42 +2184,80 @@ ipcMain.handle('http-download', async (_e, opts:any)=>{
   return {id, outPath}
 })
 
-function getExtensionDir(): string {
-  const p1 = path.join(app.getAppPath(), 'extension')
-  if (fs.existsSync(p1)) return p1
-  const p2 = path.join(__dirname, '../../extension')
-  if (fs.existsSync(p2)) return p2
-  const p3 = path.join(process.resourcesPath, 'extension')
-  if (fs.existsSync(p3)) return p3
-  return p1
+function getExtensionDir(targetBrowser?: string): string {
+  const isFirefox = (targetBrowser || '').toLowerCase().includes('firefox')
+  const folderName = isFirefox ? 'extension-firefox' : 'extension'
+
+  // 1. Aday klasörleri disk üzerinde ara (asar dışı fiziksel dizinler)
+  const diskCandidates = [
+    path.join(process.resourcesPath, folderName),
+    path.join(path.dirname(app.getPath('exe')), 'resources', folderName),
+    path.join(path.dirname(app.getPath('exe')), folderName),
+    path.join(__dirname, '../../' + folderName),
+    path.join(__dirname, '../' + folderName),
+    path.join(process.cwd(), folderName)
+  ]
+
+  for (const p of diskCandidates) {
+    if (!p.includes('.asar') && fs.existsSync(p) && fs.existsSync(path.join(p, 'manifest.json'))) {
+      return p
+    }
+  }
+
+  // 2. app.getAppPath() kontrolü (asar içinde veya geliştirici ortamında)
+  const appPathExt = path.join(app.getAppPath(), folderName)
+  const userDir = path.join(app.getPath('userData'), folderName)
+
+  if (fs.existsSync(path.join(appPathExt, 'manifest.json'))) {
+    // Eğer asar arşivi içindeyse, Windows Gezgini ve Tarayıcı doğrudan okuyabilsin diye userData'ya kopyala
+    if (appPathExt.includes('.asar')) {
+      try {
+        ensureDir(userDir)
+        fs.cpSync(appPathExt, userDir, { recursive: true, force: true })
+        return userDir
+      } catch (e) {
+        console.error('[VoltGet] asar eklenti çıkartma hatası:', e)
+      }
+    } else {
+      return appPathExt
+    }
+  }
+
+  // 3. Daha önce userData'ya çıkartılmış mı?
+  if (fs.existsSync(path.join(userDir, 'manifest.json'))) {
+    return userDir
+  }
+
+  return diskCandidates[0] || userDir
 }
 
-ipcMain.handle('open-extension-folder', async () => {
-  const extDir = getExtensionDir()
+ipcMain.handle('open-extension-folder', async (_e, browser?: string) => {
+  const extDir = getExtensionDir(browser)
   if (fs.existsSync(extDir)) {
     await shell.openPath(extDir)
-    return { success: true, path: extDir }
+    return { success: true, path: extDir, browser: browser || 'chrome' }
   }
   return { success: false, error: 'Eklenti klasörü bulunamadı: ' + extDir }
 })
 
-ipcMain.handle('export-extension-zip', async () => {
-  const extDir = getExtensionDir()
+ipcMain.handle('export-extension-zip', async (_e, browser?: string) => {
+  const isFirefox = (browser || '').toLowerCase().includes('firefox')
+  const extDir = getExtensionDir(browser)
   if (!fs.existsSync(extDir)) {
     throw new Error('Eklenti klasörü bulunamadı: ' + extDir)
   }
   const outDir = getDefaultDownloadDir()
   ensureDir(outDir)
-  const zipPath = path.join(outDir, 'voltget-eklenti.zip')
+  const zipFileName = isFirefox ? 'voltget-firefox-eklenti.zip' : 'voltget-chrome-eklenti.zip'
+  const zipPath = path.join(outDir, zipFileName)
 
   return new Promise((resolve, reject) => {
-    // Windows PowerShell Compress-Archive komutu ile sıfır bağımlılıkla hızlıca zip oluştur
     const psCmd = `Compress-Archive -Path "${extDir}\\*" -DestinationPath "${zipPath}" -Force`
     const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCmd])
     proc.on('close', (code) => {
       if (code === 0 && fs.existsSync(zipPath)) {
         shell.showItemInFolder(zipPath)
-        resolve({ success: true, zipPath })
+        resolve({ success: true, zipPath, fileName: zipFileName })
       } else {
         reject(new Error(`ZIP paketi oluşturulamadı (çıkış kodu: ${code})`))
       }

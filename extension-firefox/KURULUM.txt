@@ -1,0 +1,13 @@
+VOLTGET CHROME / EDGE / BRAVE EKLENTİSİ KURULUMU
+=================================================
+
+1. Chrome, Edge, Brave veya Opera tarayıcınızı açın.
+2. Adres çubuğuna şunu yazın ve Enter'a basın:
+   Chrome için: chrome://extensions
+   Edge için  : edge://extensions
+3. Sayfanın sağ üst köşesindeki "Geliştirici Modu" (Developer Mode) anahtarını AÇIK konuma getirin.
+4. Sol üstte beliren "Paketlenmemiş Öğe Yükle" (Load unpacked) butonuna tıklayın.
+5. Açılan pencerede BU KLASÖRÜ (extension klasörünü) seçin.
+
+Tebrikler! VoltGet Yakalayıcı eklentisi tarayıcınıza kuruldu.
+Artık YouTube ve tüm video sitelerinde videonun üzerinde "⚡ VoltGet ile İndir" butonu görünecektir.

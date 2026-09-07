@@ -1,0 +1,11 @@
+VOLTGET MOZILLA FIREFOX EKLENTİSİ KURULUMU
+==========================================
+
+1. Mozilla Firefox tarayıcınızı açın.
+2. Adres çubuğuna şunu yazın ve Enter'a basın:
+   about:debugging#/runtime/this-firefox
+3. Sayfadaki "Geçici Eklenti Yükle..." (Load Temporary Add-on...) butonuna tıklayın.
+4. Açılan dosya seçim penceresinde bu klasör içindeki "manifest.json" dosyasını seçin.
+
+Tebrikler! VoltGet Yakalayıcı eklentisi Firefox'a yüklendi.
+Artık video sitelerinde videonun üzerinde "⚡ VoltGet ile İndir" butonu görünecek ve indirmeler VoltGet ile yakalanacaktır.

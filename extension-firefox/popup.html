@@ -1,0 +1,26 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:380px;background:#0a0a0f;color:#e6e6e6;font-family:Segoe UI,system-ui,sans-serif;padding:12px}
+.h{font-weight:900;font-size:14px;display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.badge{font-size:10px;background:#1e3a5f;color:#93c5fd;padding:3px 7px;border-radius:20px;border:1px solid #334155}
+.tabs{display:flex;gap:4px;margin:8px 0;background:#121214;border:1px solid #27272a;padding:3px;border-radius:8px}
+.tab{flex:1;padding:6px;border-radius:6;border:0;background:transparent;color:#9ca3af;font-size:11px;font-weight:700;cursor:pointer}
+.tab.active{background:#2563eb;color:#fff}
+.card{background:#18181b;border:1px solid #27272a;border-radius:10;padding:10;margin:8px 0}
+.meta{font-size:10px;opacity:0.6;display:flex;justify-content:space-between;gap:8px}
+.url{font-size:11px;background:#09090b;border:1px solid #27272a;padding:6px 8px;border-radius:6;margin-top:6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btn{background:#2563eb;color:#fff;border:0;padding:6px 10px;border-radius:6;font-size:11px;font-weight:700;cursor:pointer}
+.btn2{background:#27272a;color:#fff;border:1px solid #3f3f46;padding:6px 10px;border-radius:6;font-size:11px;cursor:pointer}
+.btnDanger{background:#7f1d1d;color:#fff;border:1px solid #991b1b;padding:6px 10px;border-radius:6;font-size:11px;cursor:pointer}
+.row{display:flex;gap:6;margin-top:8}
+.empty{text-align:center;padding:20px;opacity:0.6;font-size:12px}
+.hint{font-size:10px;opacity:0.55;margin-top:8;line-height:1.5;background:#121214;border:1px solid #27272a;padding:8px;border-radius:8}
+.toggle{font-size:10px;display:flex;align-items:center;gap:6;margin-top:6;opacity:0.8}
+</style></head><body>
+<div class=h><img src="icon-16.png" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"> VoltGet Yakalayıcı <span class=badge id=cnt>0</span></div>
+<div class=tabs><button class="tab active" id=tabCurrent>Bu Sayfa</button><button class=tab id=tabAll>Tümü</button></div>
+<div id=list></div>
+<div class=row><button class=btn2 id=clearPage>Bu Sayfayı Temizle</button><button class=btnDanger id=clear>🗑️ Tümünü Temizle</button><button class=btn id=open>⚡ Uygulamayı Aç</button></div>
+<label class=toggle><input type=checkbox id=autoClear> Sayfa değişince otomatik temizle</label>
+<div id=hint class=hint>● Kontrol ediliyor…</div>
+<script src="popup.js"></script></body></html>

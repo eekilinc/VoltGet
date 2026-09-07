@@ -79,7 +79,7 @@ export default function SettingsPanel(){
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             <span style={{ fontSize:26 }}>🧩</span>
             <div>
-              <div style={{ fontWeight:900, fontSize:15 }}>VoltGet Tarayıcı Eklentisi (Chrome & Edge)</div>
+              <div style={{ fontWeight:900, fontSize:15 }}>VoltGet Tarayıcı Eklentisi (Chrome, Firefox, Edge)</div>
               <div className="text-muted" style={{ fontSize:11 }}>
                 Web sayfalarındaki video ve indirmeleri yakalayan IDM tarzı tarayıcı eklentisi
               </div>
