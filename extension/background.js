@@ -7,7 +7,9 @@ const ARCHIVE_PAT = /\.(zip|rar|7z|gz|tar|iso|torrent)($|\?)/i
 const INSTALLER_PAT = /\.(exe|msi|apk|dmg|pkg|deb|rpm)($|\?)/i
 const ANY_FILE = /\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a|flac|wav|flv|mov|zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i
 const EXCLUDE = /(youtube\.com\/s\/search\/audio|generate_204|google.*\/search|chrome-extension|s\.pinimg|doubleclick|googletag|analytics|collect\?|beacon|\.jpg(\?|$)|image\d+\.jpg|\.png(\?|$)|favicon|\.css(\?|$)|\.js(\?|$)|adservice|ads\.|track|pixel)/i
-const SITE_CDN = /(playmix|cdnimages|hls\d*|master\.(txt|m3u8)|\/hls\/.*\.(m3u8|txt|mp4)|googlevideo|manifest\.googlevideo|\.m3u8(\?|$)|\.mpd(\?|$)|videoplayback\?)/i
+const SITE_CDN = /(playmix|cdnimages|molystream|stream\d*|video\d*|hls\d*|master\.(txt|m3u8)|\/hls\/|\/stream\/|\/playlist|\/manifest|googlevideo|manifest\.googlevideo|\.m3u8(\?|$)|\.mpd(\?|$)|videoplayback\?)/i
+const IGNORED_DOWNLOAD_EXTS = /\.(js|mjs|cjs|jsx|ts|tsx|css|scss|less|html|htm|xhtml|php|asp|aspx|jsp|json|xml|map|svg|png|jpg|jpeg|gif|webp|ico|woff|woff2|ttf|eot|otf)($|\?)/i
+const IGNORED_MIME = /(javascript|ecmascript|css|html|json|xml|image\/|font\/|text\/plain)/i
 
 // Segment ve chunk filtreleri (Flood engelleme)
 function isChunkOrSegment(url) {
@@ -161,6 +163,7 @@ async function sendToFlexplorer(data, opts = {}) {
 
 const tabMediaMap = new Map() // tabId -> [{ url, type, time }]
 const domainMediaMap = new Map() // domain -> [{ url, type, time }]
+const globalMediaHistory = [] // [{ url, type, time }]
 let lastSniffedStream = null // { url, type, pageUrl, time }
 
 function cleanDomain(u) {
@@ -185,6 +188,10 @@ chrome.webRequest.onBeforeRequest.addListener((details) => {
 
   if (isMedia) {
     lastSniffedStream = mediaEntry
+    if (!globalMediaHistory.some(x => x.url === normalizedUrl)) {
+      globalMediaHistory.unshift(mediaEntry)
+      if (globalMediaHistory.length > 40) globalMediaHistory.pop()
+    }
   }
 
   if (details.tabId >= 0) {
@@ -192,6 +199,17 @@ chrome.webRequest.onBeforeRequest.addListener((details) => {
     if (!list.some(x => x.url === normalizedUrl)) {
       list.unshift(mediaEntry)
       tabMediaMap.set(details.tabId, list.slice(0, 20))
+    }
+  }
+
+  if (details.initiator && isMedia) {
+    const initDom = cleanDomain(details.initiator)
+    if (initDom) {
+      const idlist = domainMediaMap.get(initDom) || []
+      if (!idlist.some(x => x.url === normalizedUrl)) {
+        idlist.unshift(mediaEntry)
+        domainMediaMap.set(initDom, idlist.slice(0, 20))
+      }
     }
   }
 
@@ -247,14 +265,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!candidate && dom && domainMediaMap.has(dom)) {
       candidate = pickBestStreamFromList(domainMediaMap.get(dom))
     }
-    if (!candidate && lastSniffedStream && (Date.now() - lastSniffedStream.time < 180000)) {
+    if (!candidate && globalMediaHistory.length) {
+      candidate = pickBestStreamFromList(globalMediaHistory)
+    }
+    if (!candidate && lastSniffedStream && (Date.now() - lastSniffedStream.time < 300000)) {
       candidate = lastSniffedStream
     }
     if (candidate && candidate.url) {
       candidate = { ...candidate, url: normalizeToMasterPlaylist(candidate.url) }
     }
     sendResponse(candidate || null)
-    return true
+    return false
   }
 
   if (msg?.type === 'sniffed') {
@@ -273,11 +294,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (downloadData.url) downloadData.url = normalizeToMasterPlaylist(downloadData.url)
     const isVideoPortal = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(downloadData.pageUrl || '')
     
-    // Eğer video portalı değilse ve gelen URL bir embed sayfasıysa veya m3u8/mp4 değilse,
-    // bu sekme veya alan adı için yakalanmış en taze gerçek akış URL'sini kullan!
-    const isStreamUrl = downloadData.url.includes('master.txt') || downloadData.url.includes('.m3u8') || downloadData.url.includes('.mpd') || downloadData.url.includes('/hls/') || downloadData.url.includes('.mp4')
-    const isEmbedOrPage = !isStreamUrl && (downloadData.url.includes('/embed/') || downloadData.url.includes('rapidrame_id') || !MEDIA_PAT.test(downloadData.url))
-    if (!isVideoPortal && isEmbedOrPage) {
+    // Eğer video portalı değilse ve gelen URL doğrudan bir medya akışı (.m3u8, .mp4, master.txt) DEĞİLSE
+    // (örneğin embed sayfası, player linki, .html, .php vs. ise hafızadaki gerçek stream ile değiştir)
+    const isDirectMedia = /\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a)($|\?)/i.test(downloadData.url) || downloadData.url.includes('master.txt')
+    if (!isVideoPortal && !isDirectMedia) {
       const tabId = sender?.tab?.id
       const dom = cleanDomain(downloadData.pageUrl || '')
       
@@ -288,13 +308,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (!candidate && dom && domainMediaMap.has(dom)) {
         candidate = pickBestStreamFromList(domainMediaMap.get(dom))
       }
-      if (!candidate && lastSniffedStream && (Date.now() - lastSniffedStream.time < 180000)) {
+      if (!candidate && globalMediaHistory.length) {
+        candidate = pickBestStreamFromList(globalMediaHistory)
+      }
+      if (!candidate && lastSniffedStream && (Date.now() - lastSniffedStream.time < 300000)) {
         candidate = lastSniffedStream
       }
 
       if (candidate) {
         const realStreamUrl = normalizeToMasterPlaylist(candidate.url)
-        console.log('[VoltGet] Replacing embed URL with real stream URL:', realStreamUrl)
+        console.log('[VoltGet] Replacing non-media embed URL with real stream URL:', realStreamUrl)
         downloadData.url = realStreamUrl
         downloadData.type = candidate.type || 'm3u8'
       }
@@ -343,10 +366,10 @@ chrome.downloads.onCreated.addListener((item) => {
   try {
     const url = item.finalUrl || item.url
     if (!url || url.startsWith('blob:') || url.startsWith('data:') || url.startsWith('chrome') || url.startsWith('edge')) return
-    if (EXCLUDE.test(url)) return
+    if (EXCLUDE.test(url) || IGNORED_DOWNLOAD_EXTS.test(url)) return
 
     const cleanUrl = url.split('?')[0]
-    if (ANY_FILE.test(cleanUrl) && !cleanUrl.endsWith('.html') && !cleanUrl.endsWith('.htm')) {
+    if (ANY_FILE.test(cleanUrl) && !IGNORED_DOWNLOAD_EXTS.test(cleanUrl)) {
       chrome.downloads.cancel(item.id, () => {
         chrome.downloads.erase({ id: item.id }, () => {})
       })
@@ -364,19 +387,25 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
       if (typeof suggest === 'function') suggest()
       return
     }
-    if (EXCLUDE.test(url)) {
+    if (EXCLUDE.test(url) || IGNORED_DOWNLOAD_EXTS.test(url)) {
       if (typeof suggest === 'function') suggest()
       return
     }
 
     const rawName = item.filename ? item.filename.split(/[\\/]/).pop() : (url.split('/').pop()?.split('?')[0] || 'indirilen_dosya')
-    const isDocOrArchive = ANY_FILE.test(url) || ANY_FILE.test(rawName)
     const mime = (item.mime || '').toLowerCase()
-    const isBinary = mime && !mime.startsWith('text/') && !mime.includes('html') && !mime.includes('javascript')
-    const isLarge = item.fileSize && item.fileSize > 256 * 1024
 
-    // Dosya uzantısı, binary mime türü veya büyük boyuttaysa tarayıcı indirmesini iptal edip VoltGet'e aktar!
-    if (isDocOrArchive || isBinary || isLarge) {
+    // Web scriptleri (.js), stiller (.css), sayfalar (.html, .php) ASLA indirme yöneticisine aktarılmaz!
+    if (IGNORED_DOWNLOAD_EXTS.test(rawName) || IGNORED_MIME.test(mime)) {
+      if (typeof suggest === 'function') suggest({ filename: item.filename })
+      return
+    }
+
+    const isDocOrArchive = ANY_FILE.test(url) || ANY_FILE.test(rawName)
+    const isBinary = mime && (mime.includes('octet-stream') || mime.includes('application/zip') || mime.includes('application/x-') || mime.includes('application/pdf')) && !IGNORED_MIME.test(mime)
+
+    // Sadece gerçek arşiv, kurulum, belge veya medya dosyalarını yakala
+    if (isDocOrArchive || isBinary) {
       chrome.downloads.cancel(item.id, () => {
         chrome.downloads.erase({ id: item.id }, () => {})
       })

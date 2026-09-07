@@ -357,6 +357,16 @@ function isMasterPlaylistUrl(u: string): boolean {
          (/(playlist|index)\.m3u8/i.test(u) && !/(?:video|audio|_vid|_aud|tracks-v)/i.test(u))
 }
 
+function isPlayerOrEmbedUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false
+  if (/\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a|flac|wav|zip|rar|7z|tar|gz|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx)($|\?)/i.test(url)) return false
+  return /\/(embed|player|oynat|video\/embed|iframe|watch|play|v)\//i.test(url) ||
+         url.includes('rapidrame_id') ||
+         url.includes('molystream') ||
+         url.includes('ddizi') ||
+         /\.(html|htm|php|asp|aspx)($|\?)/i.test(url)
+}
+
 const recentStreamsByPage = new Map<string, string>()
 
 async function handleIncomingSniff(data: any) {
@@ -414,9 +424,9 @@ async function handleIncomingSniff(data: any) {
 
   // 3. IDM Davranışı: Kullanıcı video üstü butona bastıysa VEYA tarayıcıda dosya indirmesi başladıysa pencere aç!
   if (data.userInitiated || data.isGenericDownload) {
-    // Embed sayfası geldiyse gerçek stream URL'si ile eşle
+    // Embed veya oynatıcı sayfası geldiyse gerçek stream URL'si ile eşle
     let resolvedUrl = data.url
-    if (resolvedUrl && (resolvedUrl.includes('/embed/') || resolvedUrl.includes('rapidrame_id') || resolvedUrl.includes('iframe'))) {
+    if (resolvedUrl && isPlayerOrEmbedUrl(resolvedUrl)) {
       const pageHost = (() => { try { return new URL(data.pageUrl).hostname.replace(/^www\./i, '').toLowerCase() } catch { return '' } })()
       const urlHost = (() => { try { return new URL(data.url).hostname.replace(/^www\./i, '').toLowerCase() } catch { return '' } })()
       const matched = recentStreamsByPage.get(data.pageUrl) ||
@@ -424,10 +434,27 @@ async function handleIncomingSniff(data: any) {
                       (pageHost ? recentStreamsByPage.get(pageHost) : null) ||
                       (urlHost ? recentStreamsByPage.get(urlHost) : null) ||
                       recentStreamsByPage.get('latest')
-      if (matched) {
-        console.log('[VoltGet] mapped embed page to real stream:', matched)
+      if (matched && !isPlayerOrEmbedUrl(matched)) {
+        console.log('[VoltGet] mapped embed/player page to real stream:', matched)
         resolvedUrl = matched
+        data.url = matched
+      } else {
+        console.log('[VoltGet] cannot open dialog for embed page before video stream is captured:', resolvedUrl)
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('download-log', {
+            id: 'info',
+            text: '⚠️ Oynatıcı algılandı. Lütfen videoyu sayfada 1-2 saniye oynatıp indirme butonuna tekrar basın.'
+          })
+        }
+        return
       }
+    }
+
+    // Web scripti veya stillerini indirme penceresinde açma
+    if (/\.(js|mjs|cjs|jsx|ts|tsx|css|scss|html|htm|php|asp|aspx|jsp|json|xml|map)($|\?)/i.test(resolvedUrl) ||
+        /\.(js|mjs|cjs|jsx|ts|tsx|css|scss|html|htm|php|asp|aspx|jsp|json|xml|map)($|\?)/i.test(data.filename || '')) {
+      console.log('[VoltGet] Ignored web script/page in sniff handler:', resolvedUrl)
+      return
     }
 
     const isGen = /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(resolvedUrl) ||
@@ -517,12 +544,12 @@ function parseYtDlpJson(out: string): any {
 // Standalone analiz fonksiyonu (IPC handler ve sniff server içinden çağrılabilir)
 async function analyzeUrl(url: string): Promise<any> {
   let normUrl = normalizeToMasterPlaylist(url)
-  if (normUrl.includes('/embed/') || normUrl.includes('rapidrame_id') || normUrl.includes('iframe')) {
+  if (isPlayerOrEmbedUrl(normUrl)) {
     const matched = recentStreamsByPage.get(normUrl) || recentStreamsByPage.get('latest')
-    if (matched) {
+    if (matched && !isPlayerOrEmbedUrl(matched)) {
       normUrl = matched
     } else {
-      throw new Error('Bu sayfa embed oynatıcı HTML sayfasıdır. Lütfen videoyu sayfada oynatıp video üstündeki indirme butonunu kullanın.')
+      throw new Error('Bu sayfa embed/oynatıcı sayfasıdır. Lütfen videoyu sayfada 1-2 saniye oynatıp video üstündeki indirme butonunu kullanın.')
     }
   }
 
@@ -647,7 +674,7 @@ function doStartDownload(id:string, opts:any){
   opts.url = finalUrl
 
   // 1. Embed veya oynatıcı sayfası geldiyse hafızadaki gerçek akış URL'si ile eşle
-  if (finalUrl.includes('/embed/') || finalUrl.includes('rapidrame_id') || finalUrl.includes('iframe')) {
+  if (isPlayerOrEmbedUrl(finalUrl)) {
     const pageHost = (() => { try { return new URL(opts.pageUrl).hostname.replace(/^www\./i, '').toLowerCase() } catch { return '' } })()
     const urlHost = (() => { try { return new URL(opts.url).hostname.replace(/^www\./i, '').toLowerCase() } catch { return '' } })()
     const matched = recentStreamsByPage.get(opts.pageUrl) ||
@@ -655,11 +682,27 @@ function doStartDownload(id:string, opts:any){
                     (pageHost ? recentStreamsByPage.get(pageHost) : null) ||
                     (urlHost ? recentStreamsByPage.get(urlHost) : null) ||
                     recentStreamsByPage.get('latest')
-    if (matched) {
+    if (matched && !isPlayerOrEmbedUrl(matched)) {
       console.log('[VoltGet] doStartDownload resolved embed URL to real stream:', matched)
       finalUrl = matched
       opts.url = matched
+    } else {
+      console.error('[VoltGet] cannot download embed page without stream:', finalUrl)
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('download-log', {
+          id,
+          text: '⚠️ Bu adres doğrudan bir video akışı değildir. Lütfen videonun sayfada 1-2 saniye oynatıldığından emin olun.'
+        })
+      }
+      return
     }
+  }
+
+  // 2. Web scripti (.js) veya web sayfası indirme girişimlerini kesinlikle engelle
+  if (/\.(js|mjs|cjs|jsx|ts|tsx|css|scss|html|htm|php|asp|aspx|jsp|json|xml|map)($|\?)/i.test(finalUrl) ||
+      /\.(js|mjs|cjs|jsx|ts|tsx|css|scss|html|htm|php|asp|aspx|jsp|json|xml|map)($|\?)/i.test(opts.filename || '')) {
+    console.log('[VoltGet] Rejected script/page download attempt:', finalUrl)
+    return
   }
 
   // 2. Normal dosya indirmesi ise doğrudan 8 parçalı yüksek hızlı HTTP indiriciye aktar

@@ -92,8 +92,8 @@
       return lastReportedMediaUrl
     }
 
-    // 5. Son çare sayfa URL'si
-    return location.href
+    // Embed/oynatıcı iframe sayfalarının URL'si video linki değildir, boş dön
+    return ''
   }
 
   function createVideoOverlay(videoEl) {
@@ -215,35 +215,67 @@
     })
 
     function triggerDownload(action) {
-      var targetUrl = getTargetUrlForVideo(videoEl)
-      var pageTitle = document.title || 'Video'
-
       dropdown.style.display = 'none'
       isMenuOpen = false
 
       directBtn.innerHTML = `
-        <span style="color:#4ade80; font-size:12px;">✓</span>
-        <span style="color:#4ade80;">İndirme başlatıldı...</span>
+        <span style="color:#60a5fa; font-size:12px;">⏳</span>
+        <span style="color:#60a5fa;">Akış kontrol ediliyor...</span>
       `
 
-      chrome.runtime.sendMessage({
-        type: 'user_request_download',
-        data: {
-          url: targetUrl,
-          pageUrl: location.href,
-          title: pageTitle,
-          asAudio: action === 'audio',
-          showDialog: true,
-          userInitiated: true
-        }
-      })
+      // Arka plandan bu sekme ve alan adı için yakalanmış en kaliteli akışı sorgula
+      chrome.runtime.sendMessage({ type: 'get_best_stream', pageUrl: location.href }, function (bestStream) {
+        var h = location.hostname
+        var isVideoPortal = h.includes('youtube.com') || h.includes('youtu.be') || h.includes('tiktok.com') ||
+                            h.includes('instagram.com') || h.includes('twitter.com') || h.includes('x.com') ||
+                            h.includes('facebook.com') || h.includes('vimeo.com') || h.includes('dailymotion.com')
 
-      setTimeout(function () {
+        var realUrl = (bestStream && bestStream.url) ? bestStream.url : getTargetUrlForVideo(videoEl)
+
+        if (!realUrl && isVideoPortal) {
+          realUrl = location.href
+        }
+
+        // Eğer hala gerçek video akışı bulunamadıysa (video henüz oynatılmamışsa)
+        if (!realUrl) {
+          directBtn.innerHTML = `
+            <span style="color:#f87171; font-size:12px;">⚠️</span>
+            <span style="color:#f87171;">Lütfen önce videoyu oynatın!</span>
+          `
+          try { videoEl.play() } catch (e) {}
+          setTimeout(function () {
+            directBtn.innerHTML = `
+              <span style="display:flex;align-items:center;justify-content:center;width:16px;height:16px;background:#2563eb;border-radius:4px;color:#fff;font-size:10px;font-weight:900;">⚡</span>
+              <span>Bu videoyu indir</span>
+            `
+          }, 3500)
+          return
+        }
+
         directBtn.innerHTML = `
-          <span style="display:flex;align-items:center;justify-content:center;width:16px;height:16px;background:#2563eb;border-radius:4px;color:#fff;font-size:10px;font-weight:900;">⚡</span>
-          <span>Bu videoyu indir</span>
+          <span style="color:#4ade80; font-size:12px;">✓</span>
+          <span style="color:#4ade80;">İndirme başlatıldı...</span>
         `
-      }, 3000)
+
+        chrome.runtime.sendMessage({
+          type: 'user_request_download',
+          data: {
+            url: realUrl,
+            pageUrl: location.href,
+            title: document.title || 'Video',
+            asAudio: action === 'audio',
+            showDialog: true,
+            userInitiated: true
+          }
+        })
+
+        setTimeout(function () {
+          directBtn.innerHTML = `
+            <span style="display:flex;align-items:center;justify-content:center;width:16px;height:16px;background:#2563eb;border-radius:4px;color:#fff;font-size:10px;font-weight:900;">⚡</span>
+            <span>Bu videoyu indir</span>
+          `
+        }, 3000)
+      })
     }
 
     // Ana butona tıklandığında doğrudan IDM indirme penceresini aç, oka tıklandığında menüyü aç
