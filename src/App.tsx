@@ -37,9 +37,13 @@ export default function App() {
   const [extConnected, setExtConnected] = useState(false)
   const [clipboardDetectedUrl, setClipboardDetectedUrl] = useState<string | null>(null)
   const [clipboardWatcherActive, setClipboardWatcherActive] = useState<boolean>(true)
+  const [appVersion, setAppVersion] = useState<string>('1.0.2')
   const hasApi = typeof window !== 'undefined' && !!(window as any).api
 
   useEffect(() => {
+    window.api?.getAppVersion?.().then((v: string) => {
+      if (v) setAppVersion(v)
+    })
     window.api.getYtDlpStatus().then(setStatus)
     window.api.getDefaultDir().then(setOutDir)
     window.api.getConfig?.().then((c: any) => {
@@ -411,7 +415,7 @@ export default function App() {
             <div className="text-muted" style={{ fontSize:10, marginTop:4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{outDir}</div>
           </div>
         )}
-        <div className="text-muted" style={{ fontSize:10, marginTop:10, textAlign:'center' }}>v1.1 • {t('idmAlt')}</div>
+        <div className="text-muted" style={{ fontSize:10, marginTop:10, textAlign:'center' }}>v{appVersion} • {t('idmAlt')}</div>
       </div>
 
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>

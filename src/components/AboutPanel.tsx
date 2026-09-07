@@ -5,9 +5,13 @@ export default function AboutPanel() {
   const { t } = useAppSettings()
   const [status, setStatus] = useState<any>(null)
   const [extConnected, setExtConnected] = useState<boolean>(false)
+  const [appVersion, setAppVersion] = useState<string>('1.0.2')
 
   useEffect(() => {
     window.api?.getYtDlpStatus?.().then(setStatus)
+    window.api?.getAppVersion?.().then((ver: string) => {
+      if (ver) setAppVersion(ver)
+    })
     window.api?.getExtensionStatus?.().then((res: any) => {
       if (res) setExtConnected(!!res.connected)
     })
@@ -58,7 +62,7 @@ export default function AboutPanel() {
 
         <div style={{ fontWeight: 900, fontSize: 24, marginTop: 14, letterSpacing: '0.03em', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <span>⚡ VoltGet PRO</span>
-          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: '#2563eb', color: '#fff', fontWeight: 800 }}>v1.0.0</span>
+          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: '#2563eb', color: '#fff', fontWeight: 800 }}>v{appVersion}</span>
         </div>
 
         <div className="text-muted" style={{ fontSize: 13, marginTop: 4, maxWidth: 540, margin: '6px auto 0' }}>

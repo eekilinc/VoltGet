@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('api', {
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   openFolder: (dir) => ipcRenderer.invoke('open-folder', dir),
   getDefaultDir: () => ipcRenderer.invoke('get-default-dir'),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   listFiles: (mode, customDir) => ipcRenderer.invoke('list-files', mode, customDir),
   openFile: (filePath) => ipcRenderer.invoke('open-file', filePath),
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),

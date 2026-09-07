@@ -1554,6 +1554,7 @@ ipcMain.handle('resume-download', async (_e, payload:any)=>{
 ipcMain.handle('select-folder', async ()=>{ const r=await dialog.showOpenDialog({properties:['openDirectory']}); if(r.canceled) return null; return r.filePaths[0] })
 ipcMain.handle('open-folder', async (_e, dir:string)=>{ shell.openPath(dir||getDefaultDownloadDir()) })
 ipcMain.handle('get-default-dir', async ()=> getDefaultDownloadDir())
+ipcMain.handle('get-app-version', () => app.getVersion())
 
 ipcMain.handle('get-disk-space', async (_e, dirPath?: string) => {
   try {
