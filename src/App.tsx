@@ -38,7 +38,7 @@ export default function App() {
   const [extConnected, setExtConnected] = useState(false)
   const [clipboardDetectedUrl, setClipboardDetectedUrl] = useState<string | null>(null)
   const [clipboardWatcherActive, setClipboardWatcherActive] = useState<boolean>(true)
-  const [appVersion, setAppVersion] = useState<string>('1.0.3')
+  const [appVersion, setAppVersion] = useState<string>('1.0.4')
   const hasApi = typeof window !== 'undefined' && !!(window as any).api
 
   useEffect(() => {
