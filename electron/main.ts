@@ -552,6 +552,11 @@ async function handleIncomingSniff(data: any) {
   // Video arka plan yakalamalarında masaüstüne bildirim atılmaz (Kullanıcı isteği doğrultusunda sessiz çalışır)
 }
 
+app.setName('VoltGet')
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.voltget.app')
+}
+
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
   console.log('[VoltGet] Another instance is already running. Focusing existing window...')
@@ -566,10 +571,6 @@ if (!gotTheLock) {
   })
 
   app.whenReady().then(() => {
-    app.setName('VoltGet')
-    if (process.platform === 'win32') {
-      app.setAppUserModelId('com.voltget.app')
-    }
     ensureDir(getDefaultDownloadDir())
     app.setLoginItemSettings({ openAtLogin: !!appConfig.openAtLogin, openAsHidden: appConfig.startMinimized })
     startSniffServer()
