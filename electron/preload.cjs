@@ -41,6 +41,12 @@ contextBridge.exposeInMainWorld('api', {
   exportExtensionZip: () => ipcRenderer.invoke('export-extension-zip'),
   getExtensionStatus: () => ipcRenderer.invoke('get-extension-status'),
   onExtensionStatus: (cb) => ipcRenderer.on('extension-status-changed', (_e, d) => cb(d)),
+  getDiskSpace: (dirPath) => ipcRenderer.invoke('get-disk-space', dirPath),
+  queueDownload: (opts) => ipcRenderer.invoke('queue-download', opts),
+  readClipboard: () => ipcRenderer.invoke('read-clipboard'),
+  onClipboardUrl: (cb) => ipcRenderer.on('clipboard-url-detected', (_e, d) => cb(d)),
+  minimizeDialog: () => ipcRenderer.invoke('minimize-dialog'),
+  closeDialog: () => ipcRenderer.invoke('close-dialog'),
   removeAll: () => {
     ipcRenderer.removeAllListeners('download-progress')
     ipcRenderer.removeAllListeners('download-log')
@@ -52,5 +58,6 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.removeAllListeners('download-paused')
     ipcRenderer.removeAllListeners('sniffed-url')
     ipcRenderer.removeAllListeners('extension-status-changed')
+    ipcRenderer.removeAllListeners('clipboard-url-detected')
   }
 })

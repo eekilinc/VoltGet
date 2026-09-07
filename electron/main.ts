@@ -73,10 +73,10 @@ function createDownloadDialogWindow(sniffData: any) {
 
   const appIcon = getAppIconPath()
   downloadDialogWindow = new BrowserWindow({
-    width: 520,
-    height: 530,
+    width: 550,
+    height: 600,
     frame: false,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#090d16',
     alwaysOnTop: true,
     resizable: false,
     icon: appIcon,
@@ -204,8 +204,9 @@ type AppConfig = {
   captureInstallers: boolean
   openAtLogin: boolean
   startMinimized: boolean
+  clipboardWatcher: boolean
 }
-const defaultConfig: AppConfig = { concurrent: 3, speedLimitKB: 0, siteFolders: true, filenameTemplate: '%(title)s.%(ext)s', autoUpdateCheck: true, sniffNotifications: true, sniffDebounceMs: 8000, theme: 'dark', accentColor: 'blue', language: 'tr', interceptBrowserDownloads: true, captureMediaRequests: true, captureDocuments: true, captureArchives: true, captureInstallers: true, openAtLogin: false, startMinimized: false }
+const defaultConfig: AppConfig = { concurrent: 3, speedLimitKB: 0, siteFolders: true, filenameTemplate: '%(title)s.%(ext)s', autoUpdateCheck: true, sniffNotifications: true, sniffDebounceMs: 8000, theme: 'dark', accentColor: 'blue', language: 'tr', interceptBrowserDownloads: true, captureMediaRequests: true, captureDocuments: true, captureArchives: true, captureInstallers: true, openAtLogin: false, startMinimized: false, clipboardWatcher: true }
 function configPath(){ return path.join(app.getPath('userData'), 'config.json') }
 function queuePath(){ return path.join(app.getPath('userData'), 'queue.json') }
 function loadConfig(): AppConfig {
@@ -570,11 +571,41 @@ if (!gotTheLock) {
     }
   })
 
+  function isDownloadableUrl(text: string): boolean {
+    if (!text || typeof text !== 'string') return false
+    text = text.trim()
+    if (!text.startsWith('http://') && !text.startsWith('https://')) return false
+    if (text.length > 2000) return false
+    const videoSites = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|reddit\.com|vimeo\.com|dailymotion\.com|twitch\.tv|ddizi|dizibox|hdfilmcehennemi/i
+    const mediaExts = /\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a|flac|wav|mov|flv|zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i
+    return videoSites.test(text) || mediaExts.test(text)
+  }
+
+  let lastClipboardText = ''
+  function startClipboardWatcher() {
+    setInterval(() => {
+      try {
+        if (!appConfig.clipboardWatcher) return
+        const { clipboard } = require('electron')
+        const text = clipboard.readText().trim()
+        if (!text || text === lastClipboardText) return
+        lastClipboardText = text
+        if (isDownloadableUrl(text)) {
+          console.log('[VoltGet] Clipboard media URL detected:', text.slice(0, 70))
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('clipboard-url-detected', { url: text })
+          }
+        }
+      } catch {}
+    }, 1200)
+  }
+
   app.whenReady().then(() => {
     ensureDir(getDefaultDownloadDir())
     app.setLoginItemSettings({ openAtLogin: !!appConfig.openAtLogin, openAsHidden: appConfig.startMinimized })
     startSniffServer()
     createWindow()
+    startClipboardWatcher()
   })
 
   app.on('window-all-closed', () => { try{ wss?.close(); sniffServer?.close()}catch{}; if (process.platform !== 'darwin') app.quit() })
@@ -1102,6 +1133,52 @@ ipcMain.handle('resume-download', async (_e, payload:any)=>{
 ipcMain.handle('select-folder', async ()=>{ const r=await dialog.showOpenDialog({properties:['openDirectory']}); if(r.canceled) return null; return r.filePaths[0] })
 ipcMain.handle('open-folder', async (_e, dir:string)=>{ shell.openPath(dir||getDefaultDownloadDir()) })
 ipcMain.handle('get-default-dir', async ()=> getDefaultDownloadDir())
+
+ipcMain.handle('get-disk-space', async (_e, dirPath?: string) => {
+  try {
+    const target = dirPath || getDefaultDownloadDir()
+    ensureDir(target)
+    const stats = (fs as any).statfsSync(target)
+    const freeBytes = stats.bavail * stats.bsize
+    const totalBytes = stats.blocks * stats.bsize
+    const formatGb = (b: number) => (b / (1024 * 1024 * 1024)).toFixed(1) + ' GB'
+    return {
+      free: formatGb(freeBytes),
+      total: formatGb(totalBytes),
+      freeBytes,
+      totalBytes
+    }
+  } catch {
+    return { free: 'Bilinmiyor', total: '', freeBytes: 0, totalBytes: 0 }
+  }
+})
+
+ipcMain.handle('queue-download', async (_e, opts: any) => {
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+  pendingQueue.push({ id, opts })
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('download-queued', { id, opts, position: pendingQueue.length })
+    mainWindow.webContents.send('switch-to-download-tab')
+  }
+  return { id, queued: true, position: pendingQueue.length }
+})
+
+ipcMain.handle('read-clipboard', async () => {
+  try {
+    const { clipboard } = require('electron')
+    return clipboard.readText().trim()
+  } catch {
+    return ''
+  }
+})
+
+ipcMain.handle('minimize-dialog', () => {
+  if (downloadDialogWindow && !downloadDialogWindow.isDestroyed()) downloadDialogWindow.minimize()
+})
+
+ipcMain.handle('close-dialog', () => {
+  if (downloadDialogWindow && !downloadDialogWindow.isDestroyed()) downloadDialogWindow.close()
+})
 
 function isTemporaryOrPartialFile(name: string): boolean {
   if (!name || typeof name !== 'string') return true

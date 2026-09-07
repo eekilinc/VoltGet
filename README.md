@@ -63,12 +63,22 @@ Equipped with a Chromium browser extension (Manifest V3), VoltGet automatically 
   </tr>
   <tr>
     <td width="50%">
+      <h3>🎛️ PRO IDM Download Dialog</h3>
+      Instant capture modal with editable filename, auto-category badges (Video, Music, Archive, Document), live disk free space indicator, resolution quick-pills (4K/1080p/720p/MP3), and dual action buttons (Download Now vs Add to Queue).
+    </td>
+    <td width="50%">
+      <h3>📋 Clipboard Watcher & Drag-and-Drop</h3>
+      Non-intrusive clipboard listener catches copied media URLs with a 1-click floating action. Drag & drop URLs directly onto the app, or extract dozens of links simultaneously using the Batch Harvester.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
       <h3>🌍 6 Languages (i18n)</h3>
       Full native localization for <b>English, Türkçe, Deutsch, Español, Русский, and العربية</b>.
     </td>
     <td width="50%">
       <h3>🎨 Modern Glassmorphic UI & 7 Themes</h3>
-      Clean, responsive dark-mode interface with customizable accent colors: Blue, Purple, Green, Orange, Pink, Red, and Teal.
+      Clean, responsive dark-mode interface with live network speed meters and customizable accent colors: Blue, Purple, Green, Orange, Pink, Red, and Teal.
     </td>
   </tr>
 </table>

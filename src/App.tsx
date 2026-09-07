@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import DownloadPanel from './components/DownloadPanel'
 import FileExplorer from './components/FileExplorer'
 import SniffPanel from './components/SniffPanel'
@@ -21,12 +21,18 @@ export default function App() {
   const [downloadModal, setDownloadModal] = useState<any>(null)
   const [isExtModalOpen, setIsExtModalOpen] = useState(false)
   const [extConnected, setExtConnected] = useState(false)
+  const [clipboardDetectedUrl, setClipboardDetectedUrl] = useState<string | null>(null)
+  const [clipboardWatcherActive, setClipboardWatcherActive] = useState<boolean>(true)
   const hasApi = typeof window !== 'undefined' && !!(window as any).api
 
   useEffect(() => {
-    if (!hasApi) return
     window.api.getYtDlpStatus().then(setStatus)
     window.api.getDefaultDir().then(setOutDir)
+    window.api.getConfig?.().then((c: any) => {
+      if (c && typeof c.clipboardWatcher === 'boolean') {
+        setClipboardWatcherActive(c.clipboardWatcher)
+      }
+    })
     window.api.getQueue().then((saved:any[])=>{
       if(saved?.length) setJobs(saved.filter((j:any)=> j.status==='done'||j.status==='error'||j.status==='paused').slice(0,20))
     })
@@ -137,6 +143,12 @@ export default function App() {
     window.api.onPaused?.(onPaused)
     window.api.onSniffed(onSniffNotify)
 
+    window.api.onClipboardUrl?.((d: { url: string }) => {
+      if (d?.url) {
+        setClipboardDetectedUrl(d.url)
+      }
+    })
+
     window.api.onOpenSniffItem?.((_d: any) => {
       setTab('sniff')
     })
@@ -153,6 +165,34 @@ export default function App() {
 
     return () => window.api?.removeAll()
   }, [hasApi])
+
+  const totalSpeed = useMemo(() => {
+    let sumBytes = 0
+    let hasSpeed = false
+    jobs.filter(j => j.status === 'downloading').forEach(j => {
+      if (j.speed && j.speed !== '-') {
+        hasSpeed = true
+        const m = j.speed.match(/([0-9.]+)\s*([A-Za-z]+)\/s/i)
+        if (m) {
+          const val = parseFloat(m[1])
+          const unit = m[2].toLowerCase()
+          if (unit.startsWith('k')) sumBytes += val * 1024
+          else if (unit.startsWith('m')) sumBytes += val * 1024 * 1024
+          else if (unit.startsWith('g')) sumBytes += val * 1024 * 1024 * 1024
+          else sumBytes += val
+        }
+      }
+    })
+    if (!hasSpeed || sumBytes === 0) return null
+    if (sumBytes > 1024 * 1024) return (sumBytes / (1024 * 1024)).toFixed(1) + ' MB/s'
+    return (sumBytes / 1024).toFixed(0) + ' KB/s'
+  }, [jobs])
+
+  const toggleClipboardWatcher = async () => {
+    const next = !clipboardWatcherActive
+    setClipboardWatcherActive(next)
+    await window.api?.setConfig?.({ clipboardWatcher: next })
+  }
 
   const handleStartDownload = async (opts:any)=>{
     const url = opts.url as string
@@ -315,7 +355,49 @@ export default function App() {
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
         <div className="glass" style={{ height:54, borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', padding:'0 16px', gap:10 }}>
           <div style={{ fontWeight:800, fontSize:14 }}>{titles[tab]}</div>
+          {totalSpeed && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.2) 0%, rgba(59, 130, 246, 0.1) 100%)',
+              border: '1px solid rgba(59, 130, 246, 0.35)',
+              padding: '4px 10px',
+              borderRadius: 20,
+              color: '#60a5fa',
+              fontSize: 11,
+              fontWeight: 900,
+              boxShadow: '0 0 14px rgba(59, 130, 246, 0.25)'
+            }}>
+              <span style={{ animation: 'pulse 1s infinite' }}>⚡</span>
+              <span>{totalSpeed}</span>
+              <span style={{ fontSize: 9, opacity: 0.7 }}>• {jobs.filter(j=>j.status==='downloading').length} aktif</span>
+            </div>
+          )}
           <div style={{ flex:1 }}/>
+
+          {/* Pano İzleyici Hızlı Geçiş Butonu */}
+          <button
+            onClick={toggleClipboardWatcher}
+            title="Panoya bir link kopyalandığında otomatik algılama"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: clipboardWatcherActive ? 'rgba(59, 130, 246, 0.12)' : 'var(--panel-2)',
+              color: clipboardWatcherActive ? '#60a5fa' : 'var(--text-muted)',
+              border: '1px solid ' + (clipboardWatcherActive ? 'rgba(59, 130, 246, 0.35)' : 'var(--border)'),
+              padding: '6px 11px',
+              borderRadius: 10,
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            <span style={{ width: 7, height: 7, borderRadius: 99, background: clipboardWatcherActive ? '#3b82f6' : '#64748b', boxShadow: clipboardWatcherActive ? '0 0 8px #3b82f6' : 'none' }} />
+            <span>Pano İzleyici: {clipboardWatcherActive ? 'Açık' : 'Kapalı'}</span>
+          </button>
+
           <button
             onClick={()=>setIsExtModalOpen(true)}
             style={{
@@ -436,6 +518,64 @@ export default function App() {
         onClose={() => setIsExtModalOpen(false)}
         connected={extConnected}
       />
+
+      {/* Pano Bağlantı Algılama Bildirimi (Floating Toast) */}
+      {clipboardDetectedUrl && (
+        <div style={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          zIndex: 9999,
+          background: 'rgba(15, 23, 42, 0.95)',
+          border: '1px solid #3b82f6',
+          borderRadius: 14,
+          padding: '14px 18px',
+          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.8), 0 0 20px rgba(59, 130, 246, 0.4)',
+          maxWidth: 420,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+          backdropFilter: 'blur(16px)',
+          animation: 'slideUp 0.25s ease'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ fontWeight: 800, fontSize: 13, color: '#60a5fa', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>📋</span> <span>Panoda İndirme Bağlantısı Algılandı!</span>
+            </div>
+            <button
+              onClick={() => setClipboardDetectedUrl(null)}
+              style={{ background: 'transparent', border: 0, color: '#94a3b8', cursor: 'pointer', fontSize: 13, padding: '2px 6px' }}
+            >
+              ✕
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', background: 'rgba(0, 0, 0, 0.4)', padding: '6px 8px', borderRadius: 8 }}>
+            {clipboardDetectedUrl}
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => {
+                handleStartDownload({ url: clipboardDetectedUrl, outDir })
+                setClipboardDetectedUrl(null)
+                setTab('download')
+              }}
+              className="brand-gradient"
+              style={{ border: 0, padding: '8px 14px', borderRadius: 8, color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}
+            >
+              🚀 Hemen İndir
+            </button>
+            <button
+              onClick={() => {
+                setTab('download')
+                setClipboardDetectedUrl(null)
+              }}
+              style={{ background: 'rgba(255, 255, 255, 0.08)', border: '1px solid var(--border)', padding: '8px 12px', borderRadius: 8, color: '#cbd5e1', fontSize: 11, cursor: 'pointer' }}
+            >
+              İncele
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   )
