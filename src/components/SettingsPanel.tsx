@@ -63,7 +63,7 @@ export default function SettingsPanel(){
     setZipping(true)
     try {
       const res = await window.api?.exportExtensionZip()
-      if (res?.success) toast.success('flexplorer-eklenti.zip oluşturuldu ve Gezgin\'de gösterildi')
+      if (res?.success) toast.success('voltget-eklenti.zip oluşturuldu ve Gezgin\'de gösterildi')
       else toast.error('ZIP oluşturulamadı')
     } catch (e: any) {
       toast.error('Hata: ' + (e?.message || e))
@@ -79,7 +79,7 @@ export default function SettingsPanel(){
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             <span style={{ fontSize:26 }}>🧩</span>
             <div>
-              <div style={{ fontWeight:900, fontSize:15 }}>Flexplorer Tarayıcı Eklentisi (Chrome & Edge)</div>
+              <div style={{ fontWeight:900, fontSize:15 }}>VoltGet Tarayıcı Eklentisi (Chrome & Edge)</div>
               <div className="text-muted" style={{ fontSize:11 }}>
                 Web sayfalarındaki video ve indirmeleri yakalayan IDM tarzı tarayıcı eklentisi
               </div>

@@ -1,4 +1,4 @@
-// Flexplorer - IDM Tarzı Video Üstü İndirme Çubuğu ve Medya Algılayıcı (Content Script)
+// VoltGet - IDM Tarzı Video Üstü İndirme Çubuğu ve Medya Algılayıcı (Content Script)
 ;(function () {
   'use strict'
 

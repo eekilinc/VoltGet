@@ -1,4 +1,4 @@
-// Flexplorer Yakalayıcı - Background Service Worker (Manifest V3)
+// VoltGet Yakalayıcı - Background Service Worker (Manifest V3)
 // IDM Tarzı Video Üstü İndirme ve Medya / Dosya Yakalama
 
 const MEDIA_PAT = /\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a|flac|wav|flv|mov)($|\?)/i
@@ -101,7 +101,7 @@ initWebSocket()
 if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(initWebSocket)
 if (chrome.runtime.onInstalled) chrome.runtime.onInstalled.addListener(initWebSocket)
 
-async function sendToFlexplorer(data, opts = {}) {
+async function sendToVoltGet(data, opts = {}) {
   if (data && data.url) {
     data.url = normalizeToMasterPlaylist(data.url)
   }
@@ -137,14 +137,14 @@ async function sendToFlexplorer(data, opts = {}) {
   // 1. Tercih: Native Messaging (varsa doğrudan işletim sistemi üzerinden)
   try {
     const res = await new Promise((resolve) => {
-      chrome.runtime.sendNativeMessage('com.flexplorer.nm', { type: 'download-request', data: payload }, (response) => {
+      chrome.runtime.sendNativeMessage('com.voltget.nm', { type: 'download-request', data: payload }, (response) => {
         if (chrome.runtime.lastError) resolve(null)
         else resolve(response)
       })
     })
     if (res && res.success) {
       sent = true
-      console.log('[Flexplorer] sent via NM', data.url.slice(0, 60))
+      console.log('[VoltGet] sent via NM', data.url.slice(0, 60))
     }
   } catch (e) {}
 
@@ -153,9 +153,9 @@ async function sendToFlexplorer(data, opts = {}) {
     try {
       socket.send(JSON.stringify({ type: 'sniffed-url', data: payload }))
       sent = true
-      console.log('[Flexplorer] sent via WS', data.url.slice(0, 60))
+      console.log('[VoltGet] sent via WS', data.url.slice(0, 60))
     } catch (e) {
-      console.log('[Flexplorer] WS send error, falling back to HTTP')
+      console.log('[VoltGet] WS send error, falling back to HTTP')
     }
   }
 
@@ -167,9 +167,9 @@ async function sendToFlexplorer(data, opts = {}) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
-      console.log('[Flexplorer] sent via HTTP', data.url.slice(0, 60))
+      console.log('[VoltGet] sent via HTTP', data.url.slice(0, 60))
     } catch (e) {
-      console.log('[Flexplorer] sniff fail', e.message)
+      console.log('[VoltGet] sniff fail', e.message)
     }
   }
 
@@ -246,7 +246,7 @@ chrome.webRequest.onBeforeRequest.addListener((details) => {
 
     const isVideoSite = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com/i.test(pageUrl)
     const targetUrl = isVideoSite ? pageUrl : normalizedUrl
-    sendToFlexplorer({ url: targetUrl, type: detectedType, pageUrl }, { userInitiated: false })
+    sendToVoltGet({ url: targetUrl, type: detectedType, pageUrl }, { userInitiated: false })
   })
 }, { urls: ["<all_urls>"] })
 
@@ -308,7 +308,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         tabMediaMap.set(sender.tab.id, list.slice(0, 20))
       }
     }
-    sendToFlexplorer(cleanData, { userInitiated: false })
+    sendToVoltGet(cleanData, { userInitiated: false })
   } else if (msg?.type === 'user_request_download') {
     let downloadData = { ...msg.data }
     const isVideoPortal = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(downloadData.pageUrl || '') ||
@@ -351,7 +351,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         downloadData.type = candidate.type || 'm3u8'
       }
     }
-    sendToFlexplorer(downloadData, { force: true, userInitiated: true })
+    sendToVoltGet(downloadData, { force: true, userInitiated: true })
   }
 })
 
@@ -366,7 +366,7 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   const url = info.srcUrl || info.linkUrl || info.pageUrl || tab?.url
   if (!url) return
-  sendToFlexplorer({ url, type: detectType(url), pageUrl: tab?.url || info.pageUrl || '' }, { force: true, userInitiated: true })
+  sendToVoltGet({ url, type: detectType(url), pageUrl: tab?.url || info.pageUrl || '' }, { force: true, userInitiated: true })
 })
 
 // Tarayıcı doğrudan dosya indirmelerini yakala (IDM Download Intercept)
@@ -379,7 +379,7 @@ function notifyVoltGetGenericDownload(item, rawName) {
   interceptedDownloadUrls.set(url, Date.now())
 
   const type = detectType(rawName) || detectType(url) || 'file'
-  sendToFlexplorer({
+  sendToVoltGet({
     url: url,
     filename: rawName,
     title: rawName,

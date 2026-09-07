@@ -164,7 +164,7 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
               Tarayıcı Eklentisini Yükleyin (Chrome, Edge, Brave, Opera)
             </div>
             <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>
-              Videoların üzerinde "Flexplorer ile İndir" butonunun çıkması için eklentiyi 15 saniyede kurabilirsiniz.
+              Videoların üzerinde "VoltGet ile İndir" butonunun çıkması için eklentiyi 15 saniyede kurabilirsiniz.
             </div>
           </div>
           <button

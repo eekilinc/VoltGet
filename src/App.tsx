@@ -300,7 +300,7 @@ export default function App() {
       <div style={{ padding:24, background:'var(--bg)', color:'var(--text)', minHeight:'100vh' }}>
         <h2 style={{ color:'#f87171' }}>Electron dışında açıldı</h2>
         <div className="card-premium" style={{ marginTop:12, padding:12, borderRadius:12 }}>
-          <pre>{`cd D:\\Denemeler\\flexplorer\nnpm run start`}</pre>
+          <pre>{`npm run dev`}</pre>
         </div>
       </div>
     )

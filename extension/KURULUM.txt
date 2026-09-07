@@ -1,5 +1,5 @@
-FLEXPLORER CHROME / EDGE / BRAVE EKLENTİSİ KURULUMU
-===================================================
+VOLTGET CHROME / EDGE / BRAVE EKLENTİSİ KURULUMU
+=================================================
 
 1. Chrome, Edge, Brave veya Opera tarayıcınızı açın.
 2. Adres çubuğuna şunu yazın ve Enter'a basın:
@@ -9,5 +9,5 @@ FLEXPLORER CHROME / EDGE / BRAVE EKLENTİSİ KURULUMU
 4. Sol üstte beliren "Paketlenmemiş Öğe Yükle" (Load unpacked) butonuna tıklayın.
 5. Açılan pencerede BU KLASÖRÜ (extension klasörünü) seçin.
 
-Tebrikler! Flexplorer Yakalayıcı eklentisi tarayıcınıza kuruldu.
-Artık YouTube ve tüm video sitelerinde videonun üzerinde "Flexplorer ile İndir" butonu görünecektir.
+Tebrikler! VoltGet Yakalayıcı eklentisi tarayıcınıza kuruldu.
+Artık YouTube ve tüm video sitelerinde videonun üzerinde "⚡ VoltGet ile İndir" butonu görünecektir.

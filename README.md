@@ -110,14 +110,21 @@ graph TD
 
 ## 🚀 Getting Started
 
-### Prerequisites
+### 📥 Direct Download (Windows Users)
+Download the latest Windows Installer (`VoltGet-Setup-*.exe`) or Portable version directly from our [Releases Page](https://github.com/eekilinc/VoltGet/releases).
+
+---
+
+### 🛠️ Building from Source
+
+#### Prerequisites
 
 1. **Node.js**: v20 or newer ([nodejs.org](https://nodejs.org/))
 2. **FFmpeg**: Installed and accessible in PATH or WinGet ([ffmpeg.org](https://ffmpeg.org/))
    - *Windows WinGet*: `winget install Gyan.FFmpeg`
 3. **yt-dlp**: VoltGet includes an in-app updater that automatically fetches the latest `yt-dlp.exe` to `bin/yt-dlp.exe`.
 
-### Installation
+#### Installation
 
 ```bash
 # 1. Clone the repository
@@ -133,7 +140,7 @@ npm install
 npm run dev
 ```
 
-### Production Build
+#### Production Build
 
 ```bash
 # Build desktop executable (Windows NSIS & Portable)
@@ -145,17 +152,33 @@ Output binaries will be generated inside the `release/` directory.
 
 ## 🧩 Browser Extension Setup
 
-To enable IDM-style automatic video sniffing and floating download badges:
+To enable IDM-style automatic video sniffing, floating download badges, and browser download interception:
 
-1. Open your Chromium browser (**Google Chrome**, **Microsoft Edge**, **Brave**, or **Opera**).
-2. Navigate to `chrome://extensions/` (or `edge://extensions/`).
-3. Toggle on **Developer mode** in the top-right corner.
-4. Click **Load unpacked** (*Paketlenmemiş öğe yükle*).
-5. Select the `extension/` folder inside this repository:
-   ```
-   D:\Denemeler\flexplorer\extension
-   ```
-6. Open any video website (e.g. YouTube, news site, or movie streaming platform). A sleek **⚡ VoltGet ile İndir** button will appear on the video player!
+### 1. Locate the Extension Folder
+You can access the extension folder in two convenient ways:
+
+* **From the VoltGet Desktop App (Recommended):**
+  Open VoltGet, go to **Settings (Ayarlar)** or the **Sniffer (Yakalayıcı)** tab, and click **"Eklenti Klasörünü Aç"** (*Open Extension Folder*). VoltGet will automatically open the exact extension folder in Windows Explorer on your machine, regardless of where the app is installed.
+  *(You can also click **"ZIP Olarak Dışa Aktar"** to export `voltget-eklenti.zip` directly to your Downloads folder and unzip it.)*
+
+* **From Cloned Source Code:**
+  If you cloned this repository or extracted the source code, the extension is located in the `extension/` subfolder:
+  ```
+  <voltget-directory>/extension
+  ```
+
+### 2. Load into Your Browser
+
+Compatible with all Chromium-based browsers: **Google Chrome**, **Microsoft Edge**, **Brave**, **Opera**, and **Vivaldi**.
+
+1. Open your browser and go to the extensions management page:
+   - **Chrome / Brave**: `chrome://extensions`
+   - **Microsoft Edge**: `edge://extensions`
+   - **Opera**: `opera://extensions`
+2. Turn on **Developer mode** (*Geliştirici modu*) using the switch in the top-right corner.
+3. Click the **Load unpacked** (*Paketlenmemiş öğe yükle*) button in the top toolbar.
+4. Select the `extension` folder (opened from VoltGet or located in your repository).
+5. 🎉 **Done!** Open any video website (YouTube, movie platforms, social media, etc.) — the sleek **⚡ VoltGet ile İndir** button will appear directly over the video player!
 
 ---
 

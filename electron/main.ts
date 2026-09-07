@@ -1786,7 +1786,7 @@ ipcMain.handle('get-yt-dlp-status', async ()=>{
 ipcMain.handle('check-yt-dlp-update', async ()=>{
   try{
     const https=await import('https')
-    const get=(url:string)=> new Promise<string>((res,rej)=>{ https.get(url,{headers:{'User-Agent':'Flexplorer'}},r=>{ let d=''; r.on('data',c=>d+=c); r.on('end',()=>res(d)) }).on('error',rej) })
+    const get=(url:string)=> new Promise<string>((res,rej)=>{ https.get(url,{headers:{'User-Agent':'VoltGet'}},r=>{ let d=''; r.on('data',c=>d+=c); r.on('end',()=>res(d)) }).on('error',rej) })
     const data=await get('https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest') as any
     const j=JSON.parse(data as any); const latest=j.tag_name||j.name; let cur=''; try{ const {execSync}=await import('child_process'); cur=execSync(`${findYtDlp()} --version`,{encoding:'utf-8'}).trim() }catch{}
     return { latest, current: cur, hasUpdate: latest && cur && !latest.includes(cur), url: j.html_url }
@@ -2210,7 +2210,7 @@ ipcMain.handle('export-extension-zip', async () => {
   }
   const outDir = getDefaultDownloadDir()
   ensureDir(outDir)
-  const zipPath = path.join(outDir, 'flexplorer-eklenti.zip')
+  const zipPath = path.join(outDir, 'voltget-eklenti.zip')
 
   return new Promise((resolve, reject) => {
     // Windows PowerShell Compress-Archive komutu ile sıfır bağımlılıkla hızlıca zip oluştur

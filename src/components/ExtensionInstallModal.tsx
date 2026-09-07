@@ -43,7 +43,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
     try {
       const res = await window.api?.exportExtensionZip()
       if (res?.success) {
-        toast.success('flexplorer-eklenti.zip oluşturuldu ve Gezgin\'de gösterildi')
+        toast.success('voltget-eklenti.zip oluşturuldu ve Gezgin\'de gösterildi')
       } else {
         toast.error('ZIP oluşturulamadı')
       }
@@ -105,7 +105,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
             <span style={{ fontSize: 22 }}>🧩</span>
             <div>
               <div style={{ fontWeight: 900, fontSize: 15, letterSpacing: '0.02em' }}>
-                Flexplorer Tarayıcı Eklentisi
+                VoltGet Tarayıcı Eklentisi
               </div>
               <div className="text-muted" style={{ fontSize: 11 }}>
                 Chrome, Microsoft Edge, Brave, Opera ve Chromium tarayıcıları
@@ -174,7 +174,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
               </div>
               <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2, color: 'var(--text)' }}>
                 {connected
-                  ? 'Flexplorer eklentisi tarayıcınız ile sorunsuz iletişim kuruyor. Sayfalardaki medya ve indirmeler IDM tarzı otomatik algılanacaktır.'
+                  ? 'VoltGet eklentisi tarayıcınız ile sorunsuz iletişim kuruyor. Sayfalardaki medya ve indirmeler IDM tarzı otomatik algılanacaktır.'
                   : 'Eklentiyi yüklemek için aşağıdaki 3 kolay adımı takip edin (yalnızca 15 saniye sürer).'}
               </div>
             </div>

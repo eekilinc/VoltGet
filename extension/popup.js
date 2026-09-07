@@ -84,12 +84,11 @@ document.getElementById('open').onclick= async()=>{
     const r=await fetch('http://127.0.0.1:8765/status')
     if(r.ok){ document.getElementById('hint').textContent='✓ Uygulama açık — Yakalayıcı sekmesine bak'; document.getElementById('hint').style.color='#86efac'; return }
   }catch{}
-  document.getElementById('hint').textContent='✗ Uygulama kapalı — D:\\Denemeler\\flexplorer → npm run start ile açın (komut panoya kopyalandı)';
+  document.getElementById('hint').textContent='✗ VoltGet kapalı — Lütfen VoltGet uygulamasını başlatın';
   document.getElementById('hint').style.color='#fca5a5';
-  await navigator.clipboard.writeText('cd D:\\Denemeler\\flexplorer && npm run start');
 };
 document.getElementById('autoClear').onchange= async(e)=>{ await chrome.storage.local.set({autoClearOnNavigate: e.target.checked}) };
 chrome.storage.local.get({autoClearOnNavigate:false}).then(v=> document.getElementById('autoClear').checked=v.autoClearOnNavigate);
 
-fetch('http://127.0.0.1:8765/status').then(r=> r.ok? (document.getElementById('hint').textContent='✓ Uygulama açık — yakalananlar otomatik düşer', document.getElementById('hint').style.color='#86efac') : null).catch(()=>{ document.getElementById('hint').textContent='○ Uygulama kapalı — npm run start ile açın'; });
+fetch('http://127.0.0.1:8765/status').then(r=> r.ok? (document.getElementById('hint').textContent='✓ VoltGet açık — yakalananlar otomatik düşer', document.getElementById('hint').style.color='#86efac') : null).catch(()=>{ document.getElementById('hint').textContent='○ VoltGet kapalı — Uygulamayı açın'; });
 render();
