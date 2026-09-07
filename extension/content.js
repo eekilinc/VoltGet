@@ -108,10 +108,11 @@
 
   function createVideoOverlay(videoEl) {
     if (activeVideoOverlays.has(videoEl)) return
+    if (videoEl.closest && videoEl.closest('.ad, .ads, .banner, .twitter-tweet, [data-testid="tweet"]')) return
 
     var rect = videoEl.getBoundingClientRect()
-    // 140x90'dan küçük videoları (küçük ikon, avatar vs.) yoksay
-    if (rect.width < 140 || rect.height < 90) return
+    // 280x160'dan küçük videoları (küçük reklam, sidebar tweet, banner vs.) yoksay
+    if (rect.width < 280 || rect.height < 160) return
 
     var overlay = document.createElement('div')
     overlay.className = 'flexplorer-video-overlay'

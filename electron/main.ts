@@ -727,6 +727,18 @@ function doStartDownload(id:string, opts:any){
     }
   }
 
+  if (!opts.title || opts.title === 'Video' || opts.title === 'Dosya' || opts.title === 'İndiriliyor...') {
+    if (opts.pageUrl) {
+      try {
+        const u = new URL(opts.pageUrl)
+        const pathSlug = decodeURIComponent(u.pathname.split('/').filter(Boolean).pop() || '').replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ')
+        if (pathSlug && pathSlug.length > 3) {
+          opts.title = pathSlug.charAt(0).toUpperCase() + pathSlug.slice(1)
+        }
+      } catch {}
+    }
+  }
+
   // 2. Web scripti (.js) veya stil indirme girişimlerini kesinlikle engelle
   if (/\.(js|mjs|cjs|jsx|ts|tsx|css|scss|map)($|\?)/i.test(finalUrl) ||
       /\.(js|mjs|cjs|jsx|ts|tsx|css|scss|map)($|\?)/i.test(opts.filename || '')) {
@@ -858,7 +870,8 @@ function doStartDownload(id:string, opts:any){
         total: m[2] || '',
         speed: m[3] || '',
         eta: m[4] || '',
-        raw: text.trim().slice(0, 200)
+        raw: text.trim().slice(0, 200),
+        title: activeOpts.get(id)?.title || opts?.title
       })
     } else if (mainWindow && !mainWindow.isDestroyed() && (text.includes('[download]') || text.includes('[ExtractAudio]') || text.includes('[Merger]'))) {
       mainWindow.webContents.send('download-log', { id, text: text.trim().slice(0, 300) })

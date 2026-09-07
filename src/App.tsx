@@ -36,8 +36,8 @@ export default function App() {
         if (!exists) {
           const newJob: Job = {
             id: d.id,
-            url: '',
-            title: 'İndiriliyor...',
+            url: d.url || '',
+            title: d.title || 'İndiriliyor...',
             percent: d.percent || 0,
             speed: d.speed || '-',
             eta: d.eta || '-',
@@ -49,7 +49,16 @@ export default function App() {
           window.api.saveQueue(n)
           return n
         }
-        const n = j.map(x => x.id === d.id ? { ...x, percent: d.percent, speed: d.speed, eta: d.eta, total: d.total || x.total, log: d.raw, status: 'downloading' as Job['status'] } : x)
+        const n = j.map(x => x.id === d.id ? {
+          ...x,
+          title: (x.title === 'İndiriliyor...' || x.title === 'İndirme') && d.title ? d.title : x.title,
+          percent: d.percent,
+          speed: d.speed,
+          eta: d.eta,
+          total: d.total || x.total,
+          log: d.raw,
+          status: 'downloading' as Job['status']
+        } : x)
         window.api.saveQueue(n)
         return n
       })
@@ -85,13 +94,19 @@ export default function App() {
     }
     const onS = (d: any) => {
       setJobs(j => {
+        const title = d.opts?.title || d.opts?.filename || d.opts?.url || 'İndirme'
         const exists = j.some(x => x.id === d.id)
         if (exists) {
-          const n = j.map(x => x.id === d.id ? { ...x, status: 'downloading' as const, log: 'Başlatıldı...' } : x)
+          const n = j.map(x => x.id === d.id ? {
+            ...x,
+            title: (title !== 'İndiriliyor...' && title !== 'İndirme') ? title.slice(0, 70) : x.title,
+            status: 'downloading' as const,
+            log: 'Başlatıldı...',
+            opts: d.opts || x.opts
+          } : x)
           window.api.saveQueue(n)
           return n
         }
-        const title = d.opts?.title || d.opts?.filename || d.opts?.url || 'İndirme'
         const newJob: Job = {
           id: d.id,
           url: d.opts?.url || '',
