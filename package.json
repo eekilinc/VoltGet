@@ -1,7 +1,7 @@
 {
-  "name": "flexplorer",
+  "name": "voltget",
   "version": "1.0.0",
-  "description": "VoltGet - Ultra Hızlı İndirme Yöneticisi + IDM Alternatifi (Video/Müzik/Dosya Yakalayıcı)",
+  "description": "VoltGet - High-Speed Download Manager & Media Sniffer (IDM Alternative for Modern Web)",
   "type": "module",
   "main": "dist/electron/main.js",
   "scripts": {

@@ -1,13 +1,50 @@
-node_modules
-dist
-out
-release
+# Dependencies
+node_modules/
+
+# Production builds
+dist/
+out/
+release/
+.vite/
+
+# Temporary and log files
 .tmp_*
 *.tmp*
 *.log
-.vite
+*.part
+*.ytdl
+*.aria2
+.voltget_tmp/
+
+# Downloaded media & test archives (prevent committing downloaded content)
+*.mp4
+*.mkv
+*.webm
+*.avi
+*.mov
+*.mp3
+*.m4a
+*.flac
+*.wav
+*.zip
+*.rar
+*.7z
+*.tar.gz
+*.iso
+
+# Binaries & executables
 bin/yt-dlp.exe
 bin/yt-dlp
+bin/ffmpeg.exe
+bin/ffmpeg
+bin/ffprobe.exe
+bin/ffprobe
+
+# Scratch and test files
+test_*.py
+scratch/
+
+# OS specific files
 .DS_Store
 Thumbs.db
-
+Desktop.ini

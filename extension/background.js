@@ -43,7 +43,15 @@ function detectType(url) {
 
 function normalizeToMasterPlaylist(url) {
   if (!url || typeof url !== 'string') return url
-  return url.replace(/\/(?:txt\/)?[a-zA-Z0-9_.-]*sublist[a-zA-Z0-9_.-]*\.(txt|m3u8).*/i, '/master.$1')
+  // sublist*.txt or sublist*.m3u8 -> master.txt or master.m3u8
+  if (/\/(?:txt\/)?[a-zA-Z0-9_.-]*sublist[a-zA-Z0-9_.-]*\.(txt|m3u8)/i.test(url)) {
+    return url.replace(/\/(?:txt\/)?[a-zA-Z0-9_.-]*sublist[a-zA-Z0-9_.-]*\.(txt|m3u8).*/i, '/master.$1')
+  }
+  // tracks-v* or stream_video* or video_*.m3u8 -> master.m3u8
+  if (/\/(?:tracks-[va]\d+|video_\d+|audio_\d+)\/[^/]+\.m3u8/i.test(url)) {
+    return url.replace(/\/(?:tracks-[va]\d+|video_\d+|audio_\d+)\/[^/]+\.m3u8.*/i, '/master.m3u8')
+  }
+  return url
 }
 
 // WebSocket bağlantısı yönetimi

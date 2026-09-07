@@ -38,7 +38,15 @@ function getAppIconPath(): string | undefined {
 
 function normalizeToMasterPlaylist(url: string): string {
   if (!url || typeof url !== 'string') return url
-  return url.replace(/\/(?:txt\/)?[a-zA-Z0-9_.-]*sublist[a-zA-Z0-9_.-]*\.(txt|m3u8).*/i, '/master.$1')
+  // sublist*.txt or sublist*.m3u8 -> master.txt or master.m3u8
+  if (/\/(?:txt\/)?[a-zA-Z0-9_.-]*sublist[a-zA-Z0-9_.-]*\.(txt|m3u8)/i.test(url)) {
+    return url.replace(/\/(?:txt\/)?[a-zA-Z0-9_.-]*sublist[a-zA-Z0-9_.-]*\.(txt|m3u8).*/i, '/master.$1')
+  }
+  // tracks-v* or stream_video* or video_*.m3u8 -> master.m3u8
+  if (/\/(?:tracks-[va]\d+|video_\d+|audio_\d+)\/[^/]+\.m3u8/i.test(url)) {
+    return url.replace(/\/(?:tracks-[va]\d+|video_\d+|audio_\d+)\/[^/]+\.m3u8.*/i, '/master.m3u8')
+  }
+  return url
 }
 
 function createDownloadDialogWindow(sniffData: any) {
@@ -115,11 +123,60 @@ const pausingIds = new Set<string>()
 
 const ytDlpPath = path.join(app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__dirname, '..'), 'bin', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
 function resolveFfmpegPath(): string {
+  // 1. Paketlenmiş veya yerel bin klasörünü kontrol et
   const bundled = path.join(app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__dirname, '..'), 'bin', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
   if (fs.existsSync(bundled)) return bundled
+
+  // 2. Sistem PATH üzerinden where.exe (Windows) veya which (Unix) ile tam yolu bul
+  try {
+    const { execSync } = require('child_process')
+    const cmd = process.platform === 'win32' ? 'where.exe ffmpeg' : 'which ffmpeg'
+    const out = execSync(cmd, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    const firstLine = out.split(/\r?\n/)[0]?.trim()
+    if (firstLine && fs.existsSync(firstLine)) {
+      return firstLine
+    }
+  } catch {}
+
+  // 3. Yaygın Windows paket yöneticisi dizinlerini tara (WinGet, Program Files, Chocolatey)
+  if (process.platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA || ''
+    const wingetSearch = path.join(localAppData, 'Microsoft', 'WinGet', 'Packages')
+    if (fs.existsSync(wingetSearch)) {
+      try {
+        const dirs = fs.readdirSync(wingetSearch)
+        for (const dir of dirs) {
+          if (dir.toLowerCase().includes('ffmpeg')) {
+            const candidateBin = path.join(wingetSearch, dir)
+            const subdirs = fs.readdirSync(candidateBin)
+            for (const sub of subdirs) {
+              const exe = path.join(candidateBin, sub, 'bin', 'ffmpeg.exe')
+              if (fs.existsSync(exe)) return exe
+            }
+          }
+        }
+      } catch {}
+    }
+    const candidates = [
+      path.join(process.env.ProgramFiles || 'C:\\Program Files', 'ffmpeg', 'bin', 'ffmpeg.exe'),
+      'C:\\ffmpeg\\bin\\ffmpeg.exe',
+      'C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe'
+    ]
+    for (const cand of candidates) {
+      if (fs.existsSync(cand)) return cand
+    }
+  }
+
   return 'ffmpeg'
 }
 const ffmpegPath = resolveFfmpegPath()
+// ffmpeg dizinini process.env.PATH başına ekle ki tüm alt süreçler bulsun
+if (ffmpegPath && ffmpegPath !== 'ffmpeg' && fs.existsSync(ffmpegPath)) {
+  const ffmpegDir = path.dirname(ffmpegPath)
+  if (!process.env.PATH?.includes(ffmpegDir)) {
+    process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH || ''}`
+  }
+}
 function hasFfmpeg(): boolean {
   try{ const {execSync}=require('child_process'); execSync(`"${ffmpegPath}" -version`,{stdio:'ignore'}); return true }catch{ return false }
 }
@@ -294,6 +351,12 @@ function startSniffServer() {
   sniffServer.on('error',(e:any)=> console.error('[sniff server]',e.message))
 }
 
+function isMasterPlaylistUrl(u: string): boolean {
+  if (!u || typeof u !== 'string') return false
+  return /master\.(txt|m3u8)|manifest\.mpd/i.test(u) ||
+         (/(playlist|index)\.m3u8/i.test(u) && !/(?:video|audio|_vid|_aud|tracks-v)/i.test(u))
+}
+
 const recentStreamsByPage = new Map<string, string>()
 
 async function handleIncomingSniff(data: any) {
@@ -303,23 +366,36 @@ async function handleIncomingSniff(data: any) {
   const sniffId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
   const sniffData = { ...data, sniffId, time: new Date().toLocaleTimeString() }
 
-  // 1. Gerçek medya akışını (m3u8, mpd, master.txt, mp4) hafızaya al
+  // 1. Gerçek medya akışını (m3u8, mpd, master.txt, mp4) hafızaya al (Master olanları alt parçaların ezmesini engelle)
   if (sniffData.url && (sniffData.url.includes('.m3u8') || sniffData.url.includes('master.txt') || sniffData.url.includes('.mpd') || sniffData.url.includes('/hls/') || sniffData.url.includes('playmix') || sniffData.url.includes('cdnimages'))) {
-    recentStreamsByPage.set('latest', sniffData.url)
+    const isMaster = isMasterPlaylistUrl(sniffData.url)
+    const existingLatest = recentStreamsByPage.get('latest')
+    if (isMaster || !existingLatest || !isMasterPlaylistUrl(existingLatest)) {
+      recentStreamsByPage.set('latest', sniffData.url)
+    }
     if (sniffData.pageUrl) {
-      recentStreamsByPage.set(sniffData.pageUrl, sniffData.url)
+      const existingPage = recentStreamsByPage.get(sniffData.pageUrl)
+      if (isMaster || !existingPage || !isMasterPlaylistUrl(existingPage)) {
+        recentStreamsByPage.set(sniffData.pageUrl, sniffData.url)
+      }
       try {
         const u = new URL(sniffData.pageUrl)
         const cleanHost = u.hostname.replace(/^www\./i, '').toLowerCase()
-        recentStreamsByPage.set(cleanHost, sniffData.url)
-        recentStreamsByPage.set(u.hostname, sniffData.url)
+        const existingHost = recentStreamsByPage.get(cleanHost)
+        if (isMaster || !existingHost || !isMasterPlaylistUrl(existingHost)) {
+          recentStreamsByPage.set(cleanHost, sniffData.url)
+          recentStreamsByPage.set(u.hostname, sniffData.url)
+        }
       } catch {}
     }
     if (sniffData.url) {
       try {
         const u = new URL(sniffData.url)
         const cleanHost = u.hostname.replace(/^www\./i, '').toLowerCase()
-        recentStreamsByPage.set(cleanHost, sniffData.url)
+        const existingHost = recentStreamsByPage.get(cleanHost)
+        if (isMaster || !existingHost || !isMasterPlaylistUrl(existingHost)) {
+          recentStreamsByPage.set(cleanHost, sniffData.url)
+        }
       } catch {}
     }
   }
@@ -678,7 +754,10 @@ function doStartDownload(id:string, opts:any){
   ensureDir(tempDir)
   args.push('-P', `temp:${tempDir}`, '-P', `home:${outDir}`)
   args.push('-o', tmpl, '--no-playlist', '--newline', '--progress', '--continue')
-  if (ffmpegPath !== 'ffmpeg') args.push('--ffmpeg-location', ffmpegPath)
+  if (ffmpegPath) {
+    const loc = (ffmpegPath !== 'ffmpeg' && fs.existsSync(ffmpegPath)) ? path.dirname(ffmpegPath) : ffmpegPath
+    args.push('--ffmpeg-location', loc)
+  }
   args.push(finalUrl)
 
   console.log('[VoltGet] starting download process:', id, ytdlp, args.join(' '))
