@@ -204,6 +204,27 @@ chrome.webRequest.onBeforeRequest.addListener((details) => {
   })
 }, { urls: ["<all_urls>"] })
 
+function pickBestStreamFromList(list) {
+  if (!list || !list.length) return null
+  // 1. En yüksek öncelik: master akışlar (Hem video hem ses içeren ana playlist)
+  const master = list.find(x => /master\.(txt|m3u8)|manifest\.mpd/i.test(x.url))
+  if (master) return master
+
+  // 2. İkinci öncelik: playlist.m3u8 veya index.m3u8 (video/audio alt kanalı olmayan ana oynatma listesi)
+  const mainPlaylist = list.find(x => /(playlist|index)\.m3u8/i.test(x.url) && !/(?:video|audio|_vid|_aud|tracks-v)/i.test(x.url))
+  if (mainPlaylist) return mainPlaylist
+
+  // 3. Üçüncü öncelik: doğrudan tek parça MP4 (ses ve video gömülü)
+  const mp4 = list.find(x => /\.mp4($|\?)/i.test(x.url) && !/frag|segment|part|f[0-9]+/i.test(x.url))
+  if (mp4) return mp4
+
+  // 4. Genel m3u8 akışları (ses olmayan alt akışları hariç tutmaya çalış)
+  const anyM3u8 = list.find(x => (x.type === 'm3u8' || x.url.includes('.m3u8')) && !/(?:_aud|audio)/i.test(x.url))
+  if (anyM3u8) return anyM3u8
+
+  return list[0]
+}
+
 // Content script mesajlarını dinle (Video üstü buton veya sayfa tarayıcı)
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === 'get_best_stream') {
@@ -213,12 +234,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     
     let candidate = null
     if (tabId && tabMediaMap.has(tabId)) {
-      const list = tabMediaMap.get(tabId)
-      candidate = list?.find(x => x.type === 'm3u8' || x.type === 'mpd' || x.url.includes('master.txt') || x.url.includes('.mp4')) || list?.[0]
+      candidate = pickBestStreamFromList(tabMediaMap.get(tabId))
     }
     if (!candidate && dom && domainMediaMap.has(dom)) {
-      const list = domainMediaMap.get(dom)
-      candidate = list?.find(x => x.type === 'm3u8' || x.type === 'mpd' || x.url.includes('master.txt') || x.url.includes('.mp4')) || list?.[0]
+      candidate = pickBestStreamFromList(domainMediaMap.get(dom))
     }
     if (!candidate && lastSniffedStream && (Date.now() - lastSniffedStream.time < 180000)) {
       candidate = lastSniffedStream
@@ -256,12 +275,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       
       let candidate = null
       if (tabId && tabMediaMap.has(tabId)) {
-        const list = tabMediaMap.get(tabId)
-        candidate = list?.find(x => x.type === 'm3u8' || x.type === 'mpd' || x.url.includes('master.txt') || x.url.includes('.mp4')) || list?.[0]
+        candidate = pickBestStreamFromList(tabMediaMap.get(tabId))
       }
       if (!candidate && dom && domainMediaMap.has(dom)) {
-        const list = domainMediaMap.get(dom)
-        candidate = list?.find(x => x.type === 'm3u8' || x.type === 'mpd' || x.url.includes('master.txt') || x.url.includes('.mp4')) || list?.[0]
+        candidate = pickBestStreamFromList(domainMediaMap.get(dom))
       }
       if (!candidate && lastSniffedStream && (Date.now() - lastSniffedStream.time < 180000)) {
         candidate = lastSniffedStream
