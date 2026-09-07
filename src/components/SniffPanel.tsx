@@ -101,7 +101,7 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
       } else if (isHlsMaster(it.url)) {
         await onDirectDownload({ url: target, outDir, pageUrl: it.pageUrl, filename: it.filename || undefined, title: short(it.pageUrl || target) })
       } else {
-        await onStartDownload({ url: target, outDir, title: short(it.pageUrl || target) })
+        await onStartDownload({ url: target, outDir, pageUrl: it.pageUrl, title: short(it.pageUrl || target) })
       }
     } catch(e:any){ toast.error(String(e?.message || e).slice(0,600), 'İndirme Başlatılamadı') }
     setDownloading(s=> ({...s, [idx]:false}))
@@ -120,7 +120,7 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
 
   async function downloadWithFormat(it:Sniff, formatId?:string, asAudio?:boolean){
     const target = isDirectChunk(it.url) && it.pageUrl ? it.pageUrl : it.url
-    await onStartDownload({ url: target, outDir, formatId: asAudio?undefined:formatId, asAudio, title: infos[items.indexOf(it)]?.title || short(target) })
+    await onStartDownload({ url: target, outDir, formatId: asAudio?undefined:formatId, asAudio, pageUrl: it.pageUrl, title: infos[items.indexOf(it)]?.title || short(target) })
   }
 
   return (

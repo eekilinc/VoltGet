@@ -52,7 +52,11 @@ async function render(){
         await navigator.clipboard.writeText(toCopy)
         b.textContent='Kopyalandı ✓'; setTimeout(()=> b.textContent='Kopyala',1000)
       } else {
-        try{ await fetch('http://127.0.0.1:8765/sniff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(it)})}catch{}
+        const itemToSend = { ...it, userInitiated: true, showDialog: true }
+        if (it.pageUrl && /youtube\.com|youtu\.be/i.test(it.pageUrl)) {
+          itemToSend.url = it.pageUrl
+        }
+        try{ await fetch('http://127.0.0.1:8765/sniff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(itemToSend)})}catch{}
         const toCopy = it.pageUrl?.includes('youtube.com/watch') ? it.pageUrl : it.url
         await navigator.clipboard.writeText(toCopy)
         b.textContent='Gönderildi ✓'; setTimeout(()=> b.textContent='Uygulamaya Gönder',1000)

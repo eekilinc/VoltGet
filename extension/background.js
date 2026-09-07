@@ -112,12 +112,16 @@ async function sendToFlexplorer(data, opts = {}) {
 
   let cookieHeader = ''
   try {
-    const cookies = await chrome.cookies.getAll({ domain: new URL(data.url).hostname })
-    if (cookies && cookies.length) {
-      cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ')
-    } else if (data.pageUrl) {
-      const pageCookies = await chrome.cookies.getAll({ url: data.pageUrl })
-      if (pageCookies.length) cookieHeader = pageCookies.map(c => `${c.name}=${c.value}`).join('; ')
+    const isYouTube = (data.url && (data.url.includes('youtube.com') || data.url.includes('youtu.be') || data.url.includes('googlevideo.com'))) ||
+                      (data.pageUrl && (data.pageUrl.includes('youtube.com') || data.pageUrl.includes('youtu.be')))
+    if (!isYouTube) {
+      const cookies = await chrome.cookies.getAll({ domain: new URL(data.url).hostname })
+      if (cookies && cookies.length) {
+        cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ')
+      } else if (data.pageUrl) {
+        const pageCookies = await chrome.cookies.getAll({ url: data.pageUrl })
+        if (pageCookies.length) cookieHeader = pageCookies.map(c => `${c.name}=${c.value}`).join('; ')
+      }
     }
   } catch (e) {}
 
@@ -308,9 +312,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   } else if (msg?.type === 'user_request_download') {
     let downloadData = { ...msg.data }
     const isVideoPortal = /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(downloadData.pageUrl || '') ||
-                          /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(downloadData.url || '')
-    if (isVideoPortal && downloadData.pageUrl && /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(downloadData.pageUrl)) {
-      downloadData.url = downloadData.pageUrl
+                          /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(downloadData.url || '') ||
+                          (downloadData.url && downloadData.url.includes('googlevideo.com'))
+    if (isVideoPortal) {
+      if (downloadData.pageUrl && /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(downloadData.pageUrl)) {
+        downloadData.url = downloadData.pageUrl
+      } else if (sender?.tab?.url && /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(sender.tab.url)) {
+        downloadData.url = sender.tab.url
+        downloadData.pageUrl = sender.tab.url
+      }
     }
     
     // Eğer video portalı değilse ve gelen URL doğrudan bir medya akışı (.m3u8, .mp4, master.txt) DEĞİLSE

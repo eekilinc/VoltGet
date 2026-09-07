@@ -409,7 +409,7 @@ export default function App() {
                     if (isGen || sniff.url.endsWith('.pdf')) {
                       await handleHttpDownload({ url: sniff.url, outDir, filename: sniff.filename })
                     } else if (selFormat) {
-                      await handleStartDownload({ url: sniff.url, outDir, formatId: selFormat, title: sniff.filename || 'Video' })
+                      await handleStartDownload({ url: sniff.url, outDir, formatId: selFormat, pageUrl: sniff.pageUrl, title: sniff.filename || 'Video' })
                     } else {
                       await handleDirectDownload({ url: sniff.url, outDir, pageUrl: sniff.pageUrl, title: sniff.filename || 'İndirme' })
                     }

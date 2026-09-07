@@ -108,11 +108,13 @@
 
   function createVideoOverlay(videoEl) {
     if (activeVideoOverlays.has(videoEl)) return
-    if (videoEl.closest && videoEl.closest('.ad, .ads, .banner, .twitter-tweet, [data-testid="tweet"]')) return
+
+    var isYouTube = location.hostname.includes('youtube.com') || location.hostname.includes('youtu.be')
+    if (!isYouTube && videoEl.closest && videoEl.closest('.ad-banner, .advertisement, [id*="google_ads"], .twitter-tweet, [data-testid="tweet"]')) return
 
     var rect = videoEl.getBoundingClientRect()
-    // 280x160'dan küçük videoları (küçük reklam, sidebar tweet, banner vs.) yoksay
-    if (rect.width < 280 || rect.height < 160) return
+    // YouTube harici sitelerde 280x160'dan küçük videoları yoksay
+    if (!isYouTube && (rect.width < 280 || rect.height < 160)) return
 
     var overlay = document.createElement('div')
     overlay.className = 'flexplorer-video-overlay'
@@ -313,14 +315,19 @@
       }
 
       overlay.style.display = 'block'
-      var isFullscreen = document.fullscreenElement === videoEl || (videoEl.parentElement && document.fullscreenElement === videoEl.parentElement)
-
-      if (isFullscreen) {
+      var fsEl = document.fullscreenElement
+      if (fsEl && (fsEl === videoEl || fsEl.contains(videoEl))) {
+        if (overlay.parentElement !== fsEl) {
+          fsEl.appendChild(overlay)
+        }
         overlay.style.position = 'fixed'
         overlay.style.top = '16px'
         overlay.style.right = '24px'
         overlay.style.left = 'auto'
       } else {
+        if (overlay.parentElement !== document.body) {
+          document.body.appendChild(overlay)
+        }
         overlay.style.position = 'absolute'
         var top = window.scrollY + vRect.top + 10
         var left = window.scrollX + vRect.right - 170
@@ -349,11 +356,18 @@
       }, 2500)
     }
 
-    // Video ve overlay mouse dinleyicileri
+    // Video ve oynatıcı konteyneri mouse dinleyicileri (YouTube ve diğer player katmanları için kritik)
     videoEl.addEventListener('mouseenter', showOverlay)
     videoEl.addEventListener('mousemove', showOverlay)
     videoEl.addEventListener('mouseleave', scheduleHide)
     videoEl.addEventListener('play', showOverlay)
+
+    var playerContainer = videoEl.closest('#movie_player, .html5-video-player, .video-player, .player-container, .player, .jwplayer, .video-js, [data-player]') || videoEl.parentElement
+    if (playerContainer && playerContainer !== videoEl) {
+      playerContainer.addEventListener('mouseenter', showOverlay)
+      playerContainer.addEventListener('mousemove', showOverlay)
+      playerContainer.addEventListener('mouseleave', scheduleHide)
+    }
 
     overlay.addEventListener('mouseenter', function () {
       clearTimeout(hideTimeout)
@@ -389,6 +403,15 @@
   })
   observer.observe(document.documentElement, { childList: true, subtree: true })
   setInterval(scanAndAttachVideos, 2500)
+
+  // YouTube / SPA sayfa geçişlerinde tetikle
+  window.addEventListener('yt-navigate-finish', function () {
+    setTimeout(scanAndAttachVideos, 400)
+    setTimeout(scanAndAttachVideos, 1200)
+  })
+  window.addEventListener('popstate', function () {
+    setTimeout(scanAndAttachVideos, 400)
+  })
 
   // --- 3. Medya Ağ İstekleri Sniffer (Yalnızca gerçel ana medyalar için) ---
   ;(function hookNetwork() {

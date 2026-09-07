@@ -494,8 +494,9 @@ async function handleIncomingSniff(data: any) {
     
     // ANINDA kullanılabilir varsayılan formatlar
     const defaultFormats = isGen || resolvedUrl.endsWith('.pdf') ? [] : [
-      { id: 'best', resolution: '🎬 En İyi Kalite (Hızlı İndir)', ext: 'mp4', note: 'Otomatik Önerilen' },
-      { id: 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best', resolution: '🎬 1080p Full HD', ext: 'mp4', note: 'Yüksek Çözünürlük' },
+      { id: 'best', resolution: '🎬 En İyi Kalite (Önerilen)', ext: 'mp4', note: 'Otomatik En Yüksek Kalite' },
+      { id: 'bestvideo[height<=2160]+bestaudio/best[height<=2160]/best', resolution: '🎬 4K Ultra HD (2160p)', ext: 'mp4', note: 'Ultra HD' },
+      { id: 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best', resolution: '🎬 1080p Full HD', ext: 'mp4', note: 'Full HD' },
       { id: 'bestvideo[height<=720]+bestaudio/best[height<=720]/best', resolution: '🎬 720p HD', ext: 'mp4', note: 'Standart HD' },
       { id: 'bestvideo[height<=480]+bestaudio/best[height<=480]/best', resolution: '🎬 480p SD', ext: 'mp4', note: 'Hızlı İndirme' },
       { id: 'bestaudio/best', resolution: '🎵 MP3 / Sadece Ses', ext: 'mp3', note: 'En Yüksek Ses Kalitesi' }
@@ -513,10 +514,12 @@ async function handleIncomingSniff(data: any) {
     // ANINDA PENCEREYİ AÇ (IDM gibi doğrudan ekrana fırlatılır!)
     createDownloadDialogWindow(initialData)
 
-    // Arka planda kaliteleri analiz et ve pencereye ilet (En fazla 3.5 saniye bekle):
+    // Arka planda kaliteleri analiz et ve pencereye ilet:
     if (!isGen && !resolvedUrl.endsWith('.pdf')) {
-      const target = (resolvedUrl.includes('googlevideo.com') || resolvedUrl.includes('youtube.com')) && data.pageUrl ? data.pageUrl : resolvedUrl
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500))
+      const isYT = /youtube\.com|youtu\.be|googlevideo\.com/i.test(resolvedUrl) || (data.pageUrl && /youtube\.com|youtu\.be/i.test(data.pageUrl))
+      const target = isYT && data.pageUrl && /youtube\.com|youtu\.be/i.test(data.pageUrl) ? data.pageUrl : resolvedUrl
+      const waitTime = isYT ? 10000 : 3500
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), waitTime))
       
       Promise.race([analyzeUrl(target), timeoutPromise]).then((res: any) => {
         const enrichedFormats = (res?.formats && res.formats.length > 0) ? res.formats : defaultFormats
@@ -634,6 +637,7 @@ async function analyzeUrl(url: string): Promise<any> {
     '--dump-json',
     '--no-playlist',
     '--js-runtimes', 'node',
+    '--remote-components', 'ejs:github',
     '--no-warnings'
   ]
   if (!isYouTube) {
@@ -721,9 +725,20 @@ function doStartDownload(id:string, opts:any){
   const isYouTube = /youtube\.com|youtu\.be|googlevideo\.com/i.test(finalUrl) ||
                     (opts.pageUrl && /youtube\.com|youtu\.be/i.test(opts.pageUrl))
 
-  if (isYouTube && opts.pageUrl && /youtube\.com|youtu\.be/i.test(opts.pageUrl)) {
-    finalUrl = opts.pageUrl
-    opts.url = opts.pageUrl
+  if (isYouTube) {
+    if (opts.pageUrl && /youtube\.com|youtu\.be/i.test(opts.pageUrl)) {
+      finalUrl = opts.pageUrl
+      opts.url = opts.pageUrl
+    } else if (finalUrl.includes('googlevideo.com')) {
+      // Find matching youtube page from recentStreamsByPage
+      for (const [key] of recentStreamsByPage.entries()) {
+        if (/youtube\.com\/watch|youtu\.be\//i.test(key)) {
+          finalUrl = key
+          opts.url = key
+          break
+        }
+      }
+    }
   }
 
   // 1. Embed veya oynatıcı sayfası geldiyse hafızadaki gerçek akış URL'si ile eşle
@@ -786,7 +801,7 @@ function doStartDownload(id:string, opts:any){
   const ytdlp = findYtDlp()
   const isHls = finalUrl.includes('.m3u8') || finalUrl.includes('master.txt') || finalUrl.includes('/hls/') || finalUrl.includes('playmix') || finalUrl.includes('cdnimages') || finalUrl.includes('/q/') || finalUrl.includes('molystream')
 
-  const args: string[] = ['--js-runtimes', 'node', '--no-warnings', '--concurrent-fragments', '16']
+  const args: string[] = ['--js-runtimes', 'node', '--remote-components', 'ejs:github', '--no-warnings', '--concurrent-fragments', '16']
   if (appConfig.speedLimitKB > 0) args.push('--limit-rate', `${appConfig.speedLimitKB}K`)
 
   // HLS URL'den ID çıkar: ...-Pq7eJSHPqS3.mp4 -> Pq7eJSHPqS3 (Sadece hdfilm / cdn siteleri için)
