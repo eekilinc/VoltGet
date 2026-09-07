@@ -125,7 +125,69 @@ const pendingQueue: Array<{ id:string, opts:any }> = []
 const pausedDownloads = new Map<string, any>()
 const pausingIds = new Set<string>()
 
-const ytDlpPath = path.join(app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__dirname, '..'), 'bin', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
+function isValidExecutable(p: string): boolean {
+  try {
+    if (!p || !fs.existsSync(p)) return false
+    const stat = fs.statSync(p)
+    return stat.isFile() && stat.size > 20000 // Boş veya hasarlı 0-byte dosyaları reddet (en az 20KB)
+  } catch {
+    return false
+  }
+}
+
+function resolveYtDlpPath(): string {
+  // 1. Paketlenmiş veya yerel bin klasörünü kontrol et
+  const bundled = path.join(app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__dirname, '..'), 'bin', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
+  if (isValidExecutable(bundled)) return bundled
+
+  const projectBin = path.join(process.cwd(), 'bin', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
+  if (isValidExecutable(projectBin)) return projectBin
+
+  const rootBin = path.join(__dirname, '..', '..', 'bin', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
+  if (isValidExecutable(rootBin)) return rootBin
+
+  // 2. Sistem PATH üzerinden where.exe (Windows) veya which (Unix) ile tam yolu bul
+  try {
+    const { execSync } = require('child_process')
+    const cmd = process.platform === 'win32' ? 'where.exe yt-dlp' : 'which yt-dlp'
+    const out = execSync(cmd, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    const lines = out.split(/\r?\n/)
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (trimmed && isValidExecutable(trimmed)) {
+        return trimmed
+      }
+    }
+  } catch {}
+
+  // 3. Yaygın Windows Python Scripts dizinleri ve Chocolatey
+  if (process.platform === 'win32') {
+    const candidates = [
+      'C:\\Python313\\Scripts\\yt-dlp.exe',
+      'C:\\Python312\\Scripts\\yt-dlp.exe',
+      'C:\\Python311\\Scripts\\yt-dlp.exe',
+      'C:\\Python310\\Scripts\\yt-dlp.exe',
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python313', 'Scripts', 'yt-dlp.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'Scripts', 'yt-dlp.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python311', 'Scripts', 'yt-dlp.exe'),
+      'C:\\ProgramData\\chocolatey\\bin\\yt-dlp.exe'
+    ]
+    for (const cand of candidates) {
+      if (isValidExecutable(cand)) return cand
+    }
+  }
+
+  return 'yt-dlp'
+}
+
+let ytDlpPath = resolveYtDlpPath()
+if (ytDlpPath && ytDlpPath !== 'yt-dlp' && fs.existsSync(ytDlpPath)) {
+  const ytDlpDir = path.dirname(ytDlpPath)
+  if (!process.env.PATH?.includes(ytDlpDir)) {
+    process.env.PATH = `${ytDlpDir}${path.delimiter}${process.env.PATH || ''}`
+  }
+}
+
 function resolveFfmpegPath(): string {
   // 1. Paketlenmiş veya yerel bin klasörünü kontrol et
   const bundled = path.join(app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__dirname, '..'), 'bin', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
@@ -612,7 +674,15 @@ if (!gotTheLock) {
   app.on('before-quit', () => { try{ wss?.close(); sniffServer?.close()}catch{} })
 }
 
-function findYtDlp(): string { if (fs.existsSync(ytDlpPath)) return ytDlpPath; return 'yt-dlp' }
+function findYtDlp(): string {
+  if (isValidExecutable(ytDlpPath)) return ytDlpPath
+  const refreshed = resolveYtDlpPath()
+  if (isValidExecutable(refreshed)) {
+    ytDlpPath = refreshed
+    return refreshed
+  }
+  return 'yt-dlp'
+}
 function parseYtDlpJson(out: string): any {
   const lines = out.split('\n').map(l=> l.trim()).filter(Boolean)
   const jsonLine = lines.find(l=> l.startsWith('{')) || lines[0]
@@ -677,10 +747,20 @@ async function analyzeUrl(url: string): Promise<any> {
   }
   args.push(normUrl)
   return new Promise((resolve, reject) => {
-    const proc = spawn(ytdlp, args, { shell: false, windowsHide: true })
+    let proc: ChildProcess
+    try {
+      proc = spawn(ytdlp, args, { shell: false, windowsHide: true })
+    } catch (e: any) {
+      console.warn('[VoltGet] analyzeUrl primary spawn failed, trying fallback:', e.message)
+      try {
+        proc = spawn('yt-dlp', args, { shell: false, windowsHide: true })
+      } catch (e2: any) {
+        proc = spawn('yt-dlp', args, { shell: true, windowsHide: true })
+      }
+    }
     let out = '', err = ''
-    proc.stdout.on('data', (d: Buffer) => out += d.toString('utf-8'))
-    proc.stderr.on('data', (d: Buffer) => err += d.toString('utf-8'))
+    proc.stdout?.on('data', (d: Buffer) => out += d.toString('utf-8'))
+    proc.stderr?.on('data', (d: Buffer) => err += d.toString('utf-8'))
     proc.on('close', code => {
       if (code === 0) {
         try { resolve(parseInfo(parseYtDlpJson(out))) }
@@ -912,7 +992,26 @@ function doStartDownload(id:string, opts:any){
   args.push(finalUrl)
 
   console.log('[VoltGet] starting download process:', id, ytdlp, args.join(' '))
-  const proc = spawn(ytdlp, args, { shell: false })
+  let proc: ChildProcess
+  try {
+    proc = spawn(ytdlp, args, { shell: false })
+  } catch (err: any) {
+    console.error('[VoltGet] spawn failed with primary ytdlp:', ytdlp, err)
+    try {
+      proc = spawn('yt-dlp', args, { shell: false })
+    } catch (err2: any) {
+      console.error('[VoltGet] spawn fallback also failed, trying shell:true:', err2)
+      proc = spawn('yt-dlp', args, { shell: true })
+    }
+  }
+
+  proc.on('error', (procErr: any) => {
+    console.error('[VoltGet] download process emitted error:', procErr)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('download-error', { id, error: `İndirme başlatılamadı: ${procErr.message}` })
+    }
+  })
+
   activeDownloads.set(id, proc)
   activeOpts.set(id, { ...opts, url: finalUrl })
 
@@ -924,7 +1023,7 @@ function doStartDownload(id:string, opts:any){
     mainWindow.webContents.send('switch-to-download-tab')
   }
 
-  proc.stdout.on('data', (d: Buffer) => {
+  proc.stdout?.on('data', (d: Buffer) => {
     const text = d.toString()
     const m = text.match(/\[download\]\s+(\d+\.?\d*)%\s+of\s+(?:~\s*)?([^\s]+)(?:\s+at\s+([^\s]+))?(?:\s+ETA\s+([^\s]+))?/)
     if (m && mainWindow && !mainWindow.isDestroyed()) {
@@ -942,7 +1041,7 @@ function doStartDownload(id:string, opts:any){
     }
   })
 
-  proc.stderr.on('data', (d: Buffer) => {
+  proc.stderr?.on('data', (d: Buffer) => {
     const errText = d.toString()
     console.error('[yt-dlp error output]:', errText.slice(0, 300))
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('download-log', { id, text: errText.trim().slice(0, 400) })
@@ -1296,16 +1395,60 @@ ipcMain.handle('check-yt-dlp-update', async ()=>{
     return { latest, current: cur, hasUpdate: latest && cur && !latest.includes(cur), url: j.html_url }
   }catch(e:any){ return { error:String(e) } }
 })
-ipcMain.handle('download-yt-dlp', async ()=>{
-  const binDir=path.dirname(ytDlpPath); ensureDir(binDir)
-  const url=process.platform==='win32'?'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe':'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp'
-  return new Promise((resolve,reject)=>{
-    const file=fs.createWriteStream(ytDlpPath)
-    https.get(url,(res:any)=>{
-      if(res.statusCode===302||res.statusCode===301){ https.get(res.headers.location,(r2:any)=>{ r2.pipe(file); r2.on('end',()=>{ file.close(); if(process.platform!=='win32') fs.chmodSync(ytDlpPath,0o755); resolve(ytDlpPath)})}).on('error',reject)}
-      else { res.pipe(file); res.on('end',()=>{ file.close(); if(process.platform!=='win32') fs.chmodSync(ytDlpPath,0o755); resolve(ytDlpPath)})}
-    }).on('error',reject)
-  })
+ipcMain.handle('download-yt-dlp', async () => {
+  const targetBin = isValidExecutable(ytDlpPath) ? ytDlpPath : path.join(app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__dirname, '..'), 'bin', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
+  const binDir = path.dirname(targetBin)
+  ensureDir(binDir)
+  const tempPath = `${targetBin}.download.tmp`
+  const initialUrl = process.platform === 'win32' ? 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe' : 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp'
+
+  const downloadWithRedirects = (url: string, redirectCount = 0): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (redirectCount > 5) return reject(new Error('Çok fazla yönlendirme'))
+      const https = require('https')
+      const options = {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      }
+      https.get(url, options, (res: any) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          return downloadWithRedirects(res.headers.location, redirectCount + 1).then(resolve).catch(reject)
+        }
+        if (res.statusCode !== 200) {
+          return reject(new Error(`İndirme başarısız (HTTP ${res.statusCode})`))
+        }
+        const fileStream = fs.createWriteStream(tempPath)
+        res.pipe(fileStream)
+        fileStream.on('finish', () => {
+          fileStream.close(() => resolve())
+        })
+        fileStream.on('error', (err: any) => {
+          try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath) } catch {}
+          reject(err)
+        })
+      }).on('error', (err: any) => {
+        try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath) } catch {}
+        reject(err)
+      })
+    })
+  }
+
+  try {
+    await downloadWithRedirects(initialUrl)
+    const stat = fs.statSync(tempPath)
+    if (stat.size < 5000000) {
+      try { fs.unlinkSync(tempPath) } catch {}
+      throw new Error(`İndirilen dosya boyutu beklenenden küçük (${(stat.size / 1024).toFixed(1)} KB)`)
+    }
+    if (process.platform !== 'win32') fs.chmodSync(tempPath, 0o755)
+    fs.renameSync(tempPath, targetBin)
+    ytDlpPath = targetBin
+    return targetBin
+  } catch (err: any) {
+    try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath) } catch {}
+    throw err
+  }
 })
 ipcMain.handle('sniffed-url', async (_e, data:any)=>{ if(mainWindow) mainWindow.webContents.send('sniffed-url', data); return true })
 ipcMain.handle('direct-download', async (_e, opts: any) => {

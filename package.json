@@ -12,7 +12,7 @@
     "start:dev": "cross-env ELECTRON_IS_DEV=0 npm run dev:electron",
     "build": "tsc -p tsconfig.electron.json && vite build && electron-builder",
     "build:renderer": "vite build",
-    "build:electron": "tsc -p tsconfig.electron.json && node -e \"fs.copyFileSync('electron/preload.cjs', 'dist/electron/preload.cjs')\"",
+    "build:electron": "tsc -p tsconfig.electron.json && node -e \"fs.copyFileSync('electron/preload.cjs', 'dist/electron/preload.cjs'); if(fs.existsSync('bin/yt-dlp.exe')){fs.mkdirSync('dist/bin',{recursive:true});fs.copyFileSync('bin/yt-dlp.exe','dist/bin/yt-dlp.exe');}\"",
     "build:nm_host": "tsc --project tsconfig.electron.json",
     "preview": "vite preview"
   },
