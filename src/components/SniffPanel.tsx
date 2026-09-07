@@ -103,7 +103,7 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
       } else {
         await onStartDownload({ url: target, outDir, pageUrl: it.pageUrl, title: short(it.pageUrl || target) })
       }
-    } catch(e:any){ toast.error(String(e?.message || e).slice(0,600), 'İndirme Başlatılamadı') }
+    } catch(e:any){ toast.error(String(e?.message || e).slice(0,600), t('downloadFailed')) }
     setDownloading(s=> ({...s, [idx]:false}))
   }
 
@@ -112,9 +112,9 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
     setAnalyzing(s=> ({...s, [idx]:true}))
     try{
       const r = await window.api.analyzeUrl(target)
-      if (!r.formats || r.formats.length===0) { toast.warning('Format bulunamadı — Hızlı İndir deneyin.'); return }
+      if (!r.formats || r.formats.length===0) { toast.warning(t('formatNotFound')); return }
       setInfos(s=> ({...s, [idx]: r})); setExpanded(s=> ({...s, [idx]: true}))
-    }catch(e:any){ toast.error(String(e?.message || e).slice(0,700), 'Analiz Hatası') }
+    }catch(e:any){ toast.error(String(e?.message || e).slice(0,700), t('analysisError')) }
     setAnalyzing(s=> ({...s, [idx]:false}))
   }
 
@@ -130,14 +130,14 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
           <span className="brand-gradient" style={{ width:34, height:34, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff' }}>🎯</span>
           <div>
             <div style={{ fontWeight:900, fontSize:14 }}>{t('autoSniffer')}</div>
-            <div className="text-muted" style={{ fontSize:11 }}>Video, müzik, PDF, ZIP, EXE ve tarayıcı indirmeleri</div>
+            <div className="text-muted" style={{ fontSize:11 }}>{t('sniffSubtitle')}</div>
           </div>
           <div style={{ flex:1 }}/>
           <span style={{ fontSize:11, background:'var(--panel-2)', border:'1px solid var(--border)', padding:'5px 10px', borderRadius:20 }}>{items.length}</span>
         </div>
         <div style={{ marginTop:12, display:'flex', gap:8 }}>
           <button onClick={()=>setItems([])} style={{ background:'var(--panel-2)', color:'var(--text)', border:'1px solid var(--border)', padding:'7px 10px', borderRadius:10, fontSize:11 }}>{t('clear')}</button>
-          <span className="text-muted" style={{ fontSize:11, alignSelf:'center' }}>Sağ tık menüsü + otomatik yakalama aktif</span>
+          <span className="text-muted" style={{ fontSize:11, alignSelf:'center' }}>{t('sniffActiveNote')}</span>
         </div>
       </div>
 
@@ -161,17 +161,17 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
           <span style={{ fontSize: 24 }}>🧩</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 12, color: '#fde047' }}>
-              Tarayıcı Eklentisini Yükleyin (Chrome, Edge, Brave, Opera)
+              {t('installExtBannerTitle')}
             </div>
             <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>
-              Videoların üzerinde "VoltGet ile İndir" butonunun çıkması için eklentiyi 15 saniyede kurabilirsiniz.
+              {t('installExtBannerDesc')}
             </div>
           </div>
           <button
             className="brand-gradient"
             style={{ color: '#fff', border: 0, padding: '7px 14px', borderRadius: 8, fontSize: 11, fontWeight: 800, whiteSpace: 'nowrap' }}
           >
-            Kurulumu Başlat ⚡
+            {t('startExtInstall')}
           </button>
         </div>
       )}
@@ -179,8 +179,8 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
       <div className="card-premium" style={{ borderRadius:18, padding:16, flex:1 }}>
         {domains.length>1 && (
           <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
-            <span className="text-muted" style={{ fontSize:11 }}>Filtre:</span>
-            <button onClick={()=>setFilterDomain('all')} style={{ padding:'5px 9px', borderRadius:8, border:'1px solid '+(filterDomain==='all'?'var(--accent-solid)':'var(--border)'), background:filterDomain==='all'?'color-mix(in srgb, var(--accent-solid) 16%, var(--panel-2))':'var(--panel-2)', color:'var(--text)', fontSize:11 }}>Tümü ({items.length})</button>
+            <span className="text-muted" style={{ fontSize:11 }}>{t('filterLabel')}</span>
+            <button onClick={()=>setFilterDomain('all')} style={{ padding:'5px 9px', borderRadius:8, border:'1px solid '+(filterDomain==='all'?'var(--accent-solid)':'var(--border)'), background:filterDomain==='all'?'color-mix(in srgb, var(--accent-solid) 16%, var(--panel-2))':'var(--panel-2)', color:'var(--text)', fontSize:11 }}>{t('filterAll')} ({items.length})</button>
             {domains.slice(0,5).map(d=>(
               <button key={d} onClick={()=>setFilterDomain(d)} style={{ padding:'5px 9px', borderRadius:8, border:'1px solid '+(filterDomain===d?'var(--accent-solid)':'var(--border)'), background:filterDomain===d?'color-mix(in srgb, var(--accent-solid) 16%, var(--panel-2))':'var(--panel-2)', color:'var(--text)', fontSize:11 }}>{d}</button>
             ))}
@@ -189,11 +189,11 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
         {items.length===0 ? (
           <div className="text-muted" style={{ textAlign:'center', padding:36 }}>
             <div style={{ fontSize:28 }}>📡</div>
-            <div style={{ fontSize:12, marginTop:8 }}>Henüz yakalanan yok<br/><span style={{ fontSize:11 }}>Video oynat veya dosya indirmeyi başlat</span></div>
+            <div style={{ fontSize:12, marginTop:8 }}>{t('noMediaCapturedYet')}<br/><span style={{ fontSize:11 }}>{t('playVideoOrDownload')}</span></div>
           </div>
         ) : (()=>{
           const filtered = filterDomain==='all'? items : items.filter(i=> { try{ return new URL(i.pageUrl).hostname.replace('www.','')===filterDomain } catch{ return false } })
-          if (!filtered.length) return <div className="text-muted" style={{ textAlign:'center', padding:20, fontSize:12 }}>Bu filtrede yok</div>
+          if (!filtered.length) return <div className="text-muted" style={{ textAlign:'center', padding:20, fontSize:12 }}>{t('noMediaInFilter')}</div>
           return (
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
               {filtered.map((it)=>{
@@ -207,12 +207,12 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
                       <span style={{ fontSize:11, background: generic?'#422006': chunk?'#422006':'color-mix(in srgb, var(--accent-solid) 20%, transparent)', color: generic||chunk?'#fbbf24':'var(--text)', padding:'2px 7px', borderRadius:8 }}>{generic?'FILE': chunk?'YT':'• '+it.type}</span>
                       <span className="text-muted" style={{ fontSize:11 }}>{it.time}</span>
                       <span className="text-muted" style={{ fontSize:11, flex:1, textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{short(it.pageUrl || it.url)}</span>
-                      <button onClick={()=> setExpanded(s=> ({...s, [origIdx]: !s[origIdx]}))} style={{ fontSize:10, background:'var(--panel)', color:'var(--text)', border:'1px solid var(--border)', padding:'4px 7px', borderRadius:8 }}>{expanded[origIdx]?'Gizle':'Detay'}</button>
+                      <button onClick={()=> setExpanded(s=> ({...s, [origIdx]: !s[origIdx]}))} style={{ fontSize:10, background:'var(--panel)', color:'var(--text)', border:'1px solid var(--border)', padding:'4px 7px', borderRadius:8 }}>{expanded[origIdx] ? t('hide') : t('detail')}</button>
                     </div>
                     {info ? (
                       <div style={{ display:'flex', gap:10, marginTop:10, alignItems:'center' }}>
                         {info.thumbnail && <img src={info.thumbnail} style={{ width:96, height:54, objectFit:'cover', borderRadius:8, border:'1px solid var(--border)' }} />}
-                        <div style={{ flex:1, minWidth:0 }}><div style={{ fontSize:12, fontWeight:800, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{info.title}</div><div className="text-muted" style={{ fontSize:11 }}>{info.extractor} • {info.formats.length} format</div></div>
+                        <div style={{ flex:1, minWidth:0 }}><div style={{ fontSize:12, fontWeight:800, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{info.title}</div><div className="text-muted" style={{ fontSize:11 }}>{info.extractor} • {info.formats.length} {t('formatsReady')}</div></div>
                       </div>
                     ) : (
                       <div className="text-muted" style={{ fontSize:11, marginTop:8, background:'var(--bg)', border:'1px solid var(--border)', padding:'8px 10px', borderRadius:10, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.filename || it.url.slice(0,90)}</div>
@@ -221,20 +221,20 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
 
                     {!info ? (
                       <div style={{ display:'flex', gap:6, marginTop:10 }}>
-                        <button onClick={()=> quickDownload(origIdx,it)} disabled={!!downloading[origIdx]} className="brand-gradient" style={{ flex:1, color:'#fff', border:0, padding:'9px', borderRadius:10, fontWeight:900, fontSize:12 }}>{downloading[origIdx]?'İndiriliyor…':'⬇️ Hızlı İndir'}</button>
+                        <button onClick={()=> quickDownload(origIdx,it)} disabled={!!downloading[origIdx]} className="brand-gradient" style={{ flex:1, color:'#fff', border:0, padding:'9px', borderRadius:10, fontWeight:900, fontSize:12 }}>{downloading[origIdx] ? t('downloadingState') : t('quickDownloadBtn')}</button>
                         {!generic && !isHlsMaster(it.url) && (
-                          <button onClick={()=> analyze(origIdx,it)} disabled={!!analyzing[origIdx]} style={{ flex:1, background:'var(--panel)', color:'var(--text)', border:'1px solid var(--border)', padding:'9px', borderRadius:10, fontWeight:700, fontSize:12 }}>{analyzing[origIdx]?'Analiz…':'🔍 Kalite Seç'}</button>
+                          <button onClick={()=> analyze(origIdx,it)} disabled={!!analyzing[origIdx]} style={{ flex:1, background:'var(--panel)', color:'var(--text)', border:'1px solid var(--border)', padding:'9px', borderRadius:10, fontWeight:700, fontSize:12 }}>{analyzing[origIdx] ? t('analyzingState') : t('selectQualityBtn')}</button>
                         )}
                       </div>
                     ) : (
                       <div style={{ marginTop:12, display:'flex', flexDirection:'column', gap:8, background:'var(--bg)', padding:10, borderRadius:12, border:'1px solid var(--border)' }}>
                         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                          <span style={{ fontSize:12, fontWeight:800 }}>Mevcut Kaliteler & Formatlar</span>
-                          <button onClick={()=> setInfos(s=> { const n={...s}; delete n[origIdx]; return n })} style={{ fontSize:11, background:'transparent', color:'var(--text)', border:0, opacity:0.6, cursor:'pointer' }}>✕ Kapat</button>
+                          <span style={{ fontSize:12, fontWeight:800 }}>{t('availableQualities')}</span>
+                          <button onClick={()=> setInfos(s=> { const n={...s}; delete n[origIdx]; return n })} style={{ fontSize:11, background:'transparent', color:'var(--text)', border:0, opacity:0.6, cursor:'pointer' }}>✕ {t('closeDialog')}</button>
                         </div>
                         
                         {/* Video Kaliteleri */}
-                        <div style={{ fontSize:11, fontWeight:700, color:'var(--accent-solid)', marginTop:4 }}>🎬 Video</div>
+                        <div style={{ fontSize:11, fontWeight:700, color:'var(--accent-solid)', marginTop:4 }}>{t('tabVideo')}</div>
                         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(110px, 1fr))', gap:6, maxHeight:140, overflow:'auto' }}>
                           {info.formats.filter((f:any)=> !f.isAudioOnly).slice(0,12).map((f:any)=>(
                             <button key={f.id} onClick={()=> downloadWithFormat(it, f.id)} style={{ background:'var(--panel-2)', color:'var(--text)', border:'1px solid var(--border)', padding:'6px 8px', borderRadius:8, fontSize:11, fontWeight:600, textAlign:'left', display:'flex', flexDirection:'column' }}>
@@ -245,16 +245,16 @@ export default function SniffPanel({ outDir, onStartDownload, onDirectDownload, 
                         </div>
 
                         {/* Ses Kaliteleri */}
-                        <div style={{ fontSize:11, fontWeight:700, color:'#fbbf24', marginTop:4 }}>🎵 Ses / Müzik</div>
+                        <div style={{ fontSize:11, fontWeight:700, color:'#fbbf24', marginTop:4 }}>{t('audioGroup')}</div>
                         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(110px, 1fr))', gap:6, maxHeight:100, overflow:'auto' }}>
                           <button onClick={()=> downloadWithFormat(it, undefined, true)} style={{ background:'#422006', color:'#fbbf24', border:'1px solid #78350f', padding:'6px 8px', borderRadius:8, fontSize:11, fontWeight:800, textAlign:'left' }}>
-                            <span>🎵 MP3 (Oto)</span>
-                            <span style={{ display:'block', fontSize:9, opacity:0.8 }}>En İyi Kalite</span>
+                            <span>{t('mp3Auto')}</span>
+                            <span style={{ display:'block', fontSize:9, opacity:0.8 }}>{t('bestQuality')}</span>
                           </button>
                           {info.formats.filter((f:any)=> f.isAudioOnly).slice(0,6).map((f:any)=>(
                             <button key={f.id} onClick={()=> downloadWithFormat(it, f.id)} style={{ background:'var(--panel-2)', color:'var(--text)', border:'1px solid var(--border)', padding:'6px 8px', borderRadius:8, fontSize:11, fontWeight:600, textAlign:'left', display:'flex', flexDirection:'column' }}>
                               <span style={{ fontWeight:800 }}>{f.ext.toUpperCase()}</span>
-                              <span className="text-muted" style={{ fontSize:9 }}>{f.tbr ? `${Math.round(f.tbr)}kbps` : 'Ses Akışı'}</span>
+                              <span className="text-muted" style={{ fontSize:9 }}>{f.tbr ? `${Math.round(f.tbr)}kbps` : t('audioStream')}</span>
                             </button>
                           ))}
                         </div>

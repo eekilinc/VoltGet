@@ -1,5 +1,5 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Notification, Tray, Menu } from 'electron'
-import { spawn, ChildProcess } from 'child_process'
+import { app, BrowserWindow, ipcMain, dialog, shell, Notification, Tray, Menu, clipboard } from 'electron'
+import { spawn, ChildProcess, execSync } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
@@ -148,7 +148,6 @@ function resolveYtDlpPath(): string {
 
   // 2. Sistem PATH üzerinden where.exe (Windows) veya which (Unix) ile tam yolu bul
   try {
-    const { execSync } = require('child_process')
     const cmd = process.platform === 'win32' ? 'where.exe yt-dlp' : 'which yt-dlp'
     const out = execSync(cmd, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
     const lines = out.split(/\r?\n/)
@@ -195,7 +194,6 @@ function resolveFfmpegPath(): string {
 
   // 2. Sistem PATH üzerinden where.exe (Windows) veya which (Unix) ile tam yolu bul
   try {
-    const { execSync } = require('child_process')
     const cmd = process.platform === 'win32' ? 'where.exe ffmpeg' : 'which ffmpeg'
     const out = execSync(cmd, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
     const firstLine = out.split(/\r?\n/)[0]?.trim()
@@ -243,8 +241,8 @@ if (ffmpegPath && ffmpegPath !== 'ffmpeg' && fs.existsSync(ffmpegPath)) {
     process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH || ''}`
   }
 }
-function hasFfmpeg(): boolean {
-  try{ const {execSync}=require('child_process'); execSync(`"${ffmpegPath}" -version`,{stdio:'ignore'}); return true }catch{ return false }
+function isFfmpegOk(): boolean {
+  try{ execSync(`"${ffmpegPath}" -version`,{stdio:'ignore'}); return true }catch{ return false }
 }
 
 // ---- Config & Queue Persistence ----
@@ -881,7 +879,6 @@ if (!gotTheLock) {
     setInterval(() => {
       try {
         if (!appConfig.clipboardWatcher) return
-        const { clipboard } = require('electron')
         const text = clipboard.readText().trim()
         if (!text || text === lastClipboardText) return
         lastClipboardText = text
@@ -1587,7 +1584,6 @@ ipcMain.handle('queue-download', async (_e, opts: any) => {
 
 ipcMain.handle('read-clipboard', async () => {
   try {
-    const { clipboard } = require('electron')
     return clipboard.readText().trim()
   } catch {
     return ''
@@ -1783,14 +1779,26 @@ ipcMain.handle('get-yt-dlp-status', async ()=>{
   let ytdlpVer=''; try{ const {execSync}=await import('child_process'); ytdlpVer=execSync(`${findYtDlp()} --version`,{encoding:'utf-8'}).trim() }catch{}
   return { binExists, pathExists, ytDlpPath, ffmpegOk, ffmpegPath, ytdlpVer, config: loadConfig() }
 })
-ipcMain.handle('check-yt-dlp-update', async ()=>{
-  try{
-    const https=await import('https')
-    const get=(url:string)=> new Promise<string>((res,rej)=>{ https.get(url,{headers:{'User-Agent':'VoltGet'}},r=>{ let d=''; r.on('data',c=>d+=c); r.on('end',()=>res(d)) }).on('error',rej) })
-    const data=await get('https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest') as any
-    const j=JSON.parse(data as any); const latest=j.tag_name||j.name; let cur=''; try{ const {execSync}=await import('child_process'); cur=execSync(`${findYtDlp()} --version`,{encoding:'utf-8'}).trim() }catch{}
+ipcMain.handle('check-yt-dlp-update', async () => {
+  try {
+    const get = (url: string) => new Promise<string>((res, rej) => {
+      https.get(url, { headers: { 'User-Agent': 'VoltGet' } }, r => {
+        let d = ''
+        r.on('data', c => d += c)
+        r.on('end', () => res(d))
+      }).on('error', rej)
+    })
+    const data = await get('https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest') as any
+    const j = JSON.parse(data as any)
+    const latest = j.tag_name || j.name
+    let cur = ''
+    try {
+      cur = execSync(`"${findYtDlp()}" --version`, { encoding: 'utf-8' }).trim()
+    } catch {}
     return { latest, current: cur, hasUpdate: latest && cur && !latest.includes(cur), url: j.html_url }
-  }catch(e:any){ return { error:String(e) } }
+  } catch (e: any) {
+    return { error: String(e) }
+  }
 })
 ipcMain.handle('download-yt-dlp', async () => {
   const targetBin = isValidExecutable(ytDlpPath) ? ytDlpPath : path.join(app.isPackaged ? path.dirname(app.getPath('exe')) : path.join(__dirname, '..'), 'bin', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
@@ -1802,7 +1810,6 @@ ipcMain.handle('download-yt-dlp', async () => {
   const downloadWithRedirects = (url: string, redirectCount = 0): Promise<void> => {
     return new Promise((resolve, reject) => {
       if (redirectCount > 5) return reject(new Error('Çok fazla yönlendirme'))
-      const https = require('https')
       const options = {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'

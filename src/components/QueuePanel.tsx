@@ -54,7 +54,7 @@ export default function QueuePanel({
 
   const label = (j: Job) => {
     if (j.status === 'done') {
-      if (j.deletedFromDisk) return '⚠️ Diskten Silindi'
+      if (j.deletedFromDisk) return '⚠️ ' + t('statusDeletedFromDisk')
       return '✓ ' + t('statusDone')
     }
     if (j.status === 'downloading') return t('statusDownloading')
@@ -159,7 +159,7 @@ export default function QueuePanel({
               <span>{j.percent.toFixed(1)}% {j.total ? `• ${j.total}` : ''} • {j.speed} {j.eta && j.eta !== '-' ? `• ${j.eta}` : ''}</span>
             </div>
             <div className="text-muted" style={{ fontSize: 10, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {j.deletedFromDisk ? '⚠️ Bu dosya yerel diskten silinmiş veya taşınmış' : j.log}
+              {j.deletedFromDisk ? `⚠️ ${t('deletedFromDiskMsg')}` : j.log}
             </div>
 
             {/* Eylem Butonları */}
@@ -191,7 +191,7 @@ export default function QueuePanel({
                     className="brand-gradient"
                     style={{ color: '#fff', border: 0, padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}
                   >
-                    ⚡ Aç
+                    ⚡ {t('openFile')}
                   </button>
                   <button
                     onClick={() => {
@@ -199,14 +199,14 @@ export default function QueuePanel({
                       else onOpenFolder()
                     }}
                     style={{ background: 'var(--panel-2)', color: 'var(--text)', border: '1px solid var(--border)', padding: '6px 9px', borderRadius: 8, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
-                    title="Klasör içinde seçili olarak gösterir"
+                    title={t('showInFolderTooltip')}
                   >
-                    📁 Klasörde Göster
+                    📁 {t('showInFolder')}
                   </button>
                   <button
                     onClick={() => setConfirmDeleteJob(j)}
                     style={{ background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', padding: '6px 8px', borderRadius: 8, fontSize: 11, marginLeft: 'auto' }}
-                    title="Listeden kaldır veya diskten sil"
+                    title={t('deleteOrRemoveTitle')}
                   >
                     🗑️
                   </button>
@@ -221,13 +221,13 @@ export default function QueuePanel({
                     className="brand-gradient"
                     style={{ color: '#fff', border: 0, padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}
                   >
-                    🔄 Yeniden İndir
+                    🔄 {t('redownload')}
                   </button>
                   <button
                     onClick={() => onRemoveJob?.(j.id)}
                     style={{ background: 'var(--panel-2)', color: 'var(--text)', border: '1px solid var(--border)', padding: '6px 9px', borderRadius: 8, fontSize: 11, marginLeft: 'auto' }}
                   >
-                    🗑️ Listeden Kaldır
+                    🗑️ {t('removeFromList')}
                   </button>
                 </>
               )}
@@ -271,12 +271,12 @@ export default function QueuePanel({
             boxShadow: '0 20px 40px rgba(0,0,0,0.6)'
           }}>
             <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--text)' }}>
-              🗑️ İndirmeyi Kaldır / Sil
+              🗑️ {t('deleteOrRemoveTitle')}
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', wordBreak: 'break-word', lineHeight: 1.4 }}>
               <strong>{confirmDeleteJob.title}</strong>
               <br />
-              Bu indirme için ne yapmak istersiniz?
+              {t('deleteOrRemovePrompt')}
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
@@ -297,9 +297,9 @@ export default function QueuePanel({
                   cursor: 'pointer'
                 }}
               >
-                📋 Sadece Listeden Kaldır
+                {t('removeOnlyList')}
                 <div style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Dosya diskte kalır, yalnızca VoltGet geçmişinden silinir.
+                  {t('removeOnlyListDesc')}
                 </div>
               </button>
 
@@ -320,9 +320,9 @@ export default function QueuePanel({
                   cursor: 'pointer'
                 }}
               >
-                ❌ Diskten de Sil (Geri Dönüşüm)
+                {t('deleteFromDisk')}
                 <div style={{ fontSize: 10, fontWeight: 400, color: '#fca5a5', marginTop: 2 }}>
-                  Dosya Windows Geri Dönüşüm Kutusuna taşınır.
+                  {t('deleteFromDiskDesc')}
                 </div>
               </button>
 
@@ -338,7 +338,7 @@ export default function QueuePanel({
                   cursor: 'pointer'
                 }}
               >
-                Vazgeç
+                {t('cancelAction')}
               </button>
             </div>
           </div>

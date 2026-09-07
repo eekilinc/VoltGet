@@ -199,7 +199,7 @@ export default function FileExplorer() {
               📁
             </span>
             <div>
-              <div style={{ fontWeight: 900, fontSize: 16 }}>{t('files')} - İndirilen Dosyalar</div>
+              <div style={{ fontWeight: 900, fontSize: 16 }}>{t('files')} - {t('filesHeader')}</div>
               <div className="text-muted" style={{ fontSize: 12, marginTop: 2, wordBreak: 'break-all' }}>{dir}</div>
             </div>
           </div>
@@ -219,9 +219,9 @@ export default function FileExplorer() {
                   color: sourceMode === 'voltget' ? '#fff' : 'var(--text-muted)',
                   cursor: 'pointer'
                 }}
-                title="Yalnızca VoltGet ile indirilen dosyaları listeler"
+                title={t('voltgetDownloadsTooltip')}
               >
-                ⚡ VoltGet İndirmeleri
+                {t('voltgetDownloads')}
               </button>
               <button
                 onClick={() => setSourceMode('all')}
@@ -235,9 +235,9 @@ export default function FileExplorer() {
                   color: sourceMode === 'all' ? '#fff' : 'var(--text-muted)',
                   cursor: 'pointer'
                 }}
-                title="İndirilenler klasöründeki tüm dosyaları tarar"
+                title={t('allFolderTooltip')}
               >
-                📂 Tüm Klasör
+                {t('allFolder')}
               </button>
             </div>
 
@@ -245,14 +245,14 @@ export default function FileExplorer() {
               onClick={() => loadFiles(sourceMode)}
               style={{ background: 'var(--panel-2)', color: 'var(--text)', border: '1px solid var(--border)', padding: '8px 14px', borderRadius: 10, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
             >
-              🔄 Yenile
+              🔄 {t('refreshBtn')}
             </button>
             <button
               onClick={() => window.api.openFolder(dir)}
               className="brand-gradient"
               style={{ color: '#fff', border: 0, padding: '8px 14px', borderRadius: 10, fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
             >
-              📂 Klasörü Aç
+              📂 {t('openFolderBtn')}
             </button>
           </div>
         </div>
@@ -260,8 +260,8 @@ export default function FileExplorer() {
         {/* Bilgi Çubuğu & Durum Filtreleri */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--muted)', flexWrap: 'wrap', gap: 10 }}>
           <div style={{ display: 'flex', gap: 16 }}>
-            <div>Gösterilen: <strong style={{ color: 'var(--text)' }}>{filteredFiles.length}</strong> dosya</div>
-            <div>Mevcut Boyut: <strong style={{ color: 'var(--accent-solid)' }}>{formatBytes(totalBytes)}</strong></div>
+            <div>{t('showingCount')} <strong style={{ color: 'var(--text)' }}>{filteredFiles.length}</strong> {t('filesWord')}</div>
+            <div>{t('currentSize')} <strong style={{ color: 'var(--accent-solid)' }}>{formatBytes(totalBytes)}</strong></div>
           </div>
 
           {/* Disk Durumu Filtresi */}
@@ -279,7 +279,7 @@ export default function FileExplorer() {
                 cursor: 'pointer'
               }}
             >
-              Tümü ({counts.all})
+              {t('filterAll')} ({counts.all})
             </button>
             <button
               onClick={() => setStatusFilter('existing')}
@@ -294,7 +294,7 @@ export default function FileExplorer() {
                 cursor: 'pointer'
               }}
             >
-              ✓ Mevcut ({counts.existing})
+              {t('filterExisting')} ({counts.existing})
             </button>
             {counts.deleted > 0 && (
               <button
@@ -310,7 +310,7 @@ export default function FileExplorer() {
                   cursor: 'pointer'
                 }}
               >
-                ⚠️ Diskten Silinmiş ({counts.deleted})
+                {t('filterDeleted')} ({counts.deleted})
               </button>
             )}
           </div>
@@ -325,7 +325,7 @@ export default function FileExplorer() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Dosya adına veya uzantıya göre ara..."
+              placeholder={t('searchPlaceholder')}
               style={{ width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 12 }}
             />
             {search && (
@@ -340,17 +340,17 @@ export default function FileExplorer() {
 
           {/* Sıralama */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>Sırala:</span>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>{t('sortBy')}</span>
             <select
               value={sort}
               onChange={e => setSort(e.target.value as SortType)}
               style={{ padding: '8px 10px', borderRadius: 8, fontSize: 12, border: '1px solid var(--border)' }}
             >
-              <option value="date_desc">Tarih (En Yeni)</option>
-              <option value="date_asc">Tarih (En Eski)</option>
-              <option value="size_desc">Boyut (En Büyük)</option>
-              <option value="size_asc">Boyut (En Küçük)</option>
-              <option value="name_asc">İsim (A-Z)</option>
+              <option value="date_desc">{t('sortDateDesc')}</option>
+              <option value="date_asc">{t('sortDateAsc')}</option>
+              <option value="size_desc">{t('sortSizeDesc')}</option>
+              <option value="size_asc">{t('sortSizeAsc')}</option>
+              <option value="name_asc">{t('sortNameAsc')}</option>
             </select>
           </div>
 
@@ -367,9 +367,9 @@ export default function FileExplorer() {
                 color: viewMode === 'grid' ? '#fff' : 'var(--text)',
                 cursor: 'pointer'
               }}
-              title="Izgara Görünümü"
+              title={t('viewGrid')}
             >
-              ⊞ Izgara
+              {t('viewGrid')}
             </button>
             <button
               onClick={() => setViewMode('list')}
@@ -382,9 +382,9 @@ export default function FileExplorer() {
                 color: viewMode === 'list' ? '#fff' : 'var(--text)',
                 cursor: 'pointer'
               }}
-              title="Liste Görünümü"
+              title={t('viewList')}
             >
-              ☰ Liste
+              {t('viewList')}
             </button>
           </div>
         </div>
@@ -392,12 +392,12 @@ export default function FileExplorer() {
         {/* Kategori Butonları */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[
-            { id: 'all', label: 'Tümü' },
-            { id: 'video', label: 'Videolar' },
-            { id: 'audio', label: 'Müzik / Ses' },
-            { id: 'archive', label: 'Arşivler (Zip/Rar)' },
-            { id: 'document', label: 'Belgeler' },
-            { id: 'installer', label: 'Kurulumlar' },
+            { id: 'all', label: t('catAll') },
+            { id: 'video', label: t('catVideos') },
+            { id: 'audio', label: t('catAudio') },
+            { id: 'archive', label: t('catArchives') },
+            { id: 'document', label: t('catDocuments') },
+            { id: 'installer', label: t('catInstallers') },
           ].map(cat => (
             <button
               key={cat.id}
@@ -427,21 +427,21 @@ export default function FileExplorer() {
       {loading ? (
         <div className="card-premium" style={{ padding: 40, textAlign: 'center', borderRadius: 16 }}>
           <div style={{ fontSize: 24, marginBottom: 8 }}>🔄</div>
-          <div style={{ fontSize: 13, color: 'var(--muted)' }}>İndirilen dosyalar taranıyor...</div>
+          <div style={{ fontSize: 13, color: 'var(--muted)' }}>{t('scanningFiles')}</div>
         </div>
       ) : filteredFiles.length === 0 ? (
         <div className="card-premium" style={{ padding: 48, textAlign: 'center', borderRadius: 16 }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>📁</div>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>Dosya bulunamadı</div>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>{t('noFilesFoundTitle')}</div>
           <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
-            {search ? 'Arama kriterlerinize uygun dosya bulunamadı.' : 'Bu filtrede henüz gösterilecek bir dosya yok.'}
+            {search ? t('noFilesSearch') : t('noFilesFilter')}
           </div>
           {sourceMode === 'voltget' && (
             <button
               onClick={() => setSourceMode('all')}
               style={{ marginTop: 14, background: 'var(--panel-2)', color: 'var(--text)', border: '1px solid var(--border)', padding: '8px 14px', borderRadius: 10, fontSize: 12, cursor: 'pointer' }}
             >
-              📂 Tüm İndirilenler Klasörünü Tara
+              {t('scanAllDownloads')}
             </button>
           )}
         </div>
@@ -497,14 +497,14 @@ export default function FileExplorer() {
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11, color: 'var(--muted)', marginTop: 4, flexWrap: 'wrap' }}>
                     {file.deletedFromDisk ? (
                       <span style={{ background: '#450a0a', color: '#fca5a5', padding: '1px 7px', borderRadius: 4, border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 800, fontSize: 10 }}>
-                        ⚠️ Diskten Silindi
+                        {t('statusDeletedBadge')}
                       </span>
                     ) : (
                       <span>{formatBytes(file.size)}</span>
                     )}
                     <span>•</span>
                     <span style={{ background: 'var(--panel-2)', padding: '1px 6px', borderRadius: 4, border: '1px solid var(--border)', fontSize: 10 }}>
-                      {file.folder || 'Ana Klasör'}
+                      {file.folder || t('mainFolder')}
                     </span>
                   </div>
                 </div>
@@ -523,19 +523,19 @@ export default function FileExplorer() {
                       className="brand-gradient"
                       style={{ flex: 1, border: 0, padding: '7px 10px', borderRadius: 8, color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}
                     >
-                      ▶️ Aç
+                      ▶️ {t('actionOpen')}
                     </button>
                     <button
                       onClick={() => handleShowInFolder(file)}
                       title="Klasörde Göster (Dosya Seçili Açılır)"
                       style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', padding: '7px 10px', borderRadius: 8, color: 'var(--text)', fontSize: 11, cursor: 'pointer' }}
                     >
-                      📂 Konum
+                      📂 {t('actionLocation')}
                     </button>
                   </>
                 ) : (
                   <div style={{ flex: 1, fontSize: 11, color: '#fca5a5', display: 'flex', alignItems: 'center' }}>
-                    Dosya diskte mevcut değil
+                    {t('fileDeletedNotice')}
                   </div>
                 )}
                 <button
@@ -556,11 +556,11 @@ export default function FileExplorer() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, textAlign: 'left' }}>
               <thead>
                 <tr style={{ background: 'var(--panel-2)', borderBottom: '1px solid var(--border)', color: 'var(--muted)' }}>
-                  <th style={{ padding: '12px 14px' }}>Dosya Adı</th>
-                  <th style={{ padding: '12px 14px' }}>Klasör</th>
-                  <th style={{ padding: '12px 14px' }}>Boyut / Durum</th>
-                  <th style={{ padding: '12px 14px' }}>Tarih</th>
-                  <th style={{ padding: '12px 14px', textAlign: 'right' }}>İşlemler</th>
+                  <th style={{ padding: '12px 14px' }}>{t('thFileName')}</th>
+                  <th style={{ padding: '12px 14px' }}>{t('thFolder')}</th>
+                  <th style={{ padding: '12px 14px' }}>{t('thSizeStatus')}</th>
+                  <th style={{ padding: '12px 14px' }}>{t('thDate')}</th>
+                  <th style={{ padding: '12px 14px', textAlign: 'right' }}>{t('thActions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -577,11 +577,11 @@ export default function FileExplorer() {
                         </span>
                       </div>
                     </td>
-                    <td style={{ padding: '10px 14px', color: 'var(--muted)' }}>{file.folder || 'Ana Klasör'}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--muted)' }}>{file.folder || t('mainFolder')}</td>
                     <td style={{ padding: '10px 14px', fontWeight: 600 }}>
                       {file.deletedFromDisk ? (
                         <span style={{ background: '#450a0a', color: '#fca5a5', padding: '2px 7px', borderRadius: 4, border: '1px solid rgba(239, 68, 68, 0.4)', fontSize: 11 }}>
-                          ⚠️ Diskten Silindi
+                          {t('statusDeletedBadge')}
                         </span>
                       ) : (
                         <span style={{ color: 'var(--accent-solid)' }}>{formatBytes(file.size)}</span>
@@ -651,10 +651,10 @@ export default function FileExplorer() {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--accent-solid)', fontWeight: 900, fontSize: 15 }}>
-              <span>🗑️</span> Dosyayı Kaldır veya Sil
+              <span>🗑️</span> {t('deleteOrRemoveTitle')}
             </div>
             <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text)' }}>
-              Bu indirme için hangi işlemi uygulamak istersiniz?
+              {t('deleteOrRemovePrompt')}
             </div>
             <div style={{ background: 'var(--panel-2)', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 11, wordBreak: 'break-all' }}>
               <strong>{deleteConfirm.name}</strong>
@@ -676,9 +676,9 @@ export default function FileExplorer() {
                   cursor: 'pointer'
                 }}
               >
-                📋 Sadece Listeden Kaldır
+                {t('removeOnlyList')}
                 <div style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Dosyayı yerel diskte tutar, yalnızca VoltGet geçmişinden siler.
+                  {t('removeOnlyListDesc')}
                 </div>
               </button>
 
@@ -697,9 +697,9 @@ export default function FileExplorer() {
                     cursor: 'pointer'
                   }}
                 >
-                  ❌ Diskten de Sil (Geri Dönüşüm Kutusuna)
+                  {t('deleteFromDisk')}
                   <div style={{ fontSize: 10, fontWeight: 400, color: '#fca5a5', marginTop: 2 }}>
-                    Dosyayı Windows Geri Dönüşüm Kutusuna taşır ve listeden çıkarır.
+                    {t('deleteFromDiskDesc')}
                   </div>
                 </button>
               )}

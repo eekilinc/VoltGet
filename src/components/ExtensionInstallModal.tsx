@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useToast } from '../context/ToastContext'
+import { useAppSettings } from '../context/AppSettingsContext'
 
 interface Props {
   isOpen: boolean
@@ -10,6 +11,7 @@ interface Props {
 type BrowserType = 'chrome' | 'firefox'
 
 export default function ExtensionInstallModal({ isOpen, onClose, connected }: Props) {
+  const { t } = useAppSettings()
   const toast = useToast()
   const [selectedBrowser, setSelectedBrowser] = useState<BrowserType>('chrome')
   const [zipping, setZipping] = useState(false)
@@ -31,12 +33,12 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
     try {
       const res = await window.api?.openExtensionFolder(selectedBrowser)
       if (res?.success) {
-        toast.success(`${selectedBrowser === 'firefox' ? 'Firefox' : 'Chrome'} eklenti klasörü Gezgin'de açıldı`)
+        toast.success(t('extFolderOpened'))
       } else {
-        toast.error(res?.error || 'Klasör açılamadı')
+        toast.error(res?.error || t('error'))
       }
     } catch (e: any) {
-      toast.error('Hata: ' + (e?.message || e))
+      toast.error(t('error') + ': ' + (e?.message || e))
     }
     setOpeningFolder(false)
   }
@@ -46,12 +48,12 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
     try {
       const res = await window.api?.exportExtensionZip(selectedBrowser)
       if (res?.success) {
-        toast.success(`${res.fileName || 'voltget-eklenti.zip'} oluşturuldu ve Gezgin'de gösterildi`)
+        toast.success(`${res.fileName || 'voltget-extension.zip'} (${t('success')})`)
       } else {
-        toast.error('ZIP paketi oluşturulamadı')
+        toast.error(t('error'))
       }
     } catch (e: any) {
-      toast.error('ZIP Hatası: ' + (e?.message || e))
+      toast.error(t('error') + ': ' + (e?.message || e))
     }
     setZipping(false)
   }
@@ -59,7 +61,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
   const handleCopyUrl = (url: string) => {
     navigator.clipboard.writeText(url)
     setCopiedUrl(url)
-    toast.info(`${url} panoya kopyalandı!`)
+    toast.info(`${url} (${t('copied')})`)
     setTimeout(() => setCopiedUrl(null), 2500)
   }
 
@@ -122,10 +124,10 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
             </div>
             <div>
               <div style={{ fontWeight: 900, fontSize: 16, letterSpacing: '0.01em', color: '#fff' }}>
-                VoltGet Tarayıcı Eklentisi
+                {t('extModalTitle')}
               </div>
               <div className="text-muted" style={{ fontSize: 11, marginTop: 1 }}>
-                Chrome, Edge, Firefox, Brave, Opera ve tüm Chromium tarayıcıları
+                {t('extModalSubtitle')}
               </div>
             </div>
           </div>
@@ -188,7 +190,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
               }}
             >
               <span style={{ fontSize: 16 }}>🌐</span>
-              <span>Google Chrome & Edge</span>
+              <span>{t('chromeEdgeTab')}</span>
             </button>
 
             <button
@@ -213,7 +215,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
               }}
             >
               <span style={{ fontSize: 16 }}>🦊</span>
-              <span>Mozilla Firefox</span>
+              <span>{t('firefoxTab')}</span>
             </button>
           </div>
 
@@ -251,12 +253,10 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 13, color: connected ? '#86efac' : '#fde047' }}>
-                {connected ? '🟢 Eklenti Aktif ve Bağlı' : '⚪ Eklenti Henüz Bağlanmadı'}
+                {connected ? t('extConnectedTitle') : t('extWaitingTitle')}
               </div>
               <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2, color: 'var(--text)' }}>
-                {connected
-                  ? 'VoltGet eklentisi tarayıcınız ile sorunsuz iletişim kuruyor. Sayfalardaki medya ve indirmeler IDM tarzı otomatik algılanacaktır.'
-                  : 'Eklentiyi yüklemek için aşağıdaki adımları takip edin (yalnızca 15 saniye sürer).'}
+                {connected ? t('extConnectedLongDesc') : t('extWaitingLongDesc')}
               </div>
             </div>
           </div>
@@ -277,7 +277,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
               }}
             >
               <span>📂</span>
-              <span>{openingFolder ? 'Klasör Açılıyor...' : `1. ${selectedBrowser === 'firefox' ? 'Firefox' : 'Chrome'} Eklenti Klasörünü Aç`}</span>
+              <span>{openingFolder ? t('openingFolder') : (selectedBrowser === 'firefox' ? t('openFirefoxExtFolder') : t('openChromeExtFolder'))}</span>
             </button>
 
             <button
@@ -294,14 +294,14 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
               }}
             >
               <span>📦</span>
-              <span>{zipping ? 'Paketleniyor...' : 'ZIP Olarak Dışa Aktar'}</span>
+              <span>{zipping ? t('zippingState') : t('exportZipBtn')}</span>
             </button>
           </div>
 
           {/* Dinamik Kurulum Rehberi (Chrome vs Firefox) */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span>🚀</span> {selectedBrowser === 'firefox' ? 'Firefox İçin Kolay Kurulum:' : 'Chrome & Edge İçin Kolay 3 Adım:'}
+              <span>🚀</span> {selectedBrowser === 'firefox' ? t('firefoxEasySteps') : t('chromeEasySteps')}
             </div>
 
             {selectedBrowser === 'chrome' ? (
@@ -336,9 +336,9 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                     1
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: 12 }}>Tarayıcınızın Eklentiler Sayfasını Açın</div>
+                    <div style={{ fontWeight: 800, fontSize: 12 }}>{t('chromeStep1Title')}</div>
                     <div className="text-muted" style={{ fontSize: 11, marginTop: 3 }}>
-                      Chrome veya Edge adres çubuğuna yapıştırın:
+                      {t('chromeStep1Sub')}
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 7, flexWrap: 'wrap' }}>
                       <button
@@ -377,7 +377,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                       </button>
                       {copiedUrl && (
                         <span style={{ fontSize: 11, color: '#22c55e', alignSelf: 'center', fontWeight: 700 }}>
-                          ✓ Kopyalandı!
+                          ✓ {t('copied')}
                         </span>
                       )}
                     </div>
@@ -414,9 +414,9 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                     2
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 800, fontSize: 12 }}>"Geliştirici Modu"nu Açın</div>
+                    <div style={{ fontWeight: 800, fontSize: 12 }}>{t('chromeStep2Title')}</div>
                     <div className="text-muted" style={{ fontSize: 11, marginTop: 3 }}>
-                      Sayfanın sağ üst köşesindeki <strong>"Geliştirici modu" (Developer mode)</strong> anahtarını aktif hale getirin.
+                      {t('chromeStep2Sub')}
                     </div>
                   </div>
                 </div>
@@ -451,9 +451,9 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                     3
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 800, fontSize: 12 }}>"Paketlenmemiş Öğe Yükle" ile Klasörü Seçin</div>
+                    <div style={{ fontWeight: 800, fontSize: 12 }}>{t('chromeStep3Title')}</div>
                     <div className="text-muted" style={{ fontSize: 11, marginTop: 3 }}>
-                      Sol üstteki <strong>"Paketlenmemiş öğe yükle" (Load unpacked)</strong> butonuna tıklayın ve yukarıdaki butonla açılan <code>extension</code> klasörünü seçin.
+                      {t('chromeStep3Sub')}
                     </div>
                   </div>
                 </div>
@@ -490,9 +490,9 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                     1
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: 12 }}>Firefox Hata Ayıklama Sayfasını Açın</div>
+                    <div style={{ fontWeight: 800, fontSize: 12 }}>{t('firefoxStep1Title')}</div>
                     <div className="text-muted" style={{ fontSize: 11, marginTop: 3 }}>
-                      Firefox adres çubuğuna yapıştırıp Enter'a basın:
+                      {t('firefoxStep1Sub')}
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 7 }}>
                       <button
@@ -514,7 +514,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                       </button>
                       {copiedUrl && (
                         <span style={{ fontSize: 11, color: '#22c55e', alignSelf: 'center', fontWeight: 700 }}>
-                          ✓ Kopyalandı!
+                          ✓ {t('copied')}
                         </span>
                       )}
                     </div>
@@ -551,9 +551,9 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                     2
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 800, fontSize: 12 }}>"Geçici Eklenti Yükle..." Butonuna Tıklayın</div>
+                    <div style={{ fontWeight: 800, fontSize: 12 }}>{t('firefoxStep2Title')}</div>
                     <div className="text-muted" style={{ fontSize: 11, marginTop: 3 }}>
-                      Sayfadaki <strong>"Geçici Eklenti Yükle..." (Load Temporary Add-on...)</strong> butonuna basın.
+                      {t('firefoxStep2Sub')}
                     </div>
                   </div>
                 </div>
@@ -588,9 +588,9 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                     3
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 800, fontSize: 12 }}>"manifest.json" Dosyasını Seçin</div>
+                    <div style={{ fontWeight: 800, fontSize: 12 }}>{t('firefoxStep3Title')}</div>
                     <div className="text-muted" style={{ fontSize: 11, marginTop: 3 }}>
-                      Açılan dosya penceresinde yukarıdaki butonla açılan <code>extension-firefox</code> klasöründeki <strong>manifest.json</strong> dosyasını seçin.
+                      {t('firefoxStep3Sub')}
                     </div>
                   </div>
                 </div>
@@ -611,7 +611,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
               fontSize: 11
             }}
           >
-            <span className="text-muted">Desteklenen Tarayıcılar:</span>
+            <span className="text-muted">{t('supportedBrowsers')}</span>
             <div style={{ display: 'flex', gap: 8, fontWeight: 700 }}>
               <span>🌐 Chrome</span>
               <span>🦊 Firefox</span>
@@ -642,7 +642,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
               fontWeight: 700
             }}
           >
-            Kapat
+            {t('closeModal')}
           </button>
         </div>
       </div>

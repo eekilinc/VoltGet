@@ -37,7 +37,7 @@ export default function App() {
   const [extConnected, setExtConnected] = useState(false)
   const [clipboardDetectedUrl, setClipboardDetectedUrl] = useState<string | null>(null)
   const [clipboardWatcherActive, setClipboardWatcherActive] = useState<boolean>(true)
-  const [appVersion, setAppVersion] = useState<string>('1.0.2')
+  const [appVersion, setAppVersion] = useState<string>('1.0.3')
   const hasApi = typeof window !== 'undefined' && !!(window as any).api
 
   useEffect(() => {
@@ -503,7 +503,7 @@ export default function App() {
             }}
           >
             <span style={{ width: 7, height: 7, borderRadius: 99, background: clipboardWatcherActive ? '#3b82f6' : '#64748b', boxShadow: clipboardWatcherActive ? '0 0 8px #3b82f6' : 'none' }} />
-            <span>Pano İzleyici: {clipboardWatcherActive ? 'Açık' : 'Kapalı'}</span>
+            <span>{clipboardWatcherActive ? t('clipboardWatcherOn') : t('clipboardWatcherOff')}</span>
           </button>
 
           <button
@@ -523,7 +523,7 @@ export default function App() {
             }}
           >
             <span>{extConnected ? '🟢' : '🧩'}</span>
-            <span>{extConnected ? 'Eklenti Bağlı' : 'Eklenti Kurulumu'}</span>
+            <span>{extConnected ? t('extConnectedBadge') : t('extSetupBadge')}</span>
           </button>
           <button onClick={()=>window.api.getYtDlpStatus().then(setStatus)} style={{ background:'var(--panel-2)', color:'var(--text)', border:'1px solid var(--border)', padding:'7px 12px', borderRadius:10, fontSize:11 }}>{t('refresh')}</button>
           <button onClick={()=>window.api.openFolder(outDir)} className="brand-gradient" style={{ color:'#fff', border:0, padding:'7px 12px', borderRadius:10, fontSize:11, fontWeight:700 }}>📂 {t('folder')}</button>
@@ -561,19 +561,19 @@ export default function App() {
           }}>
             <div style={{ background: 'var(--panel-2)', padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontWeight: 900, fontSize: 14, color: 'var(--accent-solid)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>🛡️</span> IDM: İndirme Bilgisi ve Özellikleri
+                <span>🛡️</span> {t('idmPropsTitle')}
               </div>
               <button onClick={() => setDownloadModal(null)} style={{ background: 'transparent', border: 0, color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, fontWeight: 'bold' }}>✕</button>
             </div>
             <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Adres (URL):</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>{t('idmAddressLabel')}</label>
                 <div style={{ fontSize: 11, background: 'var(--panel-2)', padding: '8px 10px', borderRadius: 8, wordBreak: 'break-all', border: '1px solid var(--border)', color: 'var(--text)' }}>
                   {downloadModal.sniff.url}
                 </div>
               </div>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Kaydedilecek Klasör:</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>{t('idmSaveDirLabel')}</label>
                 <div style={{ fontSize: 11, background: 'var(--panel-2)', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--accent-solid)', fontWeight: 700 }}>
                   {outDir}
                 </div>
@@ -581,7 +581,7 @@ export default function App() {
 
               {downloadModal.formats && downloadModal.formats.length > 0 && (
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Video Kalitesi / Format Seçin:</label>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>{t('idmQualitySelectLabel')}</label>
                   <select id="idm-format-select" style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--border)', color: 'var(--text)', padding: '10px', borderRadius: 8, fontSize: 12 }}>
                     {downloadModal.formats.map((f:any)=>(
                       <option key={f.id} value={f.id}>
@@ -611,13 +611,13 @@ export default function App() {
                   className="brand-gradient"
                   style={{ flex: 1, border: 0, padding: '12px', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 900, cursor: 'pointer', boxShadow: '0 6px 20px color-mix(in srgb, var(--accent-solid) 40%, transparent)' }}
                 >
-                  🚀 İndirmeyi Başlat
+                  🚀 {t('idmStartDownload')}
                 </button>
                 <button
                   onClick={() => setDownloadModal(null)}
                   style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', padding: '12px 18px', borderRadius: 10, color: 'var(--text)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                 >
-                  İptal
+                  {t('idmCancel')}
                 </button>
               </div>
             </div>
@@ -652,7 +652,7 @@ export default function App() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ fontWeight: 800, fontSize: 13, color: '#60a5fa', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span>📋</span> <span>Panoda İndirme Bağlantısı Algılandı!</span>
+              <span>📋</span> <span>{t('clipboardDetectedTitle')}</span>
             </div>
             <button
               onClick={() => setClipboardDetectedUrl(null)}
@@ -674,7 +674,7 @@ export default function App() {
               className="brand-gradient"
               style={{ border: 0, padding: '8px 14px', borderRadius: 8, color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}
             >
-              🚀 Hemen İndir
+              🚀 {t('downloadNowBtn')}
             </button>
             <button
               onClick={() => {
@@ -683,7 +683,7 @@ export default function App() {
               }}
               style={{ background: 'rgba(255, 255, 255, 0.08)', border: '1px solid var(--border)', padding: '8px 12px', borderRadius: 8, color: '#cbd5e1', fontSize: 11, cursor: 'pointer' }}
             >
-              İncele
+              {t('inspectBtn')}
             </button>
           </div>
         </div>

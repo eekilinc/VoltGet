@@ -34,7 +34,7 @@ export default function SettingsPanel(){
 
   async function pickFolder(){
     const f = await window.api.selectFolder()
-    if(f){ setOutDir(f); await window.api.setConfig({ customOutDir: f }); toast.success('İndirme klasörü güncellendi') }
+    if(f){ setOutDir(f); await window.api.setConfig({ customOutDir: f }); toast.success(t('folderUpdated')) }
   }
   async function updateYtDlp(){
     setUpdating(true)
@@ -42,29 +42,29 @@ export default function SettingsPanel(){
       await window.api.downloadYtDlp()
       setStatus(await window.api.getYtDlpStatus())
       setUpdateInfo(await window.api.checkYtDlpUpdate())
-      toast.success('yt-dlp başarıyla indirildi / güncellendi!')
+      toast.success(t('ytdlpUpdateSuccess'))
     } catch(e:any){
-      toast.error('Güncelleme hatası: ' + String(e?.message || e))
+      toast.error(t('error') + ': ' + String(e?.message || e))
     }
     setUpdating(false)
   }
   async function saveCfg(patch:any){
     const n = await window.api.setConfig(patch); setCfg(n)
-    toast.info('Ayarlar kaydedildi')
+    toast.info(t('configSaved'))
   }
 
   async function openExtFolder() {
     const res = await window.api?.openExtensionFolder()
-    if (res?.success) toast.success('Eklenti klasörü açıldı')
-    else toast.error(res?.error || 'Klasör açılamadı')
+    if (res?.success) toast.success(t('extFolderOpened'))
+    else toast.error(res?.error || t('error'))
   }
 
   async function exportExtZip() {
     setZipping(true)
     try {
       const res = await window.api?.exportExtensionZip()
-      if (res?.success) toast.success('voltget-eklenti.zip oluşturuldu ve Gezgin\'de gösterildi')
-      else toast.error('ZIP oluşturulamadı')
+      if (res?.success) toast.success(`${res.fileName || 'voltget-eklenti.zip'} ${t('done')}`)
+      else toast.error(t('error'))
     } catch (e: any) {
       toast.error('Hata: ' + (e?.message || e))
     }
@@ -79,9 +79,9 @@ export default function SettingsPanel(){
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             <span style={{ fontSize:26 }}>🧩</span>
             <div>
-              <div style={{ fontWeight:900, fontSize:15 }}>VoltGet Tarayıcı Eklentisi (Chrome, Firefox, Edge)</div>
+              <div style={{ fontWeight:900, fontSize:15 }}>{t('extCardTitle')}</div>
               <div className="text-muted" style={{ fontSize:11 }}>
-                Web sayfalarındaki video ve indirmeleri yakalayan IDM tarzı tarayıcı eklentisi
+                {t('extCardDesc')}
               </div>
             </div>
           </div>
@@ -93,7 +93,7 @@ export default function SettingsPanel(){
             fontSize:12, fontWeight:800
           }}>
             <span>{extConnected ? '🟢' : '⚪'}</span>
-            <span>{extConnected ? 'Eklenti Bağlı ve Aktif' : 'Eklenti Bekleniyor'}</span>
+            <span>{extConnected ? t('extConnectedStatus') : t('extWaitingStatus')}</span>
           </div>
         </div>
 
@@ -104,7 +104,7 @@ export default function SettingsPanel(){
             style={{ color:'#fff', border:0, padding:'10px 14px', borderRadius:10, fontSize:12, fontWeight:800, display:'flex', alignItems:'center', gap:6 }}
           >
             <span>📂</span>
-            <span>Eklenti Klasörünü Aç</span>
+            <span>{t('openExtFolderBtn')}</span>
           </button>
 
           <button
@@ -113,7 +113,7 @@ export default function SettingsPanel(){
             style={{ background:'var(--panel-2)', color:'var(--text)', border:'1px solid var(--border)', padding:'10px 14px', borderRadius:10, fontSize:12, fontWeight:700, display:'flex', alignItems:'center', gap:6 }}
           >
             <span>📦</span>
-            <span>{zipping ? 'Paketleniyor...' : 'ZIP Olarak Dışa Aktar'}</span>
+            <span>{zipping ? t('updating') : t('exportExtZipBtn')}</span>
           </button>
 
           <button
@@ -121,7 +121,7 @@ export default function SettingsPanel(){
             style={{ background:'var(--panel-2)', color:'var(--text)', border:'1px solid var(--border)', padding:'10px 14px', borderRadius:10, fontSize:12, fontWeight:700, display:'flex', alignItems:'center', gap:6 }}
           >
             <span>🚀</span>
-            <span>Kurulum Kılavuzunu Görüntüle</span>
+            <span>{t('viewExtGuideBtn')}</span>
           </button>
         </div>
       </div>
@@ -144,7 +144,7 @@ export default function SettingsPanel(){
               background: theme===mode ? 'color-mix(in srgb, var(--accent-solid) 14%, var(--panel-2))' : 'var(--panel-2)'
             }}>
               <div style={{ fontWeight:800 }}>{mode==='dark'? t('themeDark') : t('themeLight')}</div>
-              <div className="text-muted" style={{ fontSize:11, marginTop:4 }}>{mode==='dark' ? 'OLED / gece' : 'Açık / gündüz'}</div>
+              <div className="text-muted" style={{ fontSize:11, marginTop:4 }}>{mode==='dark' ? t('themeDarkDesc') : t('themeLightDesc')}</div>
             </button>
           ))}
         </div>
@@ -176,10 +176,10 @@ export default function SettingsPanel(){
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
           <div style={{ fontWeight:800, fontSize:14, display:'flex', alignItems:'center', gap:8 }}>
             <span>🚀</span>
-            <span>Sistem Tepsisi & Windows Başlangıcı</span>
+            <span>{t('settingsTrayAndStartup')}</span>
           </div>
           <span style={{ fontSize:10, padding:'2px 8px', borderRadius:6, background:'rgba(59, 130, 246, 0.15)', color:'#60a5fa', fontWeight:800 }}>
-            IDM Benzeri Arka Plan Entegrasyonu
+            {t('trayStartupDesc')}
           </span>
         </div>
 
@@ -192,9 +192,9 @@ export default function SettingsPanel(){
               onChange={e=> saveCfg({ openAtLogin: e.target.checked })}
             />
             <div>
-              <div style={{ fontWeight:700 }}>Windows ile Otomatik Başlat</div>
+              <div style={{ fontWeight:700 }}>{t('autoStartWindows')}</div>
               <div className="text-muted" style={{ fontSize:11, marginTop:2 }}>
-                Bilgisayarınız açıldığında VoltGet otomatik olarak çalıştırılır.
+                {t('autoStartDesc')}
               </div>
             </div>
           </label>
@@ -207,9 +207,9 @@ export default function SettingsPanel(){
               onChange={e=> saveCfg({ closeToTray: e.target.checked })}
             />
             <div>
-              <div style={{ fontWeight:700 }}>Pencereyi Kapatınca Sistem Tepsisine Küçült (Önerilen)</div>
+              <div style={{ fontWeight:700 }}>{t('closeToTray')}</div>
               <div className="text-muted" style={{ fontSize:11, marginTop:2 }}>
-                Pencereyi (X) ile kapattığınızda indirmeler kesilmez; VoltGet saatin yanındaki sistem tepsisinde sessizce çalışmaya devam eder.
+                {t('closeToTrayDesc')}
               </div>
             </div>
           </label>
@@ -222,9 +222,9 @@ export default function SettingsPanel(){
               onChange={e=> saveCfg({ minimizeToTray: e.target.checked })}
             />
             <div>
-              <div style={{ fontWeight:700 }}>Simge Durumuna Küçültünce Sistem Tepsisine Gizle</div>
+              <div style={{ fontWeight:700 }}>{t('minimizeToTray')}</div>
               <div className="text-muted" style={{ fontSize:11, marginTop:2 }}>
-                Pencereyi küçülttüğünüzde görev çubuğundan kaldırılır ve sistem tepsisine gizlenir.
+                {t('minimizeToTrayDesc')}
               </div>
             </div>
           </label>
@@ -237,9 +237,9 @@ export default function SettingsPanel(){
               onChange={e=> saveCfg({ startMinimized: e.target.checked })}
             />
             <div>
-              <div style={{ fontWeight:700 }}>Başlangıçta Gizli / Tepside Başlat</div>
+              <div style={{ fontWeight:700 }}>{t('startMinimized')}</div>
               <div className="text-muted" style={{ fontSize:11, marginTop:2 }}>
-                Uygulama açılırken ekranda ana pencere açılmaz, doğrudan arka planda sistem tepsisinde başlar.
+                {t('startMinimizedDesc')}
               </div>
             </div>
           </label>
@@ -252,9 +252,9 @@ export default function SettingsPanel(){
               onChange={e=> saveCfg({ clipboardWatcher: e.target.checked })}
             />
             <div>
-              <div style={{ fontWeight:700 }}>📋 Akıllı Pano (Clipboard) İzleyici</div>
+              <div style={{ fontWeight:700 }}>📋 {t('smartClipboardWatcher')}</div>
               <div className="text-muted" style={{ fontSize:11, marginTop:2 }}>
-                Kopyalanan YouTube, video veya indirme linklerini anında algılayıp sağ altta indirme bildirimi açar.
+                {t('smartClipboardWatcherDesc')}
               </div>
             </div>
           </label>
@@ -265,23 +265,23 @@ export default function SettingsPanel(){
         <div style={{ fontWeight:800, fontSize:13 }}>{t('settingsFolder')}</div>
         <div className="text-muted" style={{ fontSize:12, marginTop:6, wordBreak:'break-all', background:'var(--panel-2)', padding:'10px 12px', borderRadius:10, border:'1px solid var(--border)' }}>{outDir}</div>
         <div style={{ display:'flex', gap:8, marginTop:10 }}>
-          <button onClick={pickFolder} className="brand-gradient" style={{ color:'#fff', border:0, padding:'8px 12px', borderRadius:10, fontSize:12, fontWeight:700 }}>Klasör Seç</button>
+          <button onClick={pickFolder} className="brand-gradient" style={{ color:'#fff', border:0, padding:'8px 12px', borderRadius:10, fontSize:12, fontWeight:700 }}>{t('selectFolder')}</button>
           <button onClick={()=>window.api.openFolder(outDir)} style={{ background:'var(--panel-2)', color:'var(--text)', border:'1px solid var(--border)', padding:'8px 12px', borderRadius:10, fontSize:12 }}>{t('open')}</button>
         </div>
-        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:12, fontSize:12 }}>
-          <input type="checkbox" checked={!!cfg.siteFolders} onChange={e=> saveCfg({ siteFolders: e.target.checked })} /> Siteye göre alt klasör
+        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:12, fontSize:12, cursor:'pointer' }}>
+          <input type="checkbox" checked={!!cfg.siteFolders} onChange={e=> saveCfg({ siteFolders: e.target.checked })} /> {t('siteSubfolders')}
         </label>
       </div>
 
       <div className="card-premium" style={{ borderRadius:18, padding:18 }}>
         <div style={{ fontWeight:800, fontSize:13 }}>{t('settingsPerf')}</div>
         <div style={{ display:'flex', gap:12, marginTop:10, flexWrap:'wrap' }}>
-          <label style={{ flex:1, minWidth:140, fontSize:12 }}> Eşzamanlı indirme<br/>
+          <label style={{ flex:1, minWidth:140, fontSize:12 }}> {t('concurrentDownloads')}<br/>
             <select value={cfg.concurrent} onChange={e=> saveCfg({ concurrent: parseInt(e.target.value)})} style={{ marginTop:6, width:'100%', padding:'8px', borderRadius:10 }}>
               <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={5}>5</option>
             </select>
           </label>
-          <label style={{ flex:1, minWidth:140, fontSize:12 }}> Hız limiti (KB/s, 0=limitsiz)<br/>
+          <label style={{ flex:1, minWidth:140, fontSize:12 }}> {t('speedLimiter')}<br/>
             <input type="number" value={cfg.speedLimitKB} onChange={e=> saveCfg({ speedLimitKB: parseInt(e.target.value)||0 })} style={{ marginTop:6, width:'100%', padding:'8px', borderRadius:10 }} />
           </label>
         </div>
@@ -289,27 +289,23 @@ export default function SettingsPanel(){
 
       <div className="card-premium" style={{ borderRadius:18, padding:18 }}>
         <div style={{ fontWeight:800, fontSize:13 }}>{t('settingsSniffer')}</div>
-        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, fontSize:12 }}>
-          <input type="checkbox" checked={!!cfg.sniffNotifications} onChange={e=> saveCfg({ sniffNotifications: e.target.checked })} /> Yakalayınca bildirim göster
+        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, fontSize:12, cursor:'pointer' }}>
+          <input type="checkbox" checked={!!cfg.sniffNotifications} onChange={e=> saveCfg({ sniffNotifications: e.target.checked })} /> {t('sniffNotificationShow')}
         </label>
-        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, fontSize:12 }}>
-          <input type="checkbox" checked={!!cfg.interceptBrowserDownloads} onChange={e=> saveCfg({ interceptBrowserDownloads: e.target.checked })} /> Tarayıcı indirmelerini yakala (IDM tarzı)
+        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, fontSize:12, cursor:'pointer' }}>
+          <input type="checkbox" checked={!!cfg.interceptBrowserDownloads} onChange={e=> saveCfg({ interceptBrowserDownloads: e.target.checked })} /> {t('interceptBrowserDownloads')}
         </label>
-        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, fontSize:12 }}>
-          <input type="checkbox" checked={!!cfg.captureMediaRequests} onChange={e=> saveCfg({ captureMediaRequests: e.target.checked })} /> Video / müzik / HLS
+        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, fontSize:12, cursor:'pointer' }}>
+          <input type="checkbox" checked={!!cfg.captureMediaRequests} onChange={e=> saveCfg({ captureMediaRequests: e.target.checked })} /> {t('captureVideoAudio')}
         </label>
-        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, fontSize:12 }}>
-          <input type="checkbox" checked={!!cfg.captureDocuments} onChange={e=> saveCfg({ captureDocuments: e.target.checked })} /> Belgeler (pdf, doc, xls, ppt, epub)
+        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, fontSize:12, cursor:'pointer' }}>
+          <input type="checkbox" checked={!!cfg.captureDocuments} onChange={e=> saveCfg({ captureDocuments: e.target.checked })} /> {t('captureDocs')}
         </label>
-        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, fontSize:12 }}>
-          <input type="checkbox" checked={!!cfg.captureArchives} onChange={e=> saveCfg({ captureArchives: e.target.checked })} /> Arşivler (zip, rar, 7z, iso, torrent)
+        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, fontSize:12, cursor:'pointer' }}>
+          <input type="checkbox" checked={!!cfg.captureArchives} onChange={e=> saveCfg({ captureArchives: e.target.checked })} /> {t('captureArchives')}
         </label>
-        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, fontSize:12 }}>
-          <input type="checkbox" checked={!!cfg.captureInstallers} onChange={e=> saveCfg({ captureInstallers: e.target.checked })} /> Kurulum dosyaları (exe, msi, apk, dmg)
-        </label>
-        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:12, fontSize:12 }}>
-          <span>Debounce (ms):</span>
-          <input type="number" value={cfg.sniffDebounceMs||8000} onChange={e=> saveCfg({ sniffDebounceMs: parseInt(e.target.value)||8000 })} style={{ width:90, padding:'6px', borderRadius:8 }} />
+        <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, fontSize:12, cursor:'pointer' }}>
+          <input type="checkbox" checked={!!cfg.captureInstallers} onChange={e=> saveCfg({ captureInstallers: e.target.checked })} /> {t('captureInstallers')}
         </label>
       </div>
 
@@ -320,14 +316,14 @@ export default function SettingsPanel(){
             <div style={{ display:'flex', justifyContent:'space-between', background:'var(--panel-2)', padding:'8px 10px', borderRadius:10, border:'1px solid var(--border)' }}>
               <span>yt-dlp</span><span>{status.ytdlpVer || ((status.binExists||status.pathExists)?'✓':'✗')}</span>
             </div>
-            {updateInfo?.latest && <div className="text-muted" style={{ fontSize:11 }}>En son: {updateInfo.latest}</div>}
+            {updateInfo?.latest && <div className="text-muted" style={{ fontSize:11 }}>{t('latestVersion')} {updateInfo.latest}</div>}
             <button onClick={updateYtDlp} disabled={updating} className="brand-gradient" style={{ color:'#fff', border:0, padding:'8px 12px', borderRadius:10, fontWeight:700 }}>
-              {updating?'Güncelleniyor…':'yt-dlp Güncelle / İndir'}</button>
+              {updating ? t('updating') : t('ytDlpUpdateBtn')}</button>
             <div style={{ display:'flex', justifyContent:'space-between', background:'var(--panel-2)', padding:'8px 10px', borderRadius:10, border:'1px solid var(--border)' }}>
-              <span>ffmpeg</span><span>{status.ffmpegOk?'✓ hazır':'✗ eksik'}</span>
+              <span>ffmpeg</span><span>{status.ffmpegOk ? t('ffmpegReady') : t('ffmpegMissing')}</span>
             </div>
           </div>
-        ) : <div className="text-muted" style={{ fontSize:12 }}>Yükleniyor…</div>}
+        ) : <div className="text-muted" style={{ fontSize:12 }}>{t('loading')}</div>}
       </div>
     </div>
   )

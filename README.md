@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/eekilinc/VoltGet/releases"><img src="https://img.shields.io/badge/version-1.0.2-blue.svg?style=for-the-badge&logo=github" alt="Version"></a>
+  <a href="https://github.com/eekilinc/VoltGet/releases"><img src="https://img.shields.io/badge/version-1.0.3-blue.svg?style=for-the-badge&logo=github" alt="Version"></a>
   <a href="https://github.com/eekilinc/VoltGet/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge" alt="License"></a>
   <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-31.7.7-47848F.svg?style=for-the-badge&logo=electron" alt="Electron"></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.5-3178C6.svg?style=for-the-badge&logo=typescript" alt="TypeScript"></a>

@@ -5,7 +5,7 @@ export default function AboutPanel() {
   const { t } = useAppSettings()
   const [status, setStatus] = useState<any>(null)
   const [extConnected, setExtConnected] = useState<boolean>(false)
-  const [appVersion, setAppVersion] = useState<string>('1.0.2')
+  const [appVersion, setAppVersion] = useState<string>('1.0.3')
 
   useEffect(() => {
     window.api?.getYtDlpStatus?.().then(setStatus)
@@ -61,26 +61,26 @@ export default function AboutPanel() {
         />
 
         <div style={{ fontWeight: 900, fontSize: 24, marginTop: 14, letterSpacing: '0.03em', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <span>⚡ VoltGet PRO</span>
+          <span>⚡ {t('aboutTitle')}</span>
           <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: '#2563eb', color: '#fff', fontWeight: 800 }}>v{appVersion}</span>
         </div>
 
         <div className="text-muted" style={{ fontSize: 13, marginTop: 4, maxWidth: 540, margin: '6px auto 0' }}>
-          Yeni Nesil Ultra Hızlı İndirme Yöneticisi, Akıllı HLS Medya Yakalayıcı ve Modern IDM Alternatifi
+          {t('aboutSubtitle')}
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginTop: 14 }}>
           <span style={{ fontSize: 11, background: 'var(--panel-2)', border: '1px solid var(--border)', padding: '4px 10px', borderRadius: 20, fontWeight: 700 }}>
-            🚀 8-Kanallı HTTP Hızlandırıcı
+            {t('feat8Threads')}
           </span>
           <span style={{ fontSize: 11, background: 'var(--panel-2)', border: '1px solid var(--border)', padding: '4px 10px', borderRadius: 20, fontWeight: 700 }}>
-            🎬 Akıllı HLS & DASH Birleştirici
+            {t('featHls')}
           </span>
           <span style={{ fontSize: 11, background: 'var(--panel-2)', border: '1px solid var(--border)', padding: '4px 10px', borderRadius: 20, fontWeight: 700 }}>
-            🎯 1800+ Medya Platformu
+            {t('feat1800Sites')}
           </span>
           <span style={{ fontSize: 11, background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', border: '1px solid rgba(34, 197, 94, 0.3)', padding: '4px 10px', borderRadius: 20, fontWeight: 800 }}>
-            📄 MIT Lisanslı Açık Kaynak
+            {t('featOpenSource')}
           </span>
         </div>
       </div>
@@ -89,10 +89,10 @@ export default function AboutPanel() {
       <div className="card-premium" style={{ borderRadius: 18, padding: 18 }}>
         <div style={{ fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <span>🐙</span>
-          <span>GitHub & Açık Kaynak Topluluğu</span>
+          <span>{t('githubCommunity')}</span>
         </div>
         <div className="text-muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
-          VoltGet, topluluk tarafından geliştirilen tamamen özgür ve açık kaynak kodlu bir projedir. Kodları inceleyebilir, hata bildiriminde bulunabilir veya yeni özellikler önerebilirsiniz.
+          {t('githubDesc')}
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
@@ -114,7 +114,7 @@ export default function AboutPanel() {
             }}
           >
             <span>⭐</span>
-            <span>GitHub'da İncele & Yıldız Ver</span>
+            <span>{t('viewOnGithub')}</span>
           </button>
 
           <button
@@ -134,7 +134,7 @@ export default function AboutPanel() {
             }}
           >
             <span>📦</span>
-            <span>Sürümler & Kurulum Dosyaları (Releases)</span>
+            <span>{t('releasesAndInstalls')}</span>
           </button>
 
           <button
@@ -154,16 +154,16 @@ export default function AboutPanel() {
             }}
           >
             <span>📜</span>
-            <span>MIT Lisansı (Özgür Kullanım)</span>
+            <span>{t('mitLicense')}</span>
           </button>
         </div>
 
         <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: 'var(--text-muted)' }}>
           <div>
-            Proje Sahibi & Geliştirici: <b style={{ color: 'var(--text)' }}>eekilinc</b>
+            {t('projectOwner')}: <b style={{ color: 'var(--text)' }}>eekilinc</b>
           </div>
           <div>
-            Depo: <code style={{ background: 'var(--panel-2)', padding: '2px 6px', borderRadius: 4 }}>eekilinc/VoltGet</code>
+            {t('repository')}: <code style={{ background: 'var(--panel-2)', padding: '2px 6px', borderRadius: 4 }}>eekilinc/VoltGet</code>
           </div>
         </div>
       </div>
@@ -172,46 +172,46 @@ export default function AboutPanel() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
         <div className="card-premium" style={{ borderRadius: 16, padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontWeight: 800, fontSize: 13 }}>⚡ yt-dlp Motoru</div>
+            <div style={{ fontWeight: 800, fontSize: 13 }}>⚡ {t('ytdlpEngine')}</div>
             <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: status?.ytdlpVer ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)', color: status?.ytdlpVer ? '#4ade80' : '#f87171', fontWeight: 800 }}>
-              {status?.ytdlpVer ? 'Hazır' : 'Eksik'}
+              {status?.ytdlpVer ? t('ready') : t('engineMissing')}
             </span>
           </div>
           <div className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
-            {status?.ytdlpVer ? `Sürüm: ${status.ytdlpVer}` : 'İkili dosya taranıyor...'}
+            {status?.ytdlpVer ? `${t('latestVersion')} ${status.ytdlpVer}` : t('engineScanning')}
           </div>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-            1800+ siteden 4K video ve ses akışı ayrıştırma motoru.
+            {t('ytdlpEngineDesc')}
           </div>
         </div>
 
         <div className="card-premium" style={{ borderRadius: 16, padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontWeight: 800, fontSize: 13 }}>🎞️ FFmpeg İşlemci</div>
+            <div style={{ fontWeight: 800, fontSize: 13 }}>🎞️ {t('ffmpegProcessor')}</div>
             <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: status?.ffmpegOk ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)', color: status?.ffmpegOk ? '#4ade80' : '#f87171', fontWeight: 800 }}>
-              {status?.ffmpegOk ? 'Hazır' : 'Sistemde Eksik'}
+              {status?.ffmpegOk ? t('ready') : t('ffmpegMissing')}
             </span>
           </div>
           <div className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
-            {status?.ffmpegOk ? 'Video + Ses Çoklama Aktif' : 'WinGet ile yüklenebilir'}
+            {status?.ffmpegOk ? t('ffmpegReadyDesc') : t('ffmpegMissingDesc')}
           </div>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-            HLS akış birleştirme ve MP3 dönüştürme işlemcisi.
+            {t('ffmpegEngineDesc')}
           </div>
         </div>
 
         <div className="card-premium" style={{ borderRadius: 16, padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontWeight: 800, fontSize: 13 }}>🧩 Tarayıcı Eklentisi</div>
+            <div style={{ fontWeight: 800, fontSize: 13 }}>🧩 {t('browserExtension')}</div>
             <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: extConnected ? 'rgba(34, 197, 94, 0.15)' : 'rgba(234, 179, 8, 0.15)', color: extConnected ? '#4ade80' : '#facc15', fontWeight: 800 }}>
-              {extConnected ? 'Bağlı (Port 8765)' : 'Bekleniyor'}
+              {extConnected ? t('extConnectedStatus') : t('extWaitingStatus')}
             </span>
           </div>
           <div className="text-muted" style={{ fontSize: 11, marginTop: 6 }}>
-            {extConnected ? 'Canlı Akış Yakalama Aktif' : 'Chrome/Edge Eklentisini Açın'}
+            {extConnected ? t('extConnectedDesc') : t('extWaitingDesc')}
           </div>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-            HTML5 video oynatıcılarda IDM tarzı buton çıkarma.
+            {t('extCardFootnote')}
           </div>
         </div>
       </div>
@@ -219,31 +219,31 @@ export default function AboutPanel() {
       {/* Mimari & Desteklenen Formatlar */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div className="card-premium" style={{ borderRadius: 16, padding: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: 13 }}>🧰 Teknoloji Mimarisi</div>
+          <div style={{ fontWeight: 800, fontSize: 13 }}>🧰 {t('techArchTitle')}</div>
           <div className="text-muted" style={{ fontSize: 11, marginTop: 8, lineHeight: 1.9 }}>
-            • <b>Çekirdek:</b> Electron 31 + Node.js 20 LTS<br />
-            • <b>Arayüz:</b> React 18 + TypeScript 5.5 + Vite 5<br />
-            • <b>İndirme Motorları:</b> yt-dlp + FFmpeg + 8-Thread HTTP Chunker<br />
-            • <b>İletişim:</b> WebSocket WebSocketServer (127.0.0.1:8765)<br />
-            • <b>Tasarım:</b> Glassmorphism, 7 Tema Rengi, Canlı Sayaçlar
+            • <b>Electron:</b> Electron 31 + Node.js 20 LTS<br />
+            • <b>UI:</b> React 18 + TypeScript 5.5 + Vite 5<br />
+            • <b>Engines:</b> yt-dlp + FFmpeg + 8-Thread HTTP Chunker<br />
+            • <b>IPC:</b> WebSocket Server (127.0.0.1:8765)<br />
+            • <b>Theme:</b> Glassmorphism, 7 Accent Colors
           </div>
         </div>
 
         <div className="card-premium" style={{ borderRadius: 16, padding: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: 13 }}>📁 Desteklenen İndirme Türleri</div>
+          <div style={{ fontWeight: 800, fontSize: 13 }}>📁 {t('supportedTypesTitle')}</div>
           <div className="text-muted" style={{ fontSize: 11, marginTop: 8, lineHeight: 1.9 }}>
             • <b>Video:</b> MP4, MKV, WebM, MOV, AVI (4K, 1080p, 720p)<br />
-            • <b>Akış:</b> HLS (m3u8, master.txt), DASH (mpd)<br />
-            • <b>Ses:</b> MP3, M4A, FLAC, WAV, AAC, OGG (320 kbps)<br />
-            • <b>Arşiv:</b> ZIP, RAR, 7Z, TAR, GZ, ISO, Torrent<br />
-            • <b>Belge & Kurulum:</b> PDF, DOCX, XLSX, EXE, MSI, APK
+            • <b>Stream:</b> HLS (m3u8, master.txt), DASH (mpd)<br />
+            • <b>Audio:</b> MP3, M4A, FLAC, WAV, AAC, OGG (320 kbps)<br />
+            • <b>Archive:</b> ZIP, RAR, 7Z, TAR, GZ, ISO, Torrent<br />
+            • <b>Files:</b> PDF, DOCX, XLSX, EXE, MSI, APK
           </div>
         </div>
       </div>
 
       {/* Lisans ve Yasal Uyarı */}
       <div className="card-premium" style={{ borderRadius: 16, padding: 14, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-        <b>⚖️ Telif Hakkı ve Lisans Beyanı:</b> VoltGet, MIT Lisansı koşulları altında özgürce dağıtılır. Kullanıcılar, indirdikleri içeriklerin telif haklarına ve ilgili platformların kullanım koşullarına uymakla yükümlüdür.
+        <b>⚖️ {t('licenseDisclaimerTitle')}:</b> {t('licenseDisclaimer')}
       </div>
     </div>
   )
