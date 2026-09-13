@@ -10,5 +10,6 @@
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true
   },
-  "include": ["electron", "electron/nm_host.ts"]
+  "include": ["electron"],
+  "exclude": ["**/*.test.ts", "**/*.spec.ts", "**/*.test.tsx", "**/*.spec.tsx", "electron/utils.test.ts"]
 }
