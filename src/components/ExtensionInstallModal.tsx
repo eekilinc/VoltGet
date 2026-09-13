@@ -1,69 +1,69 @@
-import { useState, useEffect } from 'react'
-import { useToast } from '../context/ToastContext'
-import { useAppSettings } from '../context/AppSettingsContext'
+import { useState, useEffect } from 'react';
+import { useToast } from '../context/ToastContext';
+import { useAppSettings } from '../context/AppSettingsContext';
 
 interface Props {
-  isOpen: boolean
-  onClose: () => void
-  connected: boolean
+  isOpen: boolean;
+  onClose: () => void;
+  connected: boolean;
 }
 
-type BrowserType = 'chrome' | 'firefox'
+type BrowserType = 'chrome' | 'firefox';
 
 export default function ExtensionInstallModal({ isOpen, onClose, connected }: Props) {
-  const { t } = useAppSettings()
-  const toast = useToast()
-  const [selectedBrowser, setSelectedBrowser] = useState<BrowserType>('chrome')
-  const [zipping, setZipping] = useState(false)
-  const [openingFolder, setOpeningFolder] = useState(false)
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
+  const { t } = useAppSettings();
+  const toast = useToast();
+  const [selectedBrowser, setSelectedBrowser] = useState<BrowserType>('chrome');
+  const [zipping, setZipping] = useState(false);
+  const [openingFolder, setOpeningFolder] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    if (isOpen) window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
+      if (e.key === 'Escape') onClose();
+    };
+    if (isOpen) window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
-  if (!isOpen) return null
+  if (!isOpen) return null;
 
   const handleOpenFolder = async () => {
-    setOpeningFolder(true)
+    setOpeningFolder(true);
     try {
-      const res = await window.api?.openExtensionFolder(selectedBrowser)
+      const res = await window.api?.openExtensionFolder(selectedBrowser);
       if (res?.success) {
-        toast.success(t('extFolderOpened'))
+        toast.success(t('extFolderOpened'));
       } else {
-        toast.error(res?.error || t('error'))
+        toast.error(res?.error || t('error'));
       }
     } catch (e: any) {
-      toast.error(t('error') + ': ' + (e?.message || e))
+      toast.error(t('error') + ': ' + (e?.message || e));
     }
-    setOpeningFolder(false)
-  }
+    setOpeningFolder(false);
+  };
 
   const handleExportZip = async () => {
-    setZipping(true)
+    setZipping(true);
     try {
-      const res = await window.api?.exportExtensionZip(selectedBrowser)
+      const res = await window.api?.exportExtensionZip(selectedBrowser);
       if (res?.success) {
-        toast.success(`${res.fileName || 'voltget-extension.zip'} (${t('success')})`)
+        toast.success(`${res.fileName || 'voltget-extension.zip'} (${t('success')})`);
       } else {
-        toast.error(t('error'))
+        toast.error(t('error'));
       }
     } catch (e: any) {
-      toast.error(t('error') + ': ' + (e?.message || e))
+      toast.error(t('error') + ': ' + (e?.message || e));
     }
-    setZipping(false)
-  }
+    setZipping(false);
+  };
 
   const handleCopyUrl = (url: string) => {
-    navigator.clipboard.writeText(url)
-    setCopiedUrl(url)
-    toast.info(`${url} (${t('copied')})`)
-    setTimeout(() => setCopiedUrl(null), 2500)
-  }
+    navigator.clipboard.writeText(url);
+    setCopiedUrl(url);
+    toast.info(`${url} (${t('copied')})`);
+    setTimeout(() => setCopiedUrl(null), 2500);
+  };
 
   return (
     <div
@@ -77,9 +77,11 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
         alignItems: 'center',
         justifyContent: 'center',
         padding: 20,
-        animation: 'fadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1)'
+        animation: 'fadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+      onClick={e => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         className="card-premium animate-slide-up"
@@ -92,7 +94,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: '92vh'
+          maxHeight: '92vh',
         }}
       >
         {/* Modal Başlık Çubuğu */}
@@ -103,7 +105,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
             background: 'var(--panel-2)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between'
+            justifyContent: 'space-between',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -117,13 +119,20 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontSize: 20,
-                boxShadow: '0 4px 14px color-mix(in srgb, var(--accent-solid) 40%, transparent)'
+                boxShadow: '0 4px 14px color-mix(in srgb, var(--accent-solid) 40%, transparent)',
               }}
             >
               🧩
             </div>
             <div>
-              <div style={{ fontWeight: 900, fontSize: 16, letterSpacing: '0.01em', color: 'var(--text-bright)' }}>
+              <div
+                style={{
+                  fontWeight: 900,
+                  fontSize: 16,
+                  letterSpacing: '0.01em',
+                  color: 'var(--text-bright)',
+                }}
+              >
                 {t('extModalTitle')}
               </div>
               <div className="text-muted" style={{ fontSize: 11, marginTop: 1 }}>
@@ -144,18 +153,31 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer'
+              cursor: 'pointer',
             }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'var(--border-2)' }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = '#fff';
+              e.currentTarget.style.borderColor = 'var(--border-2)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = 'var(--muted)';
+              e.currentTarget.style.borderColor = 'var(--border)';
+            }}
           >
             ✕
           </button>
         </div>
 
         {/* Modal İçeriği */}
-        <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          
+        <div
+          style={{
+            padding: '20px 24px',
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 16,
+          }}
+        >
           {/* Tarayıcı Seçim Sekmeleri (Chrome vs Firefox) */}
           <div
             style={{
@@ -165,7 +187,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
               padding: 5,
               background: 'var(--panel-3)',
               borderRadius: 14,
-              border: '1px solid var(--border)'
+              border: '1px solid var(--border)',
             }}
           >
             <button
@@ -182,11 +204,13 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                 justifyContent: 'center',
                 gap: 8,
                 transition: 'all 0.16s ease',
-                background: selectedBrowser === 'chrome'
-                  ? 'linear-gradient(135deg, #2563eb, #0ea5e9)'
-                  : 'transparent',
+                background:
+                  selectedBrowser === 'chrome'
+                    ? 'linear-gradient(135deg, #2563eb, #0ea5e9)'
+                    : 'transparent',
                 color: selectedBrowser === 'chrome' ? '#fff' : 'var(--muted)',
-                boxShadow: selectedBrowser === 'chrome' ? '0 4px 16px rgba(37,99,235,0.35)' : 'none'
+                boxShadow:
+                  selectedBrowser === 'chrome' ? '0 4px 16px rgba(37,99,235,0.35)' : 'none',
               }}
             >
               <span style={{ fontSize: 16 }}>🌐</span>
@@ -207,11 +231,13 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                 justifyContent: 'center',
                 gap: 8,
                 transition: 'all 0.16s ease',
-                background: selectedBrowser === 'firefox'
-                  ? 'linear-gradient(135deg, #ea580c, #f97316)'
-                  : 'transparent',
+                background:
+                  selectedBrowser === 'firefox'
+                    ? 'linear-gradient(135deg, #ea580c, #f97316)'
+                    : 'transparent',
                 color: selectedBrowser === 'firefox' ? '#fff' : 'var(--muted)',
-                boxShadow: selectedBrowser === 'firefox' ? '0 4px 16px rgba(234,88,12,0.35)' : 'none'
+                boxShadow:
+                  selectedBrowser === 'firefox' ? '0 4px 16px rgba(234,88,12,0.35)' : 'none',
               }}
             >
               <span style={{ fontSize: 16 }}>🦊</span>
@@ -227,12 +253,10 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
               border: connected
                 ? '1px solid rgba(34, 197, 94, 0.4)'
                 : '1px solid rgba(234, 179, 8, 0.3)',
-              background: connected
-                ? 'rgba(34, 197, 94, 0.08)'
-                : 'rgba(234, 179, 8, 0.08)',
+              background: connected ? 'rgba(34, 197, 94, 0.08)' : 'rgba(234, 179, 8, 0.08)',
               display: 'flex',
               alignItems: 'center',
-              gap: 14
+              gap: 14,
             }}
           >
             <div
@@ -246,13 +270,15 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontSize: 18,
-                boxShadow: connected ? '0 0 20px rgba(34, 197, 94, 0.4)' : 'none'
+                boxShadow: connected ? '0 0 20px rgba(34, 197, 94, 0.4)' : 'none',
               }}
             >
               {connected ? '✓' : '⚡'}
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 800, fontSize: 13, color: connected ? '#86efac' : '#fde047' }}>
+              <div
+                style={{ fontWeight: 800, fontSize: 13, color: connected ? '#86efac' : '#fde047' }}
+              >
                 {connected ? t('extConnectedTitle') : t('extWaitingTitle')}
               </div>
               <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2, color: 'var(--text)' }}>
@@ -273,11 +299,17 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 8
+                gap: 8,
               }}
             >
               <span>📂</span>
-              <span>{openingFolder ? t('openingFolder') : (selectedBrowser === 'firefox' ? t('openFirefoxExtFolder') : t('openChromeExtFolder'))}</span>
+              <span>
+                {openingFolder
+                  ? t('openingFolder')
+                  : selectedBrowser === 'firefox'
+                    ? t('openFirefoxExtFolder')
+                    : t('openChromeExtFolder')}
+              </span>
             </button>
 
             <button
@@ -290,7 +322,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 8
+                gap: 8,
               }}
             >
               <span>📦</span>
@@ -300,8 +332,17 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
 
           {/* Dinamik Kurulum Rehberi (Chrome vs Firefox) */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span>🚀</span> {selectedBrowser === 'firefox' ? t('firefoxEasySteps') : t('chromeEasySteps')}
+            <div
+              style={{
+                fontWeight: 800,
+                fontSize: 13,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <span>🚀</span>{' '}
+              {selectedBrowser === 'firefox' ? t('firefoxEasySteps') : t('chromeEasySteps')}
             </div>
 
             {selectedBrowser === 'chrome' ? (
@@ -315,7 +356,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                     padding: 13,
                     display: 'flex',
                     gap: 12,
-                    alignItems: 'flex-start'
+                    alignItems: 'flex-start',
                   }}
                 >
                   <div
@@ -330,7 +371,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                       justifyContent: 'center',
                       fontWeight: 900,
                       fontSize: 11,
-                      flexShrink: 0
+                      flexShrink: 0,
                     }}
                   >
                     1
@@ -353,7 +394,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
-                          fontWeight: 600
+                          fontWeight: 600,
                         }}
                       >
                         <span>📋</span> chrome://extensions
@@ -370,13 +411,20 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
-                          fontWeight: 600
+                          fontWeight: 600,
                         }}
                       >
                         <span>📋</span> edge://extensions
                       </button>
                       {copiedUrl && (
-                        <span style={{ fontSize: 11, color: '#22c55e', alignSelf: 'center', fontWeight: 700 }}>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: '#22c55e',
+                            alignSelf: 'center',
+                            fontWeight: 700,
+                          }}
+                        >
                           ✓ {t('copied')}
                         </span>
                       )}
@@ -393,7 +441,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                     padding: 13,
                     display: 'flex',
                     gap: 12,
-                    alignItems: 'flex-start'
+                    alignItems: 'flex-start',
                   }}
                 >
                   <div
@@ -408,7 +456,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                       justifyContent: 'center',
                       fontWeight: 900,
                       fontSize: 11,
-                      flexShrink: 0
+                      flexShrink: 0,
                     }}
                   >
                     2
@@ -430,7 +478,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                     padding: 13,
                     display: 'flex',
                     gap: 12,
-                    alignItems: 'flex-start'
+                    alignItems: 'flex-start',
                   }}
                 >
                   <div
@@ -445,7 +493,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                       justifyContent: 'center',
                       fontWeight: 900,
                       fontSize: 11,
-                      flexShrink: 0
+                      flexShrink: 0,
                     }}
                   >
                     3
@@ -469,7 +517,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                     padding: 13,
                     display: 'flex',
                     gap: 12,
-                    alignItems: 'flex-start'
+                    alignItems: 'flex-start',
                   }}
                 >
                   <div
@@ -484,7 +532,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                       justifyContent: 'center',
                       fontWeight: 900,
                       fontSize: 11,
-                      flexShrink: 0
+                      flexShrink: 0,
                     }}
                   >
                     1
@@ -507,13 +555,20 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
-                          fontWeight: 600
+                          fontWeight: 600,
                         }}
                       >
                         <span>📋</span> about:debugging#/runtime/this-firefox
                       </button>
                       {copiedUrl && (
-                        <span style={{ fontSize: 11, color: '#22c55e', alignSelf: 'center', fontWeight: 700 }}>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: '#22c55e',
+                            alignSelf: 'center',
+                            fontWeight: 700,
+                          }}
+                        >
                           ✓ {t('copied')}
                         </span>
                       )}
@@ -530,7 +585,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                     padding: 13,
                     display: 'flex',
                     gap: 12,
-                    alignItems: 'flex-start'
+                    alignItems: 'flex-start',
                   }}
                 >
                   <div
@@ -545,7 +600,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                       justifyContent: 'center',
                       fontWeight: 900,
                       fontSize: 11,
-                      flexShrink: 0
+                      flexShrink: 0,
                     }}
                   >
                     2
@@ -567,7 +622,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                     padding: 13,
                     display: 'flex',
                     gap: 12,
-                    alignItems: 'flex-start'
+                    alignItems: 'flex-start',
                   }}
                 >
                   <div
@@ -582,7 +637,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
                       justifyContent: 'center',
                       fontWeight: 900,
                       fontSize: 11,
-                      flexShrink: 0
+                      flexShrink: 0,
                     }}
                   >
                     3
@@ -608,7 +663,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              fontSize: 11
+              fontSize: 11,
             }}
           >
             <span className="text-muted">{t('supportedBrowsers')}</span>
@@ -630,7 +685,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
             background: 'var(--panel-2)',
             display: 'flex',
             justifyContent: 'flex-end',
-            gap: 10
+            gap: 10,
           }}
         >
           <button
@@ -639,7 +694,7 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
             style={{
               padding: '8px 20px',
               fontSize: 12,
-              fontWeight: 700
+              fontWeight: 700,
             }}
           >
             {t('closeModal')}
@@ -647,5 +702,5 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
         </div>
       </div>
     </div>
-  )
+  );
 }

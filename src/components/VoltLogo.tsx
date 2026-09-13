@@ -1,13 +1,18 @@
-import React from 'react'
+import React from 'react';
 
 interface VoltLogoProps {
-  size?: number
-  className?: string
-  style?: React.CSSProperties
-  showGlow?: boolean
+  size?: number;
+  className?: string;
+  style?: React.CSSProperties;
+  showGlow?: boolean;
 }
 
-export default function VoltLogo({ size = 36, className = '', style = {}, showGlow = true }: VoltLogoProps) {
+export default function VoltLogo({
+  size = 36,
+  className = '',
+  style = {},
+  showGlow = true,
+}: VoltLogoProps) {
   return (
     <div
       className={className}
@@ -19,7 +24,7 @@ export default function VoltLogo({ size = 36, className = '', style = {}, showGl
         alignItems: 'center',
         justifyContent: 'center',
         flexShrink: 0,
-        ...style
+        ...style,
       }}
     >
       <svg
@@ -30,8 +35,10 @@ export default function VoltLogo({ size = 36, className = '', style = {}, showGl
           width: '100%',
           height: '100%',
           display: 'block',
-          filter: showGlow ? 'drop-shadow(0 4px 14px color-mix(in srgb, var(--accent-solid, #2563eb) 35%, transparent))' : 'none',
-          transition: 'all 0.2s ease'
+          filter: showGlow
+            ? 'drop-shadow(0 4px 14px color-mix(in srgb, var(--accent-solid, #2563eb) 35%, transparent))'
+            : 'none',
+          transition: 'all 0.2s ease',
         }}
       >
         <defs>
@@ -46,14 +53,7 @@ export default function VoltLogo({ size = 36, className = '', style = {}, showGl
         </defs>
 
         {/* Minimalist Rounded Squircle */}
-        <rect
-          x="44"
-          y="44"
-          width="424"
-          height="424"
-          rx="116"
-          fill="url(#voltLogoBgGrad)"
-        />
+        <rect x="44" y="44" width="424" height="424" rx="116" fill="url(#voltLogoBgGrad)" />
 
         {/* Soft Glass Rim */}
         <rect
@@ -87,5 +87,5 @@ export default function VoltLogo({ size = 36, className = '', style = {}, showGl
         />
       </svg>
     </div>
-  )
+  );
 }

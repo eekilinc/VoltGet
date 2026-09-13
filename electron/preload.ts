@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('api', {
   analyzeUrl: (url: string) => ipcRenderer.invoke('analyze-url', url),
@@ -13,7 +13,8 @@ contextBridge.exposeInMainWorld('api', {
   openFolder: (dir: string) => ipcRenderer.invoke('open-folder', dir),
   getDefaultDir: () => ipcRenderer.invoke('get-default-dir'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-  listFiles: (mode?: string, customDir?: string) => ipcRenderer.invoke('list-files', mode, customDir),
+  listFiles: (mode?: string, customDir?: string) =>
+    ipcRenderer.invoke('list-files', mode, customDir),
   openFile: (filePath: string) => ipcRenderer.invoke('open-file', filePath),
   showInFolder: (filePath: string) => ipcRenderer.invoke('show-in-folder', filePath),
   deleteFile: (payload: any) => ipcRenderer.invoke('delete-file', payload),
@@ -53,16 +54,16 @@ contextBridge.exposeInMainWorld('api', {
   closeDialog: () => ipcRenderer.invoke('close-dialog'),
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   removeAll: () => {
-    ipcRenderer.removeAllListeners('download-progress')
-    ipcRenderer.removeAllListeners('download-log')
-    ipcRenderer.removeAllListeners('download-done')
-    ipcRenderer.removeAllListeners('download-error')
-    ipcRenderer.removeAllListeners('download-queued')
-    ipcRenderer.removeAllListeners('download-started')
-    ipcRenderer.removeAllListeners('download-canceled')
-    ipcRenderer.removeAllListeners('download-paused')
-    ipcRenderer.removeAllListeners('sniffed-url')
-    ipcRenderer.removeAllListeners('extension-status-changed')
-    ipcRenderer.removeAllListeners('clipboard-url-detected')
-  }
-})
+    ipcRenderer.removeAllListeners('download-progress');
+    ipcRenderer.removeAllListeners('download-log');
+    ipcRenderer.removeAllListeners('download-done');
+    ipcRenderer.removeAllListeners('download-error');
+    ipcRenderer.removeAllListeners('download-queued');
+    ipcRenderer.removeAllListeners('download-started');
+    ipcRenderer.removeAllListeners('download-canceled');
+    ipcRenderer.removeAllListeners('download-paused');
+    ipcRenderer.removeAllListeners('sniffed-url');
+    ipcRenderer.removeAllListeners('extension-status-changed');
+    ipcRenderer.removeAllListeners('clipboard-url-detected');
+  },
+});

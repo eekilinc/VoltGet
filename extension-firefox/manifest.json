@@ -3,18 +3,8 @@
   "name": "VoltGet Yakalayıcı",
   "version": "1.2.0",
   "description": "Sayfadaki video/müzik linklerini yakalar ve IDM tarzı video üstü indirme paneli sunar",
-  "permissions": [
-    "webRequest",
-    "storage",
-    "tabs",
-    "scripting",
-    "cookies",
-    "downloads",
-    "contextMenus"
-  ],
-  "host_permissions": [
-    "<all_urls>"
-  ],
+  "permissions": ["webRequest", "storage", "tabs", "scripting", "cookies", "downloads", "contextMenus"],
+  "host_permissions": ["<all_urls>"],
   "background": {
     "scripts": ["background.js"]
   },

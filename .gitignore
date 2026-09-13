@@ -44,6 +44,16 @@ bin/ffprobe
 test_*.py
 scratch/
 
+# Env / local / caches
+.env
+.env.local
+.env.*.local
+*.local
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+
 # OS specific files
 .DS_Store
 Thumbs.db
