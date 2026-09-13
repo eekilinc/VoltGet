@@ -381,8 +381,8 @@ const createWindow = createMainWindowFactory({
   dirname: __dirname,
 });
 
-let sniffServer: http.Server | null = null;
-let wss: WebSocketServer | null = null;
+const sniffServer: http.Server | null = null;
+const wss: WebSocketServer | null = null;
 
 // Legacy notification helpers - kept for backward compat, server now handles broadcast
 const sniffLastNotify = new Map<string, number>();
@@ -625,6 +625,35 @@ if (!gotTheLock) {
       });
     } catch {}
     startSniffServer();
+
+    // Register IPC handlers before creating window
+    registerMiscIpc({
+      loadConfig,
+      saveConfig,
+      getConfigRef: () => appConfig,
+      setConfigRef: (c: any) => {
+        appConfig = c;
+      },
+      ensureDir,
+      getDefaultDir: getDefaultDownloadDir,
+      getAppIconPath,
+      activeDownloads,
+      activeOpts,
+      pendingQueue,
+      pausedDownloads,
+      pausingIds,
+      canStart,
+      processPending,
+      doStartDownload,
+      runMultiPart: runMultiPartHttpDownload,
+      getSiteFolder,
+      normalizeToMasterPlaylist,
+      updatePowerSaveBlocker,
+      loadQueue,
+      saveQueue,
+      getMainWindow: () => mainWindow,
+    });
+
     createWindow();
     createTray();
     startClipboardWatcher();
@@ -732,10 +761,6 @@ async function analyzeUrl(url: string): Promise<any> {
   });
 }
 
-ipcMain.handle('analyze-url', async (_e, rawUrl: string) => {
-  const url = normalizeToMasterPlaylist(rawUrl);
-  return analyzeUrl(url);
-});
 function parseInfo(info: any) {
   return parseInfoMod(info);
 }
@@ -1113,7 +1138,7 @@ function doStartDownload(id: string, opts: any) {
       }
     }
 
-    let fileSize = statSizeOf(downloadedFilePath);
+    const fileSize = statSizeOf(downloadedFilePath);
 
     if (mainWindow && !mainWindow.isDestroyed()) {
       const { payload } = buildYtDlpDonePayload(id, code ?? 1, outDir, downloadedFilePath);
@@ -1253,37 +1278,3 @@ async function runMultiPartHttpDownload(
 function runHttpDownload(id: string, opts: any, outDir: string, outPath: string, filename: string) {
   return runHttpDownloadMod(httpDeps(), id, opts, outDir, outPath, filename);
 }
-
-registerMiscIpc({
-  loadConfig,
-  saveConfig,
-  getConfigRef: () => appConfig,
-  setConfigRef: (c: any) => {
-    appConfig = c;
-  },
-  ensureDir,
-  getDefaultDir: getDefaultDownloadDir,
-  getAppIconPath,
-  activeDownloads,
-  activeOpts,
-  pendingQueue,
-  pausedDownloads,
-  pausingIds,
-  canStart,
-  processPending,
-  doStartDownload,
-  runMultiPart: runMultiPartHttpDownload,
-  getSiteFolder,
-  normalizeToMasterPlaylist,
-  updatePowerSaveBlocker,
-  loadQueue,
-  saveQueue,
-  getMainWindow: () => mainWindow,
-});
-
-registerExtensionIpc({
-  getExtensionDir,
-  ensureDir,
-  getDefaultDir: getDefaultDownloadDir,
-  getExtensionConnectedCount,
-});
