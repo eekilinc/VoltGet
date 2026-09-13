@@ -905,11 +905,16 @@ function doStartDownload(id: string, opts: any) {
 
   activeDownloads.set(id, {
     pause: () => {
-      proc.kill();
+      try {
+        proc.kill();
+      } catch {}
     },
     kill: () => {
-      proc.kill();
+      try {
+        proc.kill();
+      } catch {}
     },
+    resume: async () => {},
   });
   activeOpts.set(id, { ...opts, url: finalUrl });
   updatePowerSaveBlocker();
@@ -1019,11 +1024,19 @@ function doStartDownload(id: string, opts: any) {
       const ffProc = spawn(ffmpegPath, ffArgs);
       activeDownloads.set(id, {
         pause: () => {
-          ffProc.kill();
+          try {
+            ffProc.kill();
+          } catch {}
         },
         kill: () => {
-          ffProc.kill();
+          try {
+            ffProc.kill();
+          } catch {}
+          try {
+            fs.unlinkSync(tempOut);
+          } catch {}
         },
+        resume: async () => {},
       });
 
       ffProc.stderr.on('data', (d: Buffer) => {

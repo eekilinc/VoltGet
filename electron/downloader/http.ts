@@ -6,6 +6,7 @@ import https from 'https';
 export interface HttpDownloadController {
   pause: () => void;
   kill: () => void;
+  resume: () => Promise<void>;
 }
 
 export interface HttpDownloadDeps {
@@ -45,6 +46,40 @@ export async function runMultiPartHttpDownload(
   const tempDir = path.join(outDir, `.tmp_${id}`);
   deps.ensureDir(tempDir);
 
+  // Pause/cancel HEAD isteği sırasında bile çalışsın diye controller'ı hemen kaydet
+  let isAborted = false;
+  const activeReqs: any[] = [];
+  let headReq: any = null;
+  deps.activeDownloads.set(id, {
+    pause: () => {
+      isAborted = true;
+      try {
+        headReq?.destroy();
+      } catch {}
+      activeReqs.forEach(r => {
+        try {
+          r.destroy();
+        } catch {}
+      });
+    },
+    kill: () => {
+      isAborted = true;
+      try {
+        headReq?.destroy();
+      } catch {}
+      activeReqs.forEach(r => {
+        try {
+          r.destroy();
+        } catch {}
+      });
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch {}
+    },
+    resume: async () => {},
+  });
+  deps.activeOpts.set(id, { ...opts, isHttp: true, outDir, outPath, filename });
+
   const getHeaders = (rangeHeader?: string) => ({
     'User-Agent': UA,
     ...(opts.cookie ? { Cookie: opts.cookie } : {}),
@@ -52,7 +87,7 @@ export async function runMultiPartHttpDownload(
   });
 
   try {
-    const headReq = await new Promise<{ totalSize: number; acceptRanges: boolean }>(
+    const headRes = await new Promise<{ totalSize: number; acceptRanges: boolean }>(
       (resolve, reject) => {
         const parsedUrl = new URL(opts.url);
         const req = protocol.request(
@@ -70,21 +105,28 @@ export async function runMultiPartHttpDownload(
             resolve({ totalSize, acceptRanges });
           }
         );
+        headReq = req;
         req.on('error', reject);
         req.end();
       }
     );
+    headReq = null;
+    if (isAborted) {
+      deps.activeDownloads.delete(id);
+      deps.activeOpts.delete(id);
+      deps.updatePowerSaveBlocker();
+      deps.processPending();
+      return;
+    }
 
-    if (!headReq.acceptRanges || headReq.totalSize <= 0) {
+    if (!headRes.acceptRanges || headRes.totalSize <= 0) {
       runHttpDownload(deps, id, opts, outDir, outPath, filename);
       return;
     }
 
-    const totalSize = headReq.totalSize;
+    const totalSize = headRes.totalSize;
     const partSize = Math.floor(totalSize / partsCount);
     const partProgress: number[] = new Array(partsCount).fill(0);
-    const activeReqs: any[] = [];
-    let isAborted = false;
     const startTime = Date.now();
     const speedLimitKB = deps.getSpeedLimitKB();
 
@@ -171,27 +213,6 @@ export async function runMultiPartHttpDownload(
       });
     };
 
-    deps.activeDownloads.set(id, {
-      pause: () => {
-        isAborted = true;
-        activeReqs.forEach(r => {
-          try {
-            r.destroy();
-          } catch {}
-        });
-      },
-      kill: () => {
-        isAborted = true;
-        activeReqs.forEach(r => {
-          try {
-            r.destroy();
-          } catch {}
-        });
-        try {
-          fs.rmSync(tempDir, { recursive: true, force: true });
-        } catch {}
-      },
-    });
     deps.activeOpts.set(id, { ...opts, isHttp: true, outDir, outPath, filename });
     deps.updatePowerSaveBlocker();
 
@@ -356,17 +377,19 @@ export function runHttpDownload(
     });
   deps.activeDownloads.set(id, {
     pause: () => {
-      req.destroy();
       try {
-        fs.unlinkSync(tempOutPath);
+        req.destroy();
       } catch {}
     },
     kill: () => {
-      req.destroy();
+      try {
+        req.destroy();
+      } catch {}
       try {
         fs.unlinkSync(tempOutPath);
       } catch {}
     },
+    resume: async () => {},
   });
   deps.activeOpts.set(id, { ...opts, isHttp: true, outDir, outPath, filename });
   deps.updatePowerSaveBlocker();

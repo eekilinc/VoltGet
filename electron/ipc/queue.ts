@@ -34,18 +34,26 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
     const idx = deps.pendingQueue.findIndex(q => q.id === id);
     if (idx !== -1) {
       deps.pendingQueue.splice(idx, 1);
+      deps.pausedDownloads.delete(id);
       deps.send('download-canceled', { id });
       return true;
     }
     const p = deps.activeDownloads.get(id);
     if (p) {
-      p.kill();
+      try {
+        p.kill();
+      } catch {}
       deps.activeDownloads.delete(id);
       deps.activeOpts.delete(id);
       deps.pausedDownloads.delete(id);
+      deps.pausingIds.delete(id);
       deps.updatePowerSaveBlocker();
       deps.send('download-canceled', { id });
       deps.processPending();
+      return true;
+    }
+    if (deps.pausedDownloads.delete(id)) {
+      deps.send('download-canceled', { id });
       return true;
     }
     return false;

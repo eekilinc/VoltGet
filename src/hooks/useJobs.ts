@@ -332,28 +332,40 @@ export function useJobs(hasApi: boolean) {
     });
   }, []);
 
-  const handleRemoveJob = useCallback(async (id: string) => {
+  const persistQueue = useCallback((n: Job[]) => {
     try {
-      await window.api?.removeFromHistory?.(id);
+      window.api?.saveQueue?.(n);
     } catch {}
-    setJobs(j => {
-      const n = j.filter(x => x.id !== id);
-      window.api.saveQueue(n);
-      return n;
-    });
   }, []);
 
-  const handleDeleteJob = useCallback(async (job: Job, deleteFromDisk: boolean) => {
-    const targetPath = job.filePath || job.opts?.outPath;
-    try {
-      await window.api?.deleteFile?.({ filePath: targetPath, deleteFromDisk, id: job.id });
-    } catch {}
-    setJobs(j => {
-      const n = j.filter(x => x.id !== job.id);
-      window.api.saveQueue(n);
-      return n;
-    });
-  }, []);
+  const handleRemoveJob = useCallback(
+    async (id: string) => {
+      try {
+        await window.api?.removeFromHistory?.(id);
+      } catch {}
+      setJobs(j => {
+        const n = j.filter(x => x.id !== id);
+        persistQueue(n);
+        return n;
+      });
+    },
+    [persistQueue]
+  );
+
+  const handleDeleteJob = useCallback(
+    async (job: Job, deleteFromDisk: boolean) => {
+      const targetPath = job.filePath || job.opts?.outPath;
+      try {
+        await window.api?.deleteFile?.({ filePath: targetPath, deleteFromDisk, id: job.id });
+      } catch {}
+      setJobs(j => {
+        const n = j.filter(x => x.id !== job.id);
+        persistQueue(n);
+        return n;
+      });
+    },
+    [persistQueue]
+  );
 
   return {
     jobs,

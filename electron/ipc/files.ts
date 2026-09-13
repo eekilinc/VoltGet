@@ -87,11 +87,7 @@ export function registerFileIpc(deps: {
     const { filePath, deleteFromDisk, id } = payload || {};
     if (deleteFromDisk && filePath && fs.existsSync(filePath)) {
       try {
-        shell.trashItem(filePath).catch(() => {
-          try {
-            fs.unlinkSync(filePath);
-          } catch {}
-        });
+        await shell.trashItem(filePath);
       } catch {
         try {
           fs.unlinkSync(filePath);
@@ -100,8 +96,10 @@ export function registerFileIpc(deps: {
         }
       }
     }
-    if (id) deps.removeFromHistory(id);
-    else if (filePath) deps.removeFromHistory(filePath);
+    try {
+      if (id) deps.removeFromHistory(id);
+      else if (filePath) deps.removeFromHistory(filePath);
+    } catch {}
     return { success: true };
   });
 

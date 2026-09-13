@@ -627,17 +627,35 @@ export default function App() {
       <QueuePanel
         jobs={jobs}
         onCancel={id => {
-          window.api.cancelDownload(id);
-          setJobs(j => j.filter(x => x.id !== id));
+          try {
+            window.api?.cancelDownload?.(id)?.catch?.(() => {});
+          } catch {}
+          setJobs(j => {
+            const n = j.filter(x => x.id !== id);
+            try {
+              window.api?.saveQueue?.(n);
+            } catch {}
+            return n;
+          });
         }}
         onPause={id => {
-          window.api.pauseDownload(id);
+          try {
+            window.api?.pauseDownload?.(id)?.catch?.(() => {});
+          } catch {}
           setJobs(j =>
             j.map(x => (x.id === id ? { ...x, status: 'paused', log: 'Duraklatıldı' } : x))
           );
+          try {
+            window.api?.saveQueue?.(
+              jobs.map(x => (x.id === id ? { ...x, status: 'paused', log: 'Duraklatıldı' } : x))
+            );
+          } catch {}
         }}
         onResume={async job => {
-          const res = await window.api.resumeDownload({ id: job.id, opts: job.opts });
+          let res: any = null;
+          try {
+            res = await window.api.resumeDownload({ id: job.id, opts: job.opts });
+          } catch {}
           setJobs(j =>
             j.map(x =>
               x.id === job.id
@@ -651,26 +669,34 @@ export default function App() {
           );
         }}
         onPauseAll={async () => {
-          await window.api.pauseAllDownloads?.();
+          try {
+            await window.api.pauseAllDownloads?.();
+          } catch {}
           setJobs(j => {
             const n = j.map(x =>
               x.status === 'downloading' || x.status === 'queued'
                 ? { ...x, status: 'paused' as const, log: 'Duraklatıldı' }
                 : x
             );
-            window.api.saveQueue(n);
+            try {
+              window.api?.saveQueue?.(n);
+            } catch {}
             return n;
           });
         }}
         onResumeAll={async () => {
-          await window.api.resumeAllDownloads?.();
+          try {
+            await window.api.resumeAllDownloads?.();
+          } catch {}
           setJobs(j => {
             const n = j.map(x =>
               x.status === 'paused'
                 ? { ...x, status: 'downloading' as const, log: 'Devam ediyor...' }
                 : x
             );
-            window.api.saveQueue(n);
+            try {
+              window.api?.saveQueue?.(n);
+            } catch {}
             return n;
           });
         }}
@@ -685,7 +711,15 @@ export default function App() {
             const n = j.filter(
               x => x.status === 'downloading' || x.status === 'queued' || x.status === 'paused'
             );
-            window.api.saveQueue(n);
+            try {
+              window.api?.saveQueue?.(n);
+            } catch {}
+            // Hata veren/biten kayıtları history'den de temizle
+            try {
+              j.filter(x => x.status === 'done' || x.status === 'error').forEach(x => {
+                window.api?.removeFromHistory?.(x.id)?.catch?.(() => {});
+              });
+            } catch {}
             return n;
           })
         }
