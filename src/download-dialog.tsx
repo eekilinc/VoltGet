@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import { dragRegion, noDragRegion } from './utils/electron-css';
@@ -123,6 +123,7 @@ function DialogApp() {
   const [isAudioMode, setIsAudioMode] = useState<boolean>(false);
   const [customTitle, setCustomTitle] = useState<string>('');
   const [starting, setStarting] = useState<boolean>(false);
+  const startingRef = useRef(false);
   const [speedLimitKB, setSpeedLimitKB] = useState<number>(0);
 
   // Gelen veriyi işle ve site profiline göre analiz başlat
@@ -278,7 +279,8 @@ function DialogApp() {
   };
 
   const handleStart = async (action: 'download' | 'queue') => {
-    if (starting || !data) return;
+    if (startingRef.current || !data) return;
+    startingRef.current = true;
     setStarting(true);
 
     try {
@@ -326,6 +328,7 @@ function DialogApp() {
       }, 300);
     } catch (err: any) {
       console.error('Download start error:', err);
+      startingRef.current = false;
       setStarting(false);
       alert('İndirme başlatılamadı: ' + (err?.message || err));
     }
