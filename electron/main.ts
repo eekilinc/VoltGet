@@ -339,7 +339,15 @@ const defaultConfig: AppConfig = {
   maxAutoRetries: 3,
   retryBaseDelaySec: 5,
   scheduler: { enabled: false, startTime: '02:00', stopTime: '07:00', days: [0, 1, 2, 3, 4, 5, 6] },
-  proxy: { mode: 'system', host: '', port: 8080, username: '', password: '', pacUrl: '', bypass: 'localhost,127.0.0.1' },
+  proxy: {
+    mode: 'system',
+    host: '',
+    port: 8080,
+    username: '',
+    password: '',
+    pacUrl: '',
+    bypass: 'localhost,127.0.0.1',
+  },
   siteLogins: [],
   cookiesFromBrowser: 'none',
   partsCount: 8,
@@ -395,7 +403,13 @@ ipcMain.handle(
 function getDefaultDownloadDir() {
   try {
     const c = loadConfig();
-    if (c.customOutDir && fs.existsSync(c.customOutDir)) return c.customOutDir;
+    if (
+      c.customOutDir &&
+      !c.customOutDir.toLowerCase().endsWith('flexplorer') &&
+      fs.existsSync(c.customOutDir)
+    ) {
+      return c.customOutDir;
+    }
   } catch {}
   return getDefaultDirUtil(appConfig.customOutDir);
 }
@@ -780,7 +794,7 @@ if (!gotTheLock) {
       getMainWindow: () => mainWindow,
       onSchedulerChanged: () => {
         try {
-          scheduler.reschedule(appConfig.scheduler || { enabled: false } as any);
+          scheduler.reschedule(appConfig.scheduler || ({ enabled: false } as any));
         } catch {}
       },
     });
@@ -792,7 +806,7 @@ if (!gotTheLock) {
       applySessionProxy(appConfig.proxy as any);
     } catch {}
     try {
-      scheduler.reschedule(appConfig.scheduler || { enabled: false } as any);
+      scheduler.reschedule(appConfig.scheduler || ({ enabled: false } as any));
     } catch {}
     try {
       setupAutoUpdater({
@@ -938,7 +952,9 @@ function canStart() {
 function processPending() {
   if (!canStart() || pendingQueue.length === 0) return;
   const next = pendingQueue.shift()!;
-  void doStartDownload(next.id, next.opts).catch(e => log.error('[VoltGet] start failed', { error: String(e) }));
+  void doStartDownload(next.id, next.opts).catch(e =>
+    log.error('[VoltGet] start failed', { error: String(e) })
+  );
 }
 async function doStartDownload(id: string, opts: any) {
   let finalUrl = normalizeToMasterPlaylist(opts.url || '');
@@ -1182,7 +1198,9 @@ async function doStartDownload(id: string, opts: any) {
         getRetryPolicyFrom(appConfig),
         () => {
           activeOpts.set(id, { ...opts, url: finalUrl });
-          void doStartDownload(id, opts).catch(e => log.error('[VoltGet] retry failed', { error: String(e) }));
+          void doStartDownload(id, opts).catch(e =>
+            log.error('[VoltGet] retry failed', { error: String(e) })
+          );
         },
         (attempt, max, delayMs) => {
           if (mainWindow && !mainWindow.isDestroyed()) {

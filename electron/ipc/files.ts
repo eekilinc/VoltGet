@@ -85,14 +85,33 @@ export function registerFileIpc(deps: {
 
   ipcMain.handle('delete-file', async (_e, payload: any) => {
     const { filePath, deleteFromDisk, id } = payload || {};
-    if (deleteFromDisk && filePath && fs.existsSync(filePath)) {
-      try {
-        await shell.trashItem(filePath);
-      } catch {
+    if (deleteFromDisk) {
+      if (filePath && fs.existsSync(filePath)) {
         try {
-          fs.unlinkSync(filePath);
-        } catch (e: any) {
-          return { success: false, error: String(e) };
+          await shell.trashItem(filePath);
+        } catch {
+          try {
+            fs.unlinkSync(filePath);
+          } catch (e: any) {
+            return { success: false, error: String(e) };
+          }
+        }
+      }
+      if (filePath) {
+        const partFile = filePath + '.part';
+        if (fs.existsSync(partFile)) {
+          try {
+            fs.unlinkSync(partFile);
+          } catch {}
+        }
+        const dir = path.dirname(filePath);
+        if (id) {
+          const tempDir = path.join(dir, `.tmp_${id}`);
+          if (fs.existsSync(tempDir)) {
+            try {
+              fs.rmSync(tempDir, { recursive: true, force: true });
+            } catch {}
+          }
         }
       }
     }

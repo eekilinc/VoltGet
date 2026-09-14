@@ -55,6 +55,12 @@ export default function SettingsPanel() {
       toast.success(t('folderUpdated'));
     }
   }
+  async function resetFolderToDefault() {
+    await window.api.setConfig({ customOutDir: '' });
+    const def = await window.api.getDefaultDir();
+    setOutDir(def);
+    toast.success(t('folderUpdated'));
+  }
   async function updateYtDlp() {
     setUpdating(true);
     try {
@@ -491,6 +497,20 @@ export default function SettingsPanel() {
             }}
           >
             {t('open')}
+          </button>
+          <button
+            onClick={resetFolderToDefault}
+            style={{
+              background: 'var(--panel-2)',
+              color: 'var(--text)',
+              border: '1px solid var(--border)',
+              padding: '8px 12px',
+              borderRadius: 10,
+              fontSize: 12,
+            }}
+            title="Downloads\VoltGet"
+          >
+            🔄 {t('resetToDefault')}
           </button>
         </div>
         <label

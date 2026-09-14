@@ -86,7 +86,14 @@ export function saveConfig(c: AppConfig): void {
 
 export function saveQueue(jobs: any[]): void {
   try {
-    fs.writeFileSync(queuePath(), JSON.stringify(jobs.slice(0, 50), null, 2));
+    ensureDir(path.dirname(queuePath()));
+    const seen = new Set<string>();
+    const unique = (Array.isArray(jobs) ? jobs : []).filter((j: any) => {
+      if (!j?.id || seen.has(j.id)) return false;
+      seen.add(j.id);
+      return true;
+    });
+    fs.writeFileSync(queuePath(), JSON.stringify(unique.slice(0, 50), null, 2));
   } catch {}
 }
 
@@ -101,7 +108,16 @@ export function loadQueue(): any[] {
 export function recoverInterruptedQueue(): any[] {
   const q = loadQueue();
   let changed = false;
-  const fixed = q.map((j: any) => {
+  const seen = new Set<string>();
+  const unique = (Array.isArray(q) ? q : []).filter((j: any) => {
+    if (!j?.id || seen.has(j.id)) {
+      changed = true;
+      return false;
+    }
+    seen.add(j.id);
+    return true;
+  });
+  const fixed = unique.map((j: any) => {
     if (j?.status === 'downloading' || j?.status === 'queued') {
       changed = true;
       return {

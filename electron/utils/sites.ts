@@ -58,17 +58,27 @@ export function getSiteFolder(
 
 export function getDefaultDownloadDir(customOutDir?: string): string {
   try {
-    if (customOutDir && fs.existsSync(customOutDir)) return customOutDir;
+    if (
+      customOutDir &&
+      !customOutDir.toLowerCase().endsWith('flexplorer') &&
+      fs.existsSync(customOutDir)
+    ) {
+      return customOutDir;
+    }
   } catch {}
   try {
     const cfgPath = path.join(app.getPath('userData'), 'config.json');
     if (fs.existsSync(cfgPath)) {
       const c = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
-      if (c?.customOutDir && fs.existsSync(c.customOutDir)) return c.customOutDir;
+      if (
+        c?.customOutDir &&
+        !c.customOutDir.toLowerCase().endsWith('flexplorer') &&
+        fs.existsSync(c.customOutDir)
+      ) {
+        return c.customOutDir;
+      }
     }
   } catch {}
-  const legacyDir = path.join(os.homedir(), 'Downloads', 'Flexplorer');
-  if (fs.existsSync(legacyDir)) return legacyDir;
   return path.join(os.homedir(), 'Downloads', 'VoltGet');
 }
 

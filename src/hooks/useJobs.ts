@@ -39,7 +39,13 @@ export function useJobs(hasApi: boolean) {
     if (!hasApi) return;
     window.api.getQueue().then(async (saved: any[]) => {
       if (saved?.length) {
-        const initialJobs = saved
+        const seenIds = new Set<string>();
+        const uniqueSaved = saved.filter((j: any) => {
+          if (!j?.id || seenIds.has(j.id)) return false;
+          seenIds.add(j.id);
+          return true;
+        });
+        const initialJobs = uniqueSaved
           .filter((j: any) => j.status === 'done' || j.status === 'error' || j.status === 'paused')
           .slice(0, 30);
         const verifiedJobs = await Promise.all(
@@ -232,6 +238,9 @@ export function useJobs(hasApi: boolean) {
 
   const pushJob = useCallback((job: Job) => {
     setJobs(j => {
+      if (j.some(x => x.id === job.id)) {
+        return j.map(x => (x.id === job.id ? { ...x, ...job } : x));
+      }
       const n = [job, ...j];
       window.api.saveQueue(n);
       return n;
@@ -312,23 +321,24 @@ export function useJobs(hasApi: boolean) {
     const res = await window.api.retryDownload(job.opts);
     const id = res.id;
     setJobs(j => {
-      const n = j.filter(x => x.id !== job.id);
+      const filtered = j.filter(x => x.id !== job.id);
+      if (filtered.some(x => x.id === id)) return filtered;
       const queued = !!res.queued;
-      return [
-        {
-          id,
-          url: job.url,
-          title: job.title,
-          percent: 0,
-          speed: '-',
-          eta: '-',
-          total: '',
-          status: queued ? 'queued' : 'downloading',
-          log: queued ? 'Sırada…' : 'Yeniden başlatıldı...',
-          opts: job.opts,
-        } as Job,
-        ...n,
-      ];
+      const newJob: Job = {
+        id,
+        url: job.url,
+        title: job.title,
+        percent: 0,
+        speed: '-',
+        eta: '-',
+        total: '',
+        status: queued ? 'queued' : 'downloading',
+        log: queued ? 'Sırada…' : 'Yeniden başlatıldı...',
+        opts: job.opts,
+      };
+      const n = [newJob, ...filtered];
+      window.api.saveQueue(n);
+      return n;
     });
   }, []);
 

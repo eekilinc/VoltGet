@@ -1,8 +1,8 @@
 export function normalizeToMasterPlaylist(url: string): string {
   if (!url || typeof url !== 'string') return url;
-  if (/molystream\.org\/embed\/([a-zA-Z0-9_-]+)($|\?)/i.test(url)) {
+  if (/(?:https?:\/\/)?molystream\.org\/embed\/([a-zA-Z0-9_-]+)($|\?)/i.test(url)) {
     return url.replace(
-      /molystream\.org\/embed\/([a-zA-Z0-9_-]+)($|\?)/i,
+      /(?:https?:\/\/)?molystream\.org\/embed\/([a-zA-Z0-9_-]+)($|\?)/i,
       'https://dbx.molystream.org/embed/$1/q/1'
     );
   }

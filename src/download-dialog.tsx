@@ -113,7 +113,7 @@ function extractCleanTitle(d: any): string {
 function DialogApp() {
   const [data, setData] = useState<any>(null);
   const [siteProfile, setSiteProfile] = useState<SiteProfile>('hls');
-  const [formats, setFormats] = useState<any[]>([]);
+  const [_formats, setFormats] = useState<any[]>([]);
   const [videoFormats, setVideoFormats] = useState<any[]>([]);
   const [availableHeights, setAvailableHeights] = useState<number[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -250,7 +250,11 @@ function DialogApp() {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        window.api?.closeDialog?.() || window.close();
+        if (window.api?.closeDialog) {
+          window.api.closeDialog();
+        } else {
+          window.close();
+        }
       } else if (
         e.key === 'Enter' &&
         !e.shiftKey &&
@@ -324,7 +328,11 @@ function DialogApp() {
       }
 
       setTimeout(() => {
-        window.api?.closeDialog?.() || window.close();
+        if (window.api?.closeDialog) {
+          window.api.closeDialog();
+        } else {
+          window.close();
+        }
       }, 300);
     } catch (err: any) {
       console.error('Download start error:', err);

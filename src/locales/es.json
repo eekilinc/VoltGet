@@ -48,6 +48,7 @@
   "openFolder": "Abrir carpeta",
   "browse": "Examinar...",
   "selectFolder": "Seleccionar carpeta",
+  "resetToDefault": "Restablecer a predeterminado",
   "close": "Cerrar",
   "cancel": "Cancelar",
   "retry": "Reintentar",

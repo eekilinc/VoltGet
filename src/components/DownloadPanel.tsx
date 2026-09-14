@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAppSettings } from '../context/AppSettingsContext';
 import { useToast } from '../context/ToastContext';
 
@@ -42,6 +42,8 @@ export default function DownloadPanel({
   const [isDragOver, setIsDragOver] = useState(false);
   const [speedLimitKB, setSpeedLimitKB] = useState(0);
   const [batchAdding, setBatchAdding] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const startingRef = useRef(false);
 
   async function analyze(targetUrl?: string) {
     const u = (targetUrl || url).trim();
@@ -66,17 +68,26 @@ export default function DownloadPanel({
   }
 
   async function start() {
-    if (!url) return;
-    const chosenFormat = info?.formats.find(f => f.id === selected);
-    await onStartDownload({
-      url,
-      formatId: asAudio ? undefined : selected,
-      outDir,
-      asAudio,
-      isAudioOnly: chosenFormat?.isAudioOnly,
-      title: info?.title,
-      speedLimitKB: speedLimitKB > 0 ? speedLimitKB : undefined,
-    });
+    if (!url || startingRef.current) return;
+    startingRef.current = true;
+    setStarting(true);
+    try {
+      const chosenFormat = info?.formats.find(f => f.id === selected);
+      await onStartDownload({
+        url,
+        formatId: asAudio ? undefined : selected,
+        outDir,
+        asAudio,
+        isAudioOnly: chosenFormat?.isAudioOnly,
+        title: info?.title,
+        speedLimitKB: speedLimitKB > 0 ? speedLimitKB : undefined,
+      });
+    } finally {
+      setTimeout(() => {
+        startingRef.current = false;
+        setStarting(false);
+      }, 1000);
+    }
   }
 
   async function handlePasteFromClipboard() {
@@ -139,7 +150,7 @@ export default function DownloadPanel({
           await onStartDownload({ url: link, outDir, asAudio });
         }
         addedCount++;
-      } catch (e) {}
+      } catch {}
     }
     setBatchAdding(false);
     toast.success(`${addedCount} adet indirme kuyruğa başarıyla eklendi!`, 'Toplu İndirme');
@@ -426,7 +437,7 @@ export default function DownloadPanel({
 
           <button
             onClick={start}
-            disabled={!url}
+            disabled={!url || starting}
             className="brand-gradient"
             style={{
               marginTop: 12,

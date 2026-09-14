@@ -144,8 +144,7 @@ describe('playlist utilities', () => {
   it('normalizeToMasterPlaylist handles molystream embed', () => {
     const url = 'https://molystream.org/embed/abc123';
     const result = normalizeToMasterPlaylist(url);
-    // Function currently produces double https:// due to regex replacement
-    expect(result).toBe('https://https://dbx.molystream.org/embed/abc123/q/1');
+    expect(result).toBe('https://dbx.molystream.org/embed/abc123/q/1');
   });
 
   it('isMasterPlaylistUrl detects master playlists', () => {

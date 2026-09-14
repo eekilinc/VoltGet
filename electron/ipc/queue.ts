@@ -1,5 +1,23 @@
 import { ipcMain, dialog } from 'electron';
 import fs from 'fs';
+import path from 'path';
+
+function cleanTempForJob(id: string, opts?: any) {
+  try {
+    if (opts?.outDir) {
+      const tempDir = path.join(opts.outDir, `.tmp_${id}`);
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    }
+    if (opts?.outPath) {
+      const tempPart = opts.outPath + '.part';
+      if (fs.existsSync(tempPart)) {
+        fs.unlinkSync(tempPart);
+      }
+    }
+  } catch {}
+}
 
 export interface QueueIpcDeps {
   activeDownloads: Map<string, any>;
@@ -35,18 +53,25 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
   ipcMain.handle('cancel-download', async (_e, id: string) => {
     const idx = deps.pendingQueue.findIndex(q => q.id === id);
     if (idx !== -1) {
-      deps.pendingQueue.splice(idx, 1);
+      const [removed] = deps.pendingQueue.splice(idx, 1);
       deps.pausedDownloads.delete(id);
-      try { deps.cancelScheduledRetry?.(id); } catch {}
+      try {
+        deps.cancelScheduledRetry?.(id);
+      } catch {}
+      cleanTempForJob(id, removed?.opts);
       deps.send('download-canceled', { id });
       return true;
     }
     const p = deps.activeDownloads.get(id);
     if (p) {
+      const opts = deps.activeOpts.get(id);
       try {
         p.kill();
       } catch {}
-      try { deps.cancelScheduledRetry?.(id); } catch {}
+      try {
+        deps.cancelScheduledRetry?.(id);
+      } catch {}
+      cleanTempForJob(id, opts);
       deps.activeDownloads.delete(id);
       deps.activeOpts.delete(id);
       deps.pausedDownloads.delete(id);
@@ -56,7 +81,9 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
       deps.processPending();
       return true;
     }
+    const pausedOpts = deps.pausedDownloads.get(id);
     if (deps.pausedDownloads.delete(id)) {
+      cleanTempForJob(id, pausedOpts);
       deps.send('download-canceled', { id });
       return true;
     }
@@ -76,7 +103,9 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
       const opts = deps.activeOpts.get(id);
       if (opts) deps.pausedDownloads.set(id, opts);
       deps.pausingIds.add(id);
-      try { deps.cancelScheduledRetry?.(id); } catch {}
+      try {
+        deps.cancelScheduledRetry?.(id);
+      } catch {}
       if (typeof p.pause === 'function') p.pause();
       else if (typeof p.kill === 'function') p.kill();
       deps.activeDownloads.delete(id);
@@ -193,7 +222,10 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
       filePath: j?.filePath || '',
       fileName: j?.fileName || '',
     }));
-    fs.writeFileSync(r.filePath, JSON.stringify({ app: 'VoltGet', version: 1, jobs: clean }, null, 2));
+    fs.writeFileSync(
+      r.filePath,
+      JSON.stringify({ app: 'VoltGet', version: 1, jobs: clean }, null, 2)
+    );
     return { canceled: false, filePath: r.filePath, count: clean.length };
   });
 
