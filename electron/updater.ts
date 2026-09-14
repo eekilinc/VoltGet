@@ -3,9 +3,9 @@ const { autoUpdater } = require('electron-updater');
 import log from './log/logger.js';
 
 export interface UpdaterEvents {
-  onAvailable?: (info: any) => void;
-  onDownloaded?: (info: any) => void;
-  onNotAvailable?: (info: any) => void;
+  onAvailable?: (info: unknown) => void;
+  onDownloaded?: (info: unknown) => void;
+  onNotAvailable?: (info: unknown) => void;
   onError?: (message: string) => void;
 }
 
@@ -16,24 +16,24 @@ export function setupAutoUpdater(events: UpdaterEvents): void {
   wired = true;
   try {
     autoUpdater.autoDownload = true;
-    autoUpdater.on('update-available', info => {
+    autoUpdater.on('update-available', (info: unknown) => {
       log.info('[VoltGet] update available', { version: (info as any)?.version });
       try {
         events.onAvailable?.(info);
       } catch {}
     });
-    autoUpdater.on('update-downloaded', info => {
+    autoUpdater.on('update-downloaded', (info: unknown) => {
       log.info('[VoltGet] update downloaded', { version: (info as any)?.version });
       try {
         events.onDownloaded?.(info);
       } catch {}
     });
-    autoUpdater.on('update-not-available', info => {
+    autoUpdater.on('update-not-available', (info: unknown) => {
       try {
         events.onNotAvailable?.(info);
       } catch {}
     });
-    autoUpdater.on('error', err => {
+    autoUpdater.on('error', (err: Error) => {
       log.warn('[VoltGet] update check failed', { message: String((err as any)?.message || err) });
       try {
         events.onError?.(String((err as any)?.message || err));
