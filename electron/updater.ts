@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { autoUpdater } from 'electron-updater';
+const { autoUpdater } = require('electron-updater');
 import log from './log/logger.js';
 
 export interface UpdaterEvents {
