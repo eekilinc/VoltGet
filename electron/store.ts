@@ -1,7 +1,8 @@
 import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
-import { ensureDir, getCategoryFromExt } from './utils/files.js';
+import { ensureDir } from './utils/files.js';
+import { categorizeFile } from './categories.js';
 
 export type AppConfig = {
   concurrent: number;
@@ -125,7 +126,7 @@ export interface DownloadHistoryItem {
   filePath: string;
   fileSize: number;
   date: number;
-  category: 'video' | 'audio' | 'document' | 'archive' | 'installer' | 'other';
+  category: string;
 }
 
 export function loadHistory(): DownloadHistoryItem[] {
@@ -149,7 +150,7 @@ export function addDownloadToHistory(
 ): DownloadHistoryItem {
   const list = loadHistory();
   const fileName = item.fileName || path.basename(item.filePath);
-  const category = item.category || getCategoryFromExt(path.extname(item.filePath));
+  const category = item.category || categorizeFile(path.extname(item.filePath));
   let fileSize = item.fileSize || 0;
   if (!fileSize && fs.existsSync(item.filePath)) {
     try {
@@ -217,7 +218,7 @@ export function syncHistoryFromQueue(): void {
             filePath: fp,
             fileSize: sz,
             date: Date.now(),
-            category: getCategoryFromExt(path.extname(fp)),
+            category: categorizeFile(path.extname(fp)),
           });
           changed = true;
         }

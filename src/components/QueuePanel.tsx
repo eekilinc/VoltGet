@@ -36,6 +36,7 @@ export default function QueuePanel({
   onRemoveJob,
   onDeleteJob,
   onClear,
+  onImportJobs,
   compact,
 }: {
   jobs: Job[];
@@ -51,6 +52,7 @@ export default function QueuePanel({
   onRemoveJob?: (id: string) => void;
   onDeleteJob?: (job: Job, deleteFromDisk: boolean) => void;
   onClear?: () => void;
+  onImportJobs?: (jobs: any[]) => void;
   compact?: boolean;
 }) {
   const { t } = useAppSettings();
@@ -259,6 +261,59 @@ export default function QueuePanel({
               <span>{t('clear')}</span>
             </button>
           )}
+        </div>
+
+        {/* Kuyruk Dışa/İçe Aktarma */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button
+            onClick={async () => {
+              try {
+                const r = await (window as any).api?.exportQueue?.(jobs);
+                if (r && !r.canceled) alert(t('queueExported') + `: ${r.count}`);
+              } catch (e: any) {
+                alert(String(e?.message || e));
+              }
+            }}
+            title={t('exportQueue')}
+            style={{
+              flex: 1,
+              background: 'var(--panel-2)',
+              color: 'var(--text)',
+              border: '1px solid var(--border)',
+              padding: '6px 8px',
+              borderRadius: 8,
+              fontSize: 11,
+              cursor: 'pointer',
+            }}
+          >
+            📤 {t('exportQueue')}
+          </button>
+          <button
+            onClick={async () => {
+              try {
+                const r = await (window as any).api?.importQueue?.();
+                if (r && !r.canceled && r.jobs?.length) {
+                  onImportJobs?.(r.jobs);
+                  alert(t('queueImported') + `: ${r.jobs.length}`);
+                }
+              } catch (e: any) {
+                alert(String(e?.message || e));
+              }
+            }}
+            title={t('importQueue')}
+            style={{
+              flex: 1,
+              background: 'var(--panel-2)',
+              color: 'var(--text)',
+              border: '1px solid var(--border)',
+              padding: '6px 8px',
+              borderRadius: 8,
+              fontSize: 11,
+              cursor: 'pointer',
+            }}
+          >
+            📥 {t('importQueue')}
+          </button>
         </div>
 
         {/* Anlık Arama Kutusu */}

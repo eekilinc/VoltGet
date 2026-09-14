@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron';
+import { ipcMain, dialog } from 'electron';
+import fs from 'fs';
 
 export interface QueueIpcDeps {
   activeDownloads: Map<string, any>;
@@ -8,12 +9,13 @@ export interface QueueIpcDeps {
   pausingIds: Set<string>;
   canStart: () => boolean;
   processPending: () => void;
-  doStartDownload: (id: string, opts: any) => void;
+  doStartDownload: (id: string, opts: any) => void | Promise<void>;
   runMultiPart: (id: string, opts: any, outDir: string, outPath: string, filename: string) => void;
   getSiteFolder: (base: string, url: string, filename?: string) => string;
   getDefaultDir: () => string;
   updatePowerSaveBlocker: () => void;
   send: (channel: string, data: any) => void;
+  cancelScheduledRetry?: (id: string) => void;
 }
 
 export function registerQueueIpc(deps: QueueIpcDeps) {
@@ -25,7 +27,7 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
       deps.send('switch-to-download-tab', {});
       return { id, queued: true, position: deps.pendingQueue.length };
     }
-    deps.doStartDownload(id, opts);
+    void Promise.resolve(deps.doStartDownload(id, opts)).catch(() => {});
     deps.send('switch-to-download-tab', {});
     return { id, outDir: deps.getSiteFolder(opts.outDir || deps.getDefaultDir(), opts.url) };
   });
@@ -35,6 +37,7 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
     if (idx !== -1) {
       deps.pendingQueue.splice(idx, 1);
       deps.pausedDownloads.delete(id);
+      try { deps.cancelScheduledRetry?.(id); } catch {}
       deps.send('download-canceled', { id });
       return true;
     }
@@ -43,6 +46,7 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
       try {
         p.kill();
       } catch {}
+      try { deps.cancelScheduledRetry?.(id); } catch {}
       deps.activeDownloads.delete(id);
       deps.activeOpts.delete(id);
       deps.pausedDownloads.delete(id);
@@ -72,6 +76,7 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
       const opts = deps.activeOpts.get(id);
       if (opts) deps.pausedDownloads.set(id, opts);
       deps.pausingIds.add(id);
+      try { deps.cancelScheduledRetry?.(id); } catch {}
       if (typeof p.pause === 'function') p.pause();
       else if (typeof p.kill === 'function') p.kill();
       deps.activeDownloads.delete(id);
@@ -100,7 +105,7 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
       deps.runMultiPart(id, opts, opts.outDir, opts.outPath, opts.filename);
       return { id, outPath: opts.outPath };
     }
-    deps.doStartDownload(id, opts);
+    void Promise.resolve(deps.doStartDownload(id, opts)).catch(() => {});
     return { id, outDir: deps.getSiteFolder(opts.outDir || deps.getDefaultDir(), opts.url) };
   });
 
@@ -128,7 +133,7 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
       deps.send('download-queued', { id, opts });
       return { id, queued: true };
     }
-    deps.doStartDownload(id, opts);
+    void Promise.resolve(deps.doStartDownload(id, opts)).catch(() => {});
     return { id, outDir: deps.getSiteFolder(opts.outDir || deps.getDefaultDir(), opts.url) };
   });
 
@@ -166,10 +171,52 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
         });
         deps.runMultiPart(id, opts, opts.outDir, opts.outPath, opts.filename);
       } else {
-        deps.doStartDownload(id, opts);
+        void Promise.resolve(deps.doStartDownload(id, opts)).catch(() => {});
       }
       started++;
     }
     return started;
+  });
+
+  ipcMain.handle('export-queue', async (_e, jobs: any[]) => {
+    const r = await dialog.showSaveDialog({
+      title: 'Kuyruğu Dışa Aktar',
+      defaultPath: `voltget-queue-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (r.canceled || !r.filePath) return { canceled: true };
+    const clean = (Array.isArray(jobs) ? jobs : []).map((j: any) => ({
+      url: j?.url || j?.opts?.url || '',
+      title: j?.title || '',
+      status: j?.status || 'paused',
+      opts: j?.opts || null,
+      filePath: j?.filePath || '',
+      fileName: j?.fileName || '',
+    }));
+    fs.writeFileSync(r.filePath, JSON.stringify({ app: 'VoltGet', version: 1, jobs: clean }, null, 2));
+    return { canceled: false, filePath: r.filePath, count: clean.length };
+  });
+
+  ipcMain.handle('import-queue', async () => {
+    const r = await dialog.showOpenDialog({
+      title: 'Kuyruğu İçe Aktar',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile'],
+    });
+    if (r.canceled || !r.filePaths[0]) return { canceled: true, jobs: [] };
+    try {
+      const raw = JSON.parse(fs.readFileSync(r.filePaths[0], 'utf-8'));
+      const arr = Array.isArray(raw) ? raw : raw.jobs || [];
+      const jobs = arr
+        .filter((j: any) => j && (j.opts || j.url))
+        .map((j: any) => ({
+          url: j.url || j.opts?.url || '',
+          title: (j.title || j.opts?.title || j.url || 'İndirme').slice(0, 70),
+          opts: j.opts || { url: j.url },
+        }));
+      return { canceled: false, jobs };
+    } catch (e: any) {
+      throw new Error('Kuyruk dosyası okunamadı: ' + String(e?.message || e));
+    }
   });
 }

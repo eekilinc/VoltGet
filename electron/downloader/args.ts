@@ -6,6 +6,10 @@ export interface YtDlpArgsInput {
   cookie?: string;
   speedLimitKB: number;
   isYouTube: boolean;
+  username?: string;
+  password?: string;
+  cookiesFromBrowser?: string;
+  fragments?: number;
 }
 
 export function extractHdFilmEmbedId(
@@ -34,10 +38,21 @@ export function buildYtDlpArgs(input: YtDlpArgsInput): {
   isHls: boolean;
   embedId: string;
 } {
-  const { finalUrl, pageUrl, cookie, speedLimitKB, isYouTube } = input;
+  const {
+    finalUrl,
+    pageUrl,
+    cookie,
+    speedLimitKB,
+    isYouTube,
+    username,
+    password,
+    cookiesFromBrowser,
+    fragments,
+  } = input;
   const isHls = isHlsUrl(finalUrl);
   const isVideoPlatform = isVideoPlatformUrl(finalUrl, pageUrl);
   const { embedId, isHdFilm } = extractHdFilmEmbedId(finalUrl, pageUrl);
+  const fragCount = Math.min(32, Math.max(1, fragments ?? 16));
   const args: string[] = [
     '--js-runtimes',
     'node',
@@ -45,9 +60,14 @@ export function buildYtDlpArgs(input: YtDlpArgsInput): {
     'ejs:github',
     '--no-warnings',
     '--concurrent-fragments',
-    '16',
+    String(fragCount),
   ];
   if (speedLimitKB > 0) args.push('--limit-rate', `${speedLimitKB}K`);
+  if (username) args.push('--username', username);
+  if (password) args.push('--password', password);
+  if (cookiesFromBrowser && cookiesFromBrowser !== 'none') {
+    args.push('--cookies-from-browser', cookiesFromBrowser);
+  }
 
   if (isHls) {
     args.push(

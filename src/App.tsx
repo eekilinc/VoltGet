@@ -7,6 +7,8 @@ import SettingsPanel from './components/SettingsPanel';
 import AboutPanel from './components/AboutPanel';
 import ExtensionInstallModal from './components/ExtensionInstallModal';
 import VoltLogo from './components/VoltLogo';
+import FileConflictDialog from './components/FileConflictDialog';
+import { formatBytes } from './utils/speed';
 import { useAppSettings } from './context/AppSettingsContext';
 import { useJobs, type Job } from './hooks/useJobs';
 import { useAppBootstrap } from './hooks/useAppBootstrap';
@@ -26,6 +28,8 @@ export default function App() {
   );
   const [downloadModal, setDownloadModal] = useState<any>(null);
   const [isExtModalOpen, setIsExtModalOpen] = useState(false);
+  const [conflictInfo, setConflictInfo] = useState<any>(null);
+  const [completedInfo, setCompletedInfo] = useState<any>(null);
   const hasApi = typeof window !== 'undefined' && !!(window as any).api;
   const {
     jobs,
@@ -60,6 +64,19 @@ export default function App() {
     window.api.onSwitchToSniffTab?.(() => setTab('sniff'));
     window.api.onSwitchToDownloadTab?.(() => setTab('download'));
     window.api.onSwitchToSettingsTab?.(() => setTab('settings'));
+    window.api.onFileConflict?.((d: any) => {
+      if (d?.conflictId) setConflictInfo(d);
+    });
+    window.api.onDone?.((d: any) => {
+      if (d?.code === 0 && d?.filePath) {
+        window.api
+          ?.getConfig?.()
+          .then((c: any) => {
+            if (c?.completionDialog !== false) setCompletedInfo(d);
+          })
+          .catch(() => setCompletedInfo(d));
+      }
+    });
     return () => window.api?.removeAll?.();
   }, [hasApi]);
 
@@ -706,6 +723,31 @@ export default function App() {
         onShowInFolder={filePath => window.api.showInFolder(filePath)}
         onRemoveJob={handleRemoveJob}
         onDeleteJob={handleDeleteJob}
+        onImportJobs={imported => {
+          const stamp = Date.now().toString(36);
+          setJobs(j => {
+            const existing = new Set(j.map(x => x.url));
+            const fresh = (imported || [])
+              .filter((x: any) => x?.url && !existing.has(x.url))
+              .map((x: any, i: number) => ({
+                id: `${stamp}${i}`,
+                url: x.url,
+                title: (x.title || x.url).slice(0, 70),
+                percent: 0,
+                speed: '-',
+                eta: '-',
+                total: '',
+                status: 'paused' as const,
+                log: 'İçe aktarıldı',
+                opts: x.opts,
+              }));
+            const n = [...fresh, ...j];
+            try {
+              window.api?.saveQueue?.(n);
+            } catch {}
+            return n;
+          });
+        }}
         onClear={() =>
           setJobs(j => {
             const n = j.filter(
@@ -1054,6 +1096,146 @@ export default function App() {
             >
               {t('inspectBtn')}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Dosya Çakışma Diyaloğu */}
+      {conflictInfo && (
+        <FileConflictDialog
+          info={conflictInfo}
+          onResolve={(decision: string, remember: boolean) => {
+            try {
+              window.api?.resolveFileConflict?.({
+                conflictId: conflictInfo.conflictId,
+                decision,
+                remember,
+              })?.catch?.(() => {});
+            } catch {}
+            setConflictInfo(null);
+          }}
+        />
+      )}
+
+      {/* İndirme Tamamlandı Diyaloğu */}
+      {completedInfo && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 999999,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--panel)',
+              border: '1px solid var(--accent-solid)',
+              borderRadius: 16,
+              width: 420,
+              maxWidth: '92vw',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                background: 'var(--panel-2)',
+                padding: '14px 18px',
+                borderBottom: '1px solid var(--border)',
+                fontWeight: 900,
+                fontSize: 14,
+                color: '#22c55e',
+              }}
+            >
+              ✓ {t('downloadDoneTitle')}
+            </div>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, wordBreak: 'break-all' }}>
+                {completedInfo.fileName || completedInfo.title}
+              </div>
+              {completedInfo.size > 0 && (
+                <div className="text-muted" style={{ fontSize: 11 }}>
+                  {formatBytes(completedInfo.size)}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => {
+                    if (completedInfo.filePath) window.api?.openFile?.(completedInfo.filePath);
+                    setCompletedInfo(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '9px 8px',
+                    borderRadius: 10,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    border: 0,
+                    background: 'var(--accent-solid)',
+                    color: '#fff',
+                  }}
+                >
+                  ⚡ {t('openFile')}
+                </button>
+                <button
+                  onClick={() => {
+                    if (completedInfo.filePath) window.api?.showInFolder?.(completedInfo.filePath);
+                    setCompletedInfo(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '9px 8px',
+                    borderRadius: 10,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    border: '1px solid var(--border)',
+                    background: 'var(--panel-2)',
+                    color: 'var(--text)',
+                  }}
+                >
+                  📁 {t('showInFolder')}
+                </button>
+                <button
+                  onClick={() => setCompletedInfo(null)}
+                  style={{
+                    padding: '9px 12px',
+                    borderRadius: 10,
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    border: '1px solid var(--border)',
+                    background: 'transparent',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: 12,
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  onChange={e => {
+                    if (e.target.checked) window.api?.setConfig?.({ completionDialog: false });
+                  }}
+                />
+                {t('dontShowAgain')}
+              </label>
+            </div>
           </div>
         </div>
       )}

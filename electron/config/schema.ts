@@ -25,6 +25,73 @@ export const AppConfigSchema = z.object({
   soundNotification: z.boolean().default(true),
   postDownloadAction: z.enum(['none', 'shutdown', 'sleep', 'quit']).default('none'),
   customOutDir: z.string().optional().default(''),
+  // 1. Dosya çakışma politikası
+  fileConflictAction: z.enum(['ask', 'resume', 'overwrite', 'rename', 'skip']).default('rename'),
+  rememberConflictChoice: z.boolean().default(false),
+  // 2. Bitirme diyaloğu
+  completionDialog: z.boolean().default(true),
+  // 3. Otomatik yeniden deneme
+  autoRetryEnabled: z.boolean().default(true),
+  maxAutoRetries: z.number().int().min(0).max(10).default(3),
+  retryBaseDelaySec: z.number().int().min(1).max(300).default(5),
+  // 6. Zamanlayıcı
+  scheduler: z
+    .object({
+      enabled: z.boolean().default(false),
+      startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default('02:00'),
+      stopTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default('07:00'),
+      days: z.array(z.number().int().min(0).max(6)).default([0, 1, 2, 3, 4, 5, 6]),
+    })
+    .default({ enabled: false, startTime: '02:00', stopTime: '07:00', days: [0, 1, 2, 3, 4, 5, 6] }),
+  // 7. Proxy
+  proxy: z
+    .object({
+      mode: z.enum(['system', 'none', 'manual', 'pac']).default('system'),
+      host: z.string().default(''),
+      port: z.number().int().min(1).max(65535).default(8080),
+      username: z.string().default(''),
+      password: z.string().default(''),
+      pacUrl: z.string().default(''),
+      bypass: z.string().default('localhost,127.0.0.1'),
+    })
+    .default({
+      mode: 'system',
+      host: '',
+      port: 8080,
+      username: '',
+      password: '',
+      pacUrl: '',
+      bypass: 'localhost,127.0.0.1',
+    }),
+  // 8. Site girişleri
+  siteLogins: z
+    .array(
+      z.object({
+        id: z.string(),
+        host: z.string(),
+        username: z.string(),
+        password: z.string(),
+      })
+    )
+    .default([]),
+  cookiesFromBrowser: z.enum(['none', 'chrome', 'edge', 'firefox', 'brave', 'opera']).default('none'),
+  // 9. Bağlantı ayarları
+  partsCount: z.number().int().min(1).max(16).default(8),
+  ytDlpFragments: z.number().int().min(1).max(32).default(16),
+  requestTimeoutMs: z.number().int().min(5000).max(300000).default(30000),
+  // 10. Virüs taraması
+  virusScanEnabled: z.boolean().default(false),
+  // 12. Özel kategoriler
+  customCategories: z
+    .array(
+      z.object({
+        name: z.string(),
+        extensions: z.array(z.string()),
+      })
+    )
+    .default([]),
+  // 13. Otomatik güncelleme
+  appAutoUpdate: z.boolean().default(true),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

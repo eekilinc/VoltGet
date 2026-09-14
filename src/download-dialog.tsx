@@ -123,6 +123,7 @@ function DialogApp() {
   const [isAudioMode, setIsAudioMode] = useState<boolean>(false);
   const [customTitle, setCustomTitle] = useState<string>('');
   const [starting, setStarting] = useState<boolean>(false);
+  const [speedLimitKB, setSpeedLimitKB] = useState<number>(0);
 
   // Gelen veriyi işle ve site profiline göre analiz başlat
   const applyData = (d: any) => {
@@ -297,6 +298,7 @@ function DialogApp() {
         cookie,
         asAudio: isAudioMode,
         formatId: formatToUse,
+        speedLimitKB: speedLimitKB > 0 ? speedLimitKB : undefined,
       };
 
       if (action === 'queue') {
@@ -307,7 +309,13 @@ function DialogApp() {
         }
       } else {
         if (siteProfile === 'file') {
-          await window.api.httpDownload({ url: rawUrl, outDir, filename: finalTitle, cookie });
+          await window.api.httpDownload({
+            url: rawUrl,
+            outDir,
+            filename: finalTitle,
+            cookie,
+            speedLimitKB: speedLimitKB > 0 ? speedLimitKB : undefined,
+          });
         } else {
           await window.api.startDownload(downloadOpts);
         }
@@ -667,6 +675,30 @@ function DialogApp() {
           >
             {profileMeta.ext}
           </span>
+        </div>
+        <div
+          style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}
+          title="Bu indirme için hız limiti (KB/sn, 0 = genel ayar)"
+        >
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>🚦</span>
+          <input
+            type="number"
+            min={0}
+            value={speedLimitKB}
+            onChange={e => setSpeedLimitKB(Math.max(0, parseInt(e.target.value) || 0))}
+            placeholder="0"
+            style={{
+              width: 90,
+              background: 'rgba(15, 23, 42, 0.85)',
+              border: '1px solid rgba(59, 130, 246, 0.5)',
+              borderRadius: 8,
+              color: '#f8fafc',
+              fontSize: 12,
+              padding: '6px 8px',
+              outline: 'none',
+            }}
+          />
+          <span style={{ fontSize: 10, color: '#64748b' }}>KB/sn (0 = genel)</span>
         </div>
       </div>
 

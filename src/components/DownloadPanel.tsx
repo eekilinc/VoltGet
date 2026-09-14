@@ -40,6 +40,7 @@ export default function DownloadPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
+  const [speedLimitKB, setSpeedLimitKB] = useState(0);
   const [batchAdding, setBatchAdding] = useState(false);
 
   async function analyze(targetUrl?: string) {
@@ -74,6 +75,7 @@ export default function DownloadPanel({
       asAudio,
       isAudioOnly: chosenFormat?.isAudioOnly,
       title: info?.title,
+      speedLimitKB: speedLimitKB > 0 ? speedLimitKB : undefined,
     });
   }
 
@@ -373,6 +375,35 @@ export default function DownloadPanel({
                 onChange={e => setAsAudio(e.target.checked)}
               />{' '}
               🎵 {t('mp3')}
+            </label>
+            <label
+              title={t('perDownloadLimit')}
+              style={{
+                display: 'flex',
+                gap: 6,
+                alignItems: 'center',
+                background: 'var(--panel-2)',
+                border: '1px solid var(--border)',
+                padding: '8px 10px',
+                borderRadius: 10,
+                fontSize: 12,
+              }}
+            >
+              🚦
+              <input
+                type="number"
+                min={0}
+                value={speedLimitKB}
+                onChange={e => setSpeedLimitKB(Math.max(0, parseInt(e.target.value) || 0))}
+                placeholder="0"
+                style={{
+                  width: 64,
+                  background: 'transparent',
+                  border: 0,
+                  color: 'var(--text)',
+                  outline: 'none',
+                }}
+              />
             </label>
           </div>
 

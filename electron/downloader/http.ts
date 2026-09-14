@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import http from 'http';
 import https from 'https';
+import { scheduleRetry, resetRetryAttempts, type RetryPolicy } from './retry.js';
 
 export interface HttpDownloadController {
   pause: () => void;
@@ -28,6 +29,12 @@ export interface HttpDownloadDeps {
   ensureDir: (dir: string) => void;
   send: (channel: string, data: any) => void;
   notify: (title: string, body: string) => void;
+  getPartsCount?: () => number;
+  getRetryPolicy?: () => RetryPolicy;
+  getProxyAgent?: () => any;
+  getRequestTimeoutMs?: () => number;
+  onFileCompleted?: (id: string, filePath: string) => void;
+  resolveConflictPath?: (outPath: string) => Promise<{ proceed: boolean; finalPath: string }>;
 }
 
 const UA =
@@ -42,7 +49,7 @@ export async function runMultiPartHttpDownload(
   filename: string
 ): Promise<void> {
   const protocol = opts.url.startsWith('https') ? https : http;
-  const partsCount = 8;
+  const partsCount = Math.min(16, Math.max(1, deps.getPartsCount?.() ?? 8));
   const tempDir = path.join(outDir, `.tmp_${id}`);
   deps.ensureDir(tempDir);
 
@@ -80,11 +87,38 @@ export async function runMultiPartHttpDownload(
   });
   deps.activeOpts.set(id, { ...opts, isHttp: true, outDir, outPath, filename });
 
+  if (deps.resolveConflictPath) {
+    try {
+      const r = await deps.resolveConflictPath(outPath);
+      if (!r.proceed) {
+        deps.activeDownloads.delete(id);
+        deps.activeOpts.delete(id);
+        deps.updatePowerSaveBlocker();
+        deps.send('download-canceled', { id });
+        deps.processPending();
+        return;
+      }
+      if (r.finalPath !== outPath) {
+        outPath = r.finalPath;
+        filename = path.basename(r.finalPath);
+        deps.activeOpts.set(id, { ...opts, isHttp: true, outDir, outPath, filename });
+      }
+    } catch {}
+  }
+
   const getHeaders = (rangeHeader?: string) => ({
     'User-Agent': UA,
     ...(opts.cookie ? { Cookie: opts.cookie } : {}),
     ...(rangeHeader ? { Range: rangeHeader } : {}),
   });
+
+  const proxyAgent = (() => {
+    try {
+      return deps.getProxyAgent?.();
+    } catch {
+      return undefined;
+    }
+  })();
 
   try {
     const headRes = await new Promise<{ totalSize: number; acceptRanges: boolean }>(
@@ -97,6 +131,7 @@ export async function runMultiPartHttpDownload(
             port: parsedUrl.port,
             path: parsedUrl.pathname + parsedUrl.search,
             headers: getHeaders(),
+            ...(proxyAgent ? { agent: proxyAgent } : {}),
           },
           res => {
             const totalSize = parseInt(res.headers['content-length'] || '0');
@@ -107,6 +142,12 @@ export async function runMultiPartHttpDownload(
         );
         headReq = req;
         req.on('error', reject);
+        const headTimeout = deps.getRequestTimeoutMs?.() ?? 30000;
+        req.setTimeout(headTimeout, () => {
+          try {
+            req.destroy(new Error('HEAD isteği zaman aşımına uğradı'));
+          } catch {}
+        });
         req.end();
       }
     );
@@ -128,7 +169,7 @@ export async function runMultiPartHttpDownload(
     const partSize = Math.floor(totalSize / partsCount);
     const partProgress: number[] = new Array(partsCount).fill(0);
     const startTime = Date.now();
-    const speedLimitKB = deps.getSpeedLimitKB();
+    const limitOf = () => opts.speedLimitKB || deps.getSpeedLimitKB();
 
     const downloadPart = (index: number, start: number, end: number) => {
       return new Promise<void>((resolve, reject) => {
@@ -154,6 +195,7 @@ export async function runMultiPartHttpDownload(
             port: parsedUrl.port,
             path: parsedUrl.pathname + parsedUrl.search,
             headers: getHeaders(`bytes=${actualStart}-${end}`),
+            ...(proxyAgent ? { agent: proxyAgent } : {}),
           },
           res => {
             if (res.statusCode !== 206 && res.statusCode !== 200) {
@@ -172,7 +214,7 @@ export async function runMultiPartHttpDownload(
               const percent = totalSize > 0 ? (currentTotal / totalSize) * 100 : 0;
               const elapsedTime = Math.max(0.1, (Date.now() - startTime) / 1000);
               const currentSpeedKBps = currentTotal / 1024 / elapsedTime;
-              const limit = deps.getSpeedLimitKB();
+              const limit = limitOf();
               if (limit > 0 && currentSpeedKBps > limit) {
                 const delay = currentTotal / 1024 / limit - elapsedTime;
                 if (delay > 0) {
@@ -208,6 +250,12 @@ export async function runMultiPartHttpDownload(
           fileStream.close();
           if (isAborted) resolve();
           else reject(err);
+        });
+        const partTimeout = deps.getRequestTimeoutMs?.() ?? 30000;
+        req.setTimeout(partTimeout, () => {
+          try {
+            req.destroy(new Error('Parça isteği zaman aşımına uğradı'));
+          } catch {}
         });
         activeReqs.push(req);
       });
@@ -257,6 +305,10 @@ export async function runMultiPartHttpDownload(
     deps.activeDownloads.delete(id);
     deps.activeOpts.delete(id);
     deps.updatePowerSaveBlocker();
+    resetRetryAttempts(id);
+    try {
+      deps.onFileCompleted?.(id, outPath);
+    } catch {}
 
     let statSize = 0;
     try {
@@ -280,10 +332,9 @@ export async function runMultiPartHttpDownload(
       size: statSize,
     });
     try {
-      deps.notify('VoltGet: İndirme bitti (8 Parça)', filename.slice(0, 50));
+      deps.notify(`VoltGet: İndirme bitti (${partsCount} Parça)`, filename.slice(0, 50));
     } catch {}
     deps.processPending();
-    void speedLimitKB;
   } catch (err: any) {
     if (deps.pausingIds.has(id)) {
       deps.pausingIds.delete(id);
@@ -298,18 +349,82 @@ export async function runMultiPartHttpDownload(
   }
 }
 
-export function runHttpDownload(
+export async function runHttpDownload(
   deps: HttpDownloadDeps,
   id: string,
   opts: any,
   outDir: string,
   outPath: string,
   filename: string
-): void {
+): Promise<void> {
+  if (deps.resolveConflictPath) {
+    try {
+      const r = await deps.resolveConflictPath(outPath);
+      if (!r.proceed) {
+        deps.activeDownloads.delete(id);
+        deps.activeOpts.delete(id);
+        deps.updatePowerSaveBlocker();
+        deps.send('download-canceled', { id });
+        deps.processPending();
+        return;
+      }
+      if (r.finalPath !== outPath) {
+        outPath = r.finalPath;
+        filename = path.basename(r.finalPath);
+      }
+    } catch {}
+  }
   const tempOutPath = outPath + '.part';
-  const file = fs.createWriteStream(tempOutPath);
+  // Kaldığı yerden devam: yarım .part varsa boyutunu öğrenip Range iste
+  let resumeFrom = 0;
+  try {
+    if (fs.existsSync(tempOutPath)) resumeFrom = fs.statSync(tempOutPath).size;
+  } catch {}
+  const file = fs.createWriteStream(tempOutPath, { flags: resumeFrom > 0 ? 'a' : 'w' });
   const protocol = opts.url.startsWith('https') ? https : http;
   const startTime = Date.now();
+  const limitOf = () => opts.speedLimitKB || deps.getSpeedLimitKB();
+  const failSingle = (errorMsg: string, retryable: boolean): boolean => {
+    // true dönerse hata olarak işlendi (retry planlanmadı)
+    if (deps.pausingIds.has(id)) {
+      deps.pausingIds.delete(id);
+      deps.activeDownloads.delete(id);
+      deps.activeOpts.delete(id);
+      deps.updatePowerSaveBlocker();
+      deps.processPending();
+      return true;
+    }
+    if (retryable) {
+      const policy = deps.getRetryPolicy?.();
+      if (policy) {
+        const scheduled = scheduleRetry(
+          id,
+          policy,
+          () => {
+            runHttpDownload(deps, id, opts, outDir, outPath, filename);
+          },
+          (attempt, max, delayMs) => {
+            deps.send('download-log', {
+              id,
+              text: `🔄 Otomatik yeniden deneme ${attempt}/${max}: ${Math.round(delayMs / 1000)} sn sonra...`,
+            });
+          }
+        );
+        if (scheduled) {
+          deps.updatePowerSaveBlocker();
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+  const singleProxyAgent = (() => {
+    try {
+      return deps.getProxyAgent?.();
+    } catch {
+      return undefined;
+    }
+  })();
   const req = protocol
     .get(
       opts.url,
@@ -317,7 +432,9 @@ export function runHttpDownload(
         headers: {
           'User-Agent': UA,
           ...(opts.cookie ? { Cookie: opts.cookie } : {}),
+          ...(resumeFrom > 0 ? { Range: `bytes=${resumeFrom}-` } : {}),
         },
+        ...(singleProxyAgent ? { agent: singleProxyAgent } : {}),
       },
       (res: any) => {
         if (
@@ -333,8 +450,20 @@ export function runHttpDownload(
           return;
         }
         if (res.statusCode >= 400) {
+          const retryable = res.statusCode === 429 || res.statusCode >= 500;
           file.destroy();
-          fs.unlink(tempOutPath, () => {});
+          if (!retryable) {
+            try {
+              fs.unlinkSync(tempOutPath);
+            } catch {}
+          }
+          const handled = failSingle(`HTTP ${res.statusCode}: ${res.statusMessage}`, retryable);
+          if (!handled) return;
+          if (retryable) {
+            try {
+              fs.unlinkSync(tempOutPath);
+            } catch {}
+          }
           deps.activeDownloads.delete(id);
           deps.activeOpts.delete(id);
           deps.updatePowerSaveBlocker();
@@ -345,10 +474,24 @@ export function runHttpDownload(
           deps.processPending();
           return;
         }
-        const totalSize = parseInt(res.headers['content-length'] || '0');
-        let downloadedSize = 0;
+        const totalSize = parseInt(res.headers['content-length'] || '0') + resumeFrom;
+        let downloadedSize = resumeFrom;
         res.on('data', (chunk: Buffer) => {
           downloadedSize += chunk.length;
+          const elapsed = Math.max(0.1, (Date.now() - startTime) / 1000);
+          const curKBps = downloadedSize / 1024 / elapsed;
+          const limit = limitOf();
+          if (limit > 0 && curKBps > limit) {
+            const delay = downloadedSize / 1024 / limit - elapsed;
+            if (delay > 0) {
+              res.pause();
+              setTimeout(() => {
+                try {
+                  res.resume();
+                } catch {}
+              }, delay * 1000);
+            }
+          }
           const percent = totalSize > 0 ? (downloadedSize / totalSize) * 100 : 0;
           const speed =
             (downloadedSize / 1024 / 1024 / Math.max(0.1, (Date.now() - startTime) / 1000)).toFixed(
@@ -368,7 +511,11 @@ export function runHttpDownload(
     )
     .on('error', (e: any) => {
       file.destroy();
-      fs.unlink(tempOutPath, () => {});
+      const handled = failSingle(String(e), true);
+      if (!handled) return;
+      try {
+        fs.unlinkSync(tempOutPath);
+      } catch {}
       deps.activeDownloads.delete(id);
       deps.activeOpts.delete(id);
       deps.updatePowerSaveBlocker();
@@ -412,6 +559,10 @@ export function runHttpDownload(
       deps.processPending();
       return;
     }
+    resetRetryAttempts(id);
+    try {
+      deps.onFileCompleted?.(id, outPath);
+    } catch {}
     let statSize = 0;
     try {
       if (fs.existsSync(outPath)) statSize = fs.statSync(outPath).size;

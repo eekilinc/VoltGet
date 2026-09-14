@@ -124,6 +124,18 @@ import {
   parseInfo as parseInfoMod,
 } from './analyze.js';
 import { createClipboardWatcher, isStartHidden } from './lifecycle.js';
+import { createConflictManager } from './conflicts.js';
+import { categorizeFile } from './categories.js';
+import { setupAutoUpdater, checkForUpdates, quitAndInstallUpdate } from './updater.js';
+import { applyProxyEnv, applySessionProxy, getProxyAgent } from './proxy.js';
+import { maybeVirusScan } from './virusscan.js';
+import { createScheduler } from './scheduler.js';
+import {
+  resetRetryAttempts,
+  cancelScheduledRetry,
+  scheduleRetry,
+  getRetryPolicyFrom,
+} from './downloader/retry.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -166,6 +178,58 @@ const activeOpts = new Map<string, any>();
 const pendingQueue: Array<{ id: string; opts: any }> = [];
 const pausedDownloads = new Map<string, any>();
 const pausingIds = new Set<string>();
+
+const scheduler = createScheduler({
+  startQueue: () => {
+    try {
+      const ids = [...pausedDownloads.keys()];
+      for (const pid of ids) {
+        if (activeDownloads.size >= appConfig.concurrent) break;
+        const popts = pausedDownloads.get(pid);
+        if (!popts) continue;
+        pausedDownloads.delete(pid);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('download-started', {
+            id: pid,
+            opts: { ...popts, title: popts.filename || popts.title },
+            outDir: popts.outDir,
+          });
+        }
+        if (popts.isHttp) {
+          void runMultiPartHttpDownload(pid, popts, popts.outDir, popts.outPath, popts.filename);
+        } else {
+          void doStartDownload(pid, popts).catch(e =>
+            log.error('[VoltGet] scheduler start failed', { error: String(e) })
+          );
+        }
+      }
+      processPending();
+      new Notification({ title: 'VoltGet Zamanlayıcı', body: 'Kuyruk başlatıldı' }).show();
+    } catch {}
+  },
+  stopQueue: () => {
+    try {
+      for (const [sid, proc] of activeDownloads.entries()) {
+        const sopts = activeOpts.get(sid);
+        if (sopts) pausedDownloads.set(sid, sopts);
+        pausingIds.add(sid);
+        try {
+          if (typeof proc.pause === 'function') proc.pause();
+          else proc.kill();
+        } catch {}
+        activeDownloads.delete(sid);
+        activeOpts.delete(sid);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('download-paused', { id: sid });
+        }
+      }
+      updatePowerSaveBlocker();
+      processPending();
+      new Notification({ title: 'VoltGet Zamanlayıcı', body: 'Kuyruk durduruldu' }).show();
+    } catch {}
+  },
+  log: text => log.info(text),
+});
 
 function isValidExecutable(p: string): boolean {
   return isValidExeUtil(p);
@@ -218,6 +282,30 @@ type AppConfig = {
   soundNotification?: boolean;
   postDownloadAction?: 'none' | 'shutdown' | 'sleep' | 'quit';
   customOutDir?: string;
+  fileConflictAction?: 'ask' | 'resume' | 'overwrite' | 'rename' | 'skip';
+  rememberConflictChoice?: boolean;
+  completionDialog?: boolean;
+  autoRetryEnabled?: boolean;
+  maxAutoRetries?: number;
+  retryBaseDelaySec?: number;
+  scheduler?: { enabled: boolean; startTime: string; stopTime: string; days: number[] };
+  proxy?: {
+    mode: 'system' | 'none' | 'manual' | 'pac';
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    pacUrl: string;
+    bypass: string;
+  };
+  siteLogins?: Array<{ id: string; host: string; username: string; password: string }>;
+  cookiesFromBrowser?: 'none' | 'chrome' | 'edge' | 'firefox' | 'brave' | 'opera';
+  partsCount?: number;
+  ytDlpFragments?: number;
+  requestTimeoutMs?: number;
+  virusScanEnabled?: boolean;
+  customCategories?: Array<{ name: string; extensions: string[] }>;
+  appAutoUpdate?: boolean;
 };
 const defaultConfig: AppConfig = {
   concurrent: 3,
@@ -244,6 +332,22 @@ const defaultConfig: AppConfig = {
   soundNotification: true,
   postDownloadAction: 'none',
   customOutDir: '',
+  fileConflictAction: 'rename',
+  rememberConflictChoice: false,
+  completionDialog: true,
+  autoRetryEnabled: true,
+  maxAutoRetries: 3,
+  retryBaseDelaySec: 5,
+  scheduler: { enabled: false, startTime: '02:00', stopTime: '07:00', days: [0, 1, 2, 3, 4, 5, 6] },
+  proxy: { mode: 'system', host: '', port: 8080, username: '', password: '', pacUrl: '', bypass: 'localhost,127.0.0.1' },
+  siteLogins: [],
+  cookiesFromBrowser: 'none',
+  partsCount: 8,
+  ytDlpFragments: 16,
+  requestTimeoutMs: 30000,
+  virusScanEnabled: false,
+  customCategories: [],
+  appAutoUpdate: true,
 };
 function configPath() {
   return path.join(app.getPath('userData'), 'config.json');
@@ -265,6 +369,28 @@ function saveConfig(c: AppConfig) {
   saveConfigUtil(validated.data);
 }
 let appConfig = loadConfig();
+
+const conflictManager = createConflictManager({
+  send: (channel: string, data: any) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, data);
+  },
+  getPolicy: () => appConfig.fileConflictAction || 'rename',
+  onRememberChoice: (decision: any) => {
+    appConfig = { ...appConfig, fileConflictAction: decision };
+    saveConfig(appConfig);
+  },
+});
+
+ipcMain.handle(
+  'resolve-file-conflict',
+  async (_e, payload: { conflictId: string; decision: string; remember?: boolean }) => {
+    return conflictManager.resolveConflictDecision(
+      payload?.conflictId,
+      (payload?.decision as any) || 'rename',
+      !!payload?.remember
+    );
+  }
+);
 
 function getDefaultDownloadDir() {
   try {
@@ -652,6 +778,46 @@ if (!gotTheLock) {
       loadQueue,
       saveQueue,
       getMainWindow: () => mainWindow,
+      onSchedulerChanged: () => {
+        try {
+          scheduler.reschedule(appConfig.scheduler || { enabled: false } as any);
+        } catch {}
+      },
+    });
+
+    try {
+      applyProxyEnv(appConfig.proxy as any);
+    } catch {}
+    try {
+      applySessionProxy(appConfig.proxy as any);
+    } catch {}
+    try {
+      scheduler.reschedule(appConfig.scheduler || { enabled: false } as any);
+    } catch {}
+    try {
+      setupAutoUpdater({
+        onAvailable: info => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-available', {
+              version: (info as any)?.version || '',
+            });
+          }
+        },
+        onDownloaded: info => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-downloaded', {
+              version: (info as any)?.version || '',
+            });
+          }
+        },
+      });
+      if (app.isPackaged && appConfig.appAutoUpdate !== false) checkForUpdates(false);
+    } catch {}
+
+    ipcMain.handle('check-for-updates', async () => checkForUpdates(true));
+    ipcMain.handle('quit-and-install', async () => {
+      quitAndInstallUpdate();
+      return true;
     });
 
     createWindow();
@@ -772,9 +938,9 @@ function canStart() {
 function processPending() {
   if (!canStart() || pendingQueue.length === 0) return;
   const next = pendingQueue.shift()!;
-  doStartDownload(next.id, next.opts);
+  void doStartDownload(next.id, next.opts).catch(e => log.error('[VoltGet] start failed', { error: String(e) }));
 }
-function doStartDownload(id: string, opts: any) {
+async function doStartDownload(id: string, opts: any) {
   let finalUrl = normalizeToMasterPlaylist(opts.url || '');
   opts.url = finalUrl;
 
@@ -857,12 +1023,26 @@ function doStartDownload(id: string, opts: any) {
   const ytdlp = findYtDlp();
   const isHls = isHlsUrl(finalUrl);
 
+  const siteLogin = (() => {
+    try {
+      const host = new URL(finalUrl).hostname.replace(/^www\./i, '').toLowerCase();
+      return (appConfig.siteLogins || []).find(
+        l => l.host && (host === l.host.toLowerCase() || host.endsWith('.' + l.host.toLowerCase()))
+      );
+    } catch {
+      return undefined;
+    }
+  })();
   const built = buildYtDlpArgs({
     finalUrl,
     pageUrl: opts.pageUrl,
     cookie: opts.cookie,
-    speedLimitKB: appConfig.speedLimitKB,
+    speedLimitKB: opts.speedLimitKB ?? appConfig.speedLimitKB,
     isYouTube,
+    username: siteLogin?.username || undefined,
+    password: siteLogin?.password || undefined,
+    cookiesFromBrowser: appConfig.cookiesFromBrowser || 'none',
+    fragments: appConfig.ytDlpFragments || 16,
   });
   const args: string[] = built.args;
   const embedId = built.embedId;
@@ -877,8 +1057,27 @@ function doStartDownload(id: string, opts: any) {
     { filename: opts.filename, title: opts.title },
     appConfig.filenameTemplate
   );
-  const filename = builtTpl.filename;
-  const tmpl = builtTpl.tmpl;
+  let filename = builtTpl.filename;
+  let tmpl = builtTpl.tmpl;
+  // Dosya adı biliniyorsa (şablon değişkeni yoksa) çakışma politikasını uygula
+  if (filename && !filename.includes('%(')) {
+    try {
+      const r = await conflictManager.resolveConflictPath(path.join(outDir, filename));
+      if (!r.proceed) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('download-canceled', { id });
+        }
+        updatePowerSaveBlocker();
+        processPending();
+        return;
+      }
+      if (r.finalPath !== path.join(outDir, filename)) {
+        filename = path.basename(r.finalPath);
+        tmpl = filename;
+        opts = { ...opts, filename };
+      }
+    } catch {}
+  }
   const tempDir = path.join(outDir, '.voltget_tmp');
   ensureDir(tempDir);
   args.push('-P', `temp:${tempDir}`, '-P', `home:${outDir}`);
@@ -968,14 +1167,40 @@ function doStartDownload(id: string, opts: any) {
   });
 
   proc.on('close', code => {
-    activeDownloads.delete(id);
-    activeOpts.delete(id);
     if (pausingIds.has(id)) {
       pausingIds.delete(id);
+      activeDownloads.delete(id);
+      activeOpts.delete(id);
       updatePowerSaveBlocker();
       processPending();
       return;
     }
+    const failed = (code ?? 1) !== 0;
+    if (failed && !shouldRunFfmpegFallback(code, isHls)) {
+      const scheduled = scheduleRetry(
+        id,
+        getRetryPolicyFrom(appConfig),
+        () => {
+          activeOpts.set(id, { ...opts, url: finalUrl });
+          void doStartDownload(id, opts).catch(e => log.error('[VoltGet] retry failed', { error: String(e) }));
+        },
+        (attempt, max, delayMs) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('download-log', {
+              id,
+              text: `🔄 Otomatik yeniden deneme ${attempt}/${max}: ${Math.round(delayMs / 1000)} sn sonra...`,
+            });
+          }
+        }
+      );
+      if (scheduled) {
+        // Slotu tut: kuyruk ilerlemesin, güç engeli sürsün
+        updatePowerSaveBlocker();
+        return;
+      }
+    }
+    activeDownloads.delete(id);
+    activeOpts.delete(id);
 
     // Geçici voltget klasörünü temizle
     try {
@@ -1060,6 +1285,32 @@ function doStartDownload(id: string, opts: any) {
       });
 
       ffProc.on('close', ffCode => {
+        if ((ffCode ?? 1) !== 0) {
+          const scheduled = scheduleRetry(
+            id,
+            getRetryPolicyFrom(appConfig),
+            () => {
+              activeOpts.set(id, { ...opts, url: finalUrl });
+              void doStartDownload(id, opts).catch(e =>
+                log.error('[VoltGet] retry failed', { error: String(e) })
+              );
+            },
+            (attempt, max, delayMs) => {
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('download-log', {
+                  id,
+                  text: `🔄 Otomatik yeniden deneme ${attempt}/${max}: ${Math.round(delayMs / 1000)} sn sonra...`,
+                });
+              }
+            }
+          );
+          if (scheduled) {
+            updatePowerSaveBlocker();
+            return;
+          }
+        } else {
+          resetRetryAttempts(id);
+        }
         activeDownloads.delete(id);
         updatePowerSaveBlocker();
         if (ffCode === 0 && fs.existsSync(tempOut)) {
@@ -1082,6 +1333,11 @@ function doStartDownload(id: string, opts: any) {
 
         let statSize = 0;
         if (ffCode === 0 && fs.existsSync(actualOut)) {
+          maybeVirusScan(actualOut, !!appConfig.virusScanEnabled, text => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('download-log', { id, text });
+            }
+          });
           try {
             statSize = fs.statSync(actualOut).size;
           } catch {}
@@ -1129,6 +1385,14 @@ function doStartDownload(id: string, opts: any) {
     }
 
     if (code === 0) {
+      resetRetryAttempts(id);
+      if (downloadedFilePath && fs.existsSync(downloadedFilePath)) {
+        maybeVirusScan(downloadedFilePath, !!appConfig.virusScanEnabled, text => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('download-log', { id, text });
+          }
+        });
+      }
       if (!downloadedFilePath || !fs.existsSync(downloadedFilePath)) {
         const newest = findNewestDownload(outDir, 45000, isTemporaryOrPartialFile);
         if (newest) downloadedFilePath = newest;
@@ -1198,6 +1462,7 @@ registerQueueIpc({
   send: (ch, data) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(ch, data);
   },
+  cancelScheduledRetry,
 });
 
 function isTemporaryOrPartialFile(name: string): boolean {
@@ -1217,7 +1482,35 @@ registerFileIpc({
   loadQueue,
   saveQueue,
   removeFromHistory: removeDownloadFromHistory,
-  getCategory: getCategoryFromExt,
+  getCategory: (ext: string) => categorizeFile(ext),
+});
+
+registerToolsIpc({
+  getYtDlpPath: () => ytDlpPath,
+  setYtDlpPath: (p: string) => {
+    ytDlpPath = p;
+  },
+  findYtDlp,
+  getFfmpegPath: () => ffmpegPath,
+  ensureDir,
+  isValidExecutable,
+  loadConfig,
+  appDirname: __dirname,
+  isPackaged: app.isPackaged,
+  exeDir: (() => {
+    try {
+      return path.dirname(app.getPath('exe'));
+    } catch {
+      return '';
+    }
+  })(),
+});
+
+registerExtensionIpc({
+  getExtensionDir,
+  ensureDir,
+  getDefaultDir: getDefaultDownloadDir,
+  getExtensionConnectedCount,
 });
 
 function getExtensionDir(targetBrowser?: string): string {
@@ -1263,6 +1556,17 @@ function httpDeps() {
     activeOpts,
     pausingIds,
     getSpeedLimitKB: () => appConfig.speedLimitKB,
+    getPartsCount: () => appConfig.partsCount || 8,
+    getRetryPolicy: () => getRetryPolicyFrom(appConfig),
+    getProxyAgent: () => getProxyAgent(appConfig.proxy as any),
+    getRequestTimeoutMs: () => appConfig.requestTimeoutMs || 30000,
+    onFileCompleted: (jobId: string, fp: string) =>
+      maybeVirusScan(fp, !!appConfig.virusScanEnabled, text => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('download-log', { id: jobId, text });
+        }
+      }),
+    resolveConflictPath: (p: string) => conflictManager.resolveConflictPath(p),
     updatePowerSaveBlocker,
     processPending,
     addToHistory: (item: any) => addDownloadToHistory(item),

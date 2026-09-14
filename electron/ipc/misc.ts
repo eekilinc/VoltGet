@@ -17,7 +17,7 @@ export function registerMiscIpc(deps: {
   pausingIds: Set<string>;
   canStart: () => boolean;
   processPending: () => void;
-  doStartDownload: (id: string, opts: any) => void;
+  doStartDownload: (id: string, opts: any) => void | Promise<void>;
   runMultiPart: (id: string, opts: any, outDir: string, outPath: string, filename: string) => void;
   getSiteFolder: (base: string, url: string, filename?: string) => string;
   normalizeToMasterPlaylist: (u: string) => string;
@@ -25,6 +25,7 @@ export function registerMiscIpc(deps: {
   loadQueue: () => any[];
   saveQueue: (jobs: any[]) => void;
   getMainWindow: () => any;
+  onSchedulerChanged?: () => void;
 }) {
   ipcMain.handle('get-config', async () => deps.loadConfig());
   ipcMain.handle('set-config', async (_e, patch: any) => {
@@ -32,6 +33,9 @@ export function registerMiscIpc(deps: {
     const next = { ...cur, ...patch };
     deps.setConfigRef(next);
     deps.saveConfig(next);
+    try {
+      deps.onSchedulerChanged?.();
+    } catch {}
     if (patch.openAtLogin !== undefined || patch.startMinimized !== undefined) {
       try {
         app.setLoginItemSettings({
@@ -96,7 +100,7 @@ export function registerMiscIpc(deps: {
       }
       return { id, queued: true, position: deps.pendingQueue.length };
     }
-    deps.doStartDownload(id, opts);
+    void Promise.resolve(deps.doStartDownload(id, opts)).catch(() => {});
     const w = deps.getMainWindow();
     if (w && !w.isDestroyed()) w.webContents.send('switch-to-download-tab');
     return { id, outDir: deps.getSiteFolder(opts.outDir || deps.getDefaultDir(), opts.url) };

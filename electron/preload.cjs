@@ -50,12 +50,17 @@ contextBridge.exposeInMainWorld('api', {
   onClipboardUrl: (cb) => ipcRenderer.on('clipboard-url-detected', (_e, d) => cb(d)),
   minimizeDialog: () => ipcRenderer.invoke('minimize-dialog'),
   closeDialog: () => ipcRenderer.invoke('close-dialog'),
+  onFileConflict: (cb) => ipcRenderer.on('file-conflict-request', (_e, d) => cb(d)),
+  resolveFileConflict: (payload) => ipcRenderer.invoke('resolve-file-conflict', payload),
+  exportQueue: (jobs) => ipcRenderer.invoke('export-queue', jobs),
+  importQueue: () => ipcRenderer.invoke('import-queue'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   pauseAllDownloads: () => ipcRenderer.invoke('pause-all-downloads'),
   resumeAllDownloads: () => ipcRenderer.invoke('resume-all-downloads'),
   setSpeedLimit: (limitKB) => ipcRenderer.invoke('set-speed-limit', limitKB),
   setPostDownloadAction: (action) => ipcRenderer.invoke('set-post-download-action', action),
   removeAll: () => {
+    ipcRenderer.removeAllListeners('file-conflict-request')
     ipcRenderer.removeAllListeners('download-progress')
     ipcRenderer.removeAllListeners('download-log')
     ipcRenderer.removeAllListeners('download-done')
