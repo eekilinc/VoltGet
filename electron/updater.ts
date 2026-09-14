@@ -1,6 +1,8 @@
 import { app } from 'electron';
-const { autoUpdater } = require('electron-updater');
+import updaterPkg from 'electron-updater';
 import log from './log/logger.js';
+
+const { autoUpdater } = updaterPkg as typeof import('electron-updater');
 
 export interface UpdaterEvents {
   onAvailable?: (info: unknown) => void;
