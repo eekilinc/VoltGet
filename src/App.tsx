@@ -41,6 +41,7 @@ export default function App() {
     handleRetry,
     handleRemoveJob,
     handleDeleteJob,
+    handleCancelJob,
   } = useJobs(hasApi);
   const {
     status,
@@ -643,18 +644,7 @@ export default function App() {
 
       <QueuePanel
         jobs={jobs}
-        onCancel={id => {
-          try {
-            window.api?.cancelDownload?.(id)?.catch?.(() => {});
-          } catch {}
-          setJobs(j => {
-            const n = j.filter(x => x.id !== id);
-            try {
-              window.api?.saveQueue?.(n);
-            } catch {}
-            return n;
-          });
-        }}
+        onCancel={handleCancelJob}
         onPause={id => {
           try {
             window.api?.pauseDownload?.(id)?.catch?.(() => {});
@@ -1106,11 +1096,13 @@ export default function App() {
           info={conflictInfo}
           onResolve={(decision: string, remember: boolean) => {
             try {
-              window.api?.resolveFileConflict?.({
-                conflictId: conflictInfo.conflictId,
-                decision,
-                remember,
-              })?.catch?.(() => {});
+              window.api
+                ?.resolveFileConflict?.({
+                  conflictId: conflictInfo.conflictId,
+                  decision,
+                  remember,
+                })
+                ?.catch?.(() => {});
             } catch {}
             setConflictInfo(null);
           }}

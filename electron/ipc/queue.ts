@@ -9,11 +9,28 @@ function cleanTempForJob(id: string, opts?: any) {
       if (fs.existsSync(tempDir)) {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
+      const voltgetTmp = path.join(opts.outDir, '.voltget_tmp');
+      if (fs.existsSync(voltgetTmp)) {
+        try {
+          const files = fs.readdirSync(voltgetTmp);
+          for (const file of files) {
+            if (file.includes(id)) {
+              try {
+                fs.unlinkSync(path.join(voltgetTmp, file));
+              } catch {}
+            }
+          }
+        } catch {}
+      }
     }
     if (opts?.outPath) {
       const tempPart = opts.outPath + '.part';
       if (fs.existsSync(tempPart)) {
         fs.unlinkSync(tempPart);
+      }
+      const tempYtdl = opts.outPath + '.ytdl';
+      if (fs.existsSync(tempYtdl)) {
+        fs.unlinkSync(tempYtdl);
       }
     }
   } catch {}
@@ -25,6 +42,7 @@ export interface QueueIpcDeps {
   pendingQueue: Array<{ id: string; opts: any }>;
   pausedDownloads: Map<string, any>;
   pausingIds: Set<string>;
+  cancelledIds?: Set<string>;
   canStart: () => boolean;
   processPending: () => void;
   doStartDownload: (id: string, opts: any) => void | Promise<void>;
@@ -51,13 +69,15 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
   });
 
   ipcMain.handle('cancel-download', async (_e, id: string) => {
+    deps.cancelledIds?.add(id);
+    try {
+      deps.cancelScheduledRetry?.(id);
+    } catch {}
+
     const idx = deps.pendingQueue.findIndex(q => q.id === id);
     if (idx !== -1) {
       const [removed] = deps.pendingQueue.splice(idx, 1);
       deps.pausedDownloads.delete(id);
-      try {
-        deps.cancelScheduledRetry?.(id);
-      } catch {}
       cleanTempForJob(id, removed?.opts);
       deps.send('download-canceled', { id });
       return true;
@@ -67,9 +87,6 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
       const opts = deps.activeOpts.get(id);
       try {
         p.kill();
-      } catch {}
-      try {
-        deps.cancelScheduledRetry?.(id);
       } catch {}
       cleanTempForJob(id, opts);
       deps.activeDownloads.delete(id);
@@ -87,6 +104,7 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
       deps.send('download-canceled', { id });
       return true;
     }
+    deps.send('download-canceled', { id });
     return false;
   });
 

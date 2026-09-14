@@ -14,6 +14,7 @@ export interface HttpDownloadDeps {
   activeDownloads: Map<string, HttpDownloadController>;
   activeOpts: Map<string, any>;
   pausingIds: Set<string>;
+  cancelledIds?: Set<string>;
   getSpeedLimitKB: () => number;
   updatePowerSaveBlocker: () => void;
   processPending: () => void;
@@ -336,6 +337,17 @@ export async function runMultiPartHttpDownload(
     } catch {}
     deps.processPending();
   } catch (err: any) {
+    if (deps.cancelledIds?.has(id)) {
+      deps.cancelledIds.delete(id);
+      deps.activeDownloads.delete(id);
+      deps.activeOpts.delete(id);
+      deps.updatePowerSaveBlocker();
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch {}
+      deps.processPending();
+      return;
+    }
     if (deps.pausingIds.has(id)) {
       deps.pausingIds.delete(id);
       deps.processPending();
@@ -386,6 +398,14 @@ export async function runHttpDownload(
   const limitOf = () => opts.speedLimitKB || deps.getSpeedLimitKB();
   const failSingle = (errorMsg: string, retryable: boolean): boolean => {
     // true dönerse hata olarak işlendi (retry planlanmadı)
+    if (deps.cancelledIds?.has(id)) {
+      deps.cancelledIds.delete(id);
+      deps.activeDownloads.delete(id);
+      deps.activeOpts.delete(id);
+      deps.updatePowerSaveBlocker();
+      deps.processPending();
+      return false;
+    }
     if (deps.pausingIds.has(id)) {
       deps.pausingIds.delete(id);
       deps.activeDownloads.delete(id);
@@ -542,6 +562,18 @@ export async function runHttpDownload(
   deps.updatePowerSaveBlocker();
   file.on('finish', () => {
     file.close();
+    if (deps.cancelledIds?.has(id)) {
+      deps.cancelledIds.delete(id);
+      deps.activeDownloads.delete(id);
+      deps.activeOpts.delete(id);
+      deps.updatePowerSaveBlocker();
+      try {
+        if (fs.existsSync(tempOutPath)) fs.unlinkSync(tempOutPath);
+        if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+      } catch {}
+      deps.processPending();
+      return;
+    }
     try {
       fs.renameSync(tempOutPath, outPath);
     } catch {

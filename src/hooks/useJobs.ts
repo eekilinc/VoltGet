@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { playDownloadCompleteChime } from '../utils/audio';
 import { calcTotalSpeed } from '../utils/speed';
 
@@ -34,6 +34,7 @@ function resolveFilePath(j: any): string {
 
 export function useJobs(hasApi: boolean) {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const recentlyCancelledRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!hasApi) return;
@@ -68,6 +69,7 @@ export function useJobs(hasApi: boolean) {
   useEffect(() => {
     if (!hasApi) return;
     const onP = (d: any) => {
+      if (!d?.id || recentlyCancelledRef.current.has(d.id)) return;
       setJobs(j => {
         const exists = j.some(x => x.id === d.id);
         if (!exists) {
@@ -107,7 +109,8 @@ export function useJobs(hasApi: boolean) {
         return n;
       });
     };
-    const onD = (d: any) =>
+    const onD = (d: any) => {
+      if (!d?.id || recentlyCancelledRef.current.has(d.id)) return;
       setJobs(j => {
         if (d.code === 0) {
           window.api
@@ -133,7 +136,9 @@ export function useJobs(hasApi: boolean) {
         window.api.saveQueue(n);
         return n;
       });
-    const onE = (d: any) =>
+    };
+    const onE = (d: any) => {
+      if (!d?.id || recentlyCancelledRef.current.has(d.id)) return;
       setJobs(j => {
         const n = j.map(x =>
           x.id === d.id ? { ...x, status: 'error' as Job['status'], log: d.error } : x
@@ -141,8 +146,13 @@ export function useJobs(hasApi: boolean) {
         window.api.saveQueue(n);
         return n;
       });
-    const onL = (d: any) => setJobs(j => j.map(x => (x.id === d.id ? { ...x, log: d.text } : x)));
+    };
+    const onL = (d: any) => {
+      if (!d?.id || recentlyCancelledRef.current.has(d.id)) return;
+      setJobs(j => j.map(x => (x.id === d.id ? { ...x, log: d.text } : x)));
+    };
     const onQ = (d: any) => {
+      if (!d?.id || recentlyCancelledRef.current.has(d.id)) return;
       setJobs(j => {
         const exists = j.some(x => x.id === d.id);
         if (exists) {
@@ -171,6 +181,7 @@ export function useJobs(hasApi: boolean) {
       });
     };
     const onS = (d: any) => {
+      if (!d?.id || recentlyCancelledRef.current.has(d.id)) return;
       setJobs(j => {
         const title = d.opts?.title || d.opts?.filename || d.opts?.url || 'İndirme';
         const exists = j.some(x => x.id === d.id);
@@ -209,7 +220,21 @@ export function useJobs(hasApi: boolean) {
         return n;
       });
     };
-    const onC = (d: any) => setJobs(j => j.filter(x => x.id !== d.id));
+    const onC = (d: any) => {
+      if (d?.id) {
+        recentlyCancelledRef.current.add(d.id);
+        setTimeout(() => {
+          recentlyCancelledRef.current.delete(d.id);
+        }, 15000);
+      }
+      setJobs(j => {
+        const n = j.filter(x => x.id !== d.id);
+        try {
+          window.api?.saveQueue?.(n);
+        } catch {}
+        return n;
+      });
+    };
     const onPaused = (d: any) =>
       setJobs(j => {
         const n = j.map(x =>
@@ -377,6 +402,25 @@ export function useJobs(hasApi: boolean) {
     [persistQueue]
   );
 
+  const handleCancelJob = useCallback(
+    (id: string) => {
+      if (!id) return;
+      recentlyCancelledRef.current.add(id);
+      setTimeout(() => {
+        recentlyCancelledRef.current.delete(id);
+      }, 15000);
+      try {
+        window.api?.cancelDownload?.(id)?.catch?.(() => {});
+      } catch {}
+      setJobs(j => {
+        const n = j.filter(x => x.id !== id);
+        persistQueue(n);
+        return n;
+      });
+    },
+    [persistQueue]
+  );
+
   return {
     jobs,
     setJobs,
@@ -388,5 +432,6 @@ export function useJobs(hasApi: boolean) {
     handleRetry,
     handleRemoveJob,
     handleDeleteJob,
+    handleCancelJob,
   };
 }

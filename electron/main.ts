@@ -130,6 +130,7 @@ import { setupAutoUpdater, checkForUpdates, quitAndInstallUpdate } from './updat
 import { applyProxyEnv, applySessionProxy, getProxyAgent } from './proxy.js';
 import { maybeVirusScan } from './virusscan.js';
 import { createScheduler } from './scheduler.js';
+import { killProcessTree } from './utils/process.js';
 import {
   resetRetryAttempts,
   cancelScheduledRetry,
@@ -178,6 +179,7 @@ const activeOpts = new Map<string, any>();
 const pendingQueue: Array<{ id: string; opts: any }> = [];
 const pausedDownloads = new Map<string, any>();
 const pausingIds = new Set<string>();
+const cancelledIds = new Set<string>();
 
 const scheduler = createScheduler({
   startQueue: () => {
@@ -1121,12 +1123,12 @@ async function doStartDownload(id: string, opts: any) {
   activeDownloads.set(id, {
     pause: () => {
       try {
-        proc.kill();
+        killProcessTree(proc);
       } catch {}
     },
     kill: () => {
       try {
-        proc.kill();
+        killProcessTree(proc);
       } catch {}
     },
     resume: async () => {},
@@ -1183,6 +1185,21 @@ async function doStartDownload(id: string, opts: any) {
   });
 
   proc.on('close', code => {
+    if (cancelledIds.has(id)) {
+      log.info('[VoltGet] download process closed after cancel', { id });
+      cancelledIds.delete(id);
+      activeDownloads.delete(id);
+      activeOpts.delete(id);
+      updatePowerSaveBlocker();
+      processPending();
+      try {
+        if (fs.existsSync(tempDir)) {
+          const remaining = fs.readdirSync(tempDir);
+          if (remaining.length === 0) fs.rmdirSync(tempDir);
+        }
+      } catch {}
+      return;
+    }
     if (pausingIds.has(id)) {
       pausingIds.delete(id);
       activeDownloads.delete(id);
@@ -1197,6 +1214,7 @@ async function doStartDownload(id: string, opts: any) {
         id,
         getRetryPolicyFrom(appConfig),
         () => {
+          if (cancelledIds.has(id)) return;
           activeOpts.set(id, { ...opts, url: finalUrl });
           void doStartDownload(id, opts).catch(e =>
             log.error('[VoltGet] retry failed', { error: String(e) })
@@ -1230,6 +1248,7 @@ async function doStartDownload(id: string, opts: any) {
 
     // Eğer yt-dlp hata verdiyse ve HLS / doğrudan akış ise otomatik FFmpeg fallback çalıştır!
     if (shouldRunFfmpegFallback(code, isHls)) {
+      if (cancelledIds.has(id)) return;
       if (!isFfmpegOk()) {
         log.error(
           '[VoltGet] ffmpeg missing, cannot run HLS fallback. Install: winget install Gyan.FFmpeg'
@@ -1268,15 +1287,15 @@ async function doStartDownload(id: string, opts: any) {
       activeDownloads.set(id, {
         pause: () => {
           try {
-            ffProc.kill();
+            killProcessTree(ffProc);
           } catch {}
         },
         kill: () => {
           try {
-            ffProc.kill();
+            killProcessTree(ffProc);
           } catch {}
           try {
-            fs.unlinkSync(tempOut);
+            if (fs.existsSync(tempOut)) fs.unlinkSync(tempOut);
           } catch {}
         },
         resume: async () => {},
@@ -1303,11 +1322,32 @@ async function doStartDownload(id: string, opts: any) {
       });
 
       ffProc.on('close', ffCode => {
+        if (cancelledIds.has(id)) {
+          log.info('[VoltGet] ffmpeg fallback process closed after cancel', { id });
+          cancelledIds.delete(id);
+          activeDownloads.delete(id);
+          activeOpts.delete(id);
+          try {
+            if (fs.existsSync(tempOut)) fs.unlinkSync(tempOut);
+          } catch {}
+          updatePowerSaveBlocker();
+          processPending();
+          return;
+        }
+        if (pausingIds.has(id)) {
+          pausingIds.delete(id);
+          activeDownloads.delete(id);
+          activeOpts.delete(id);
+          updatePowerSaveBlocker();
+          processPending();
+          return;
+        }
         if ((ffCode ?? 1) !== 0) {
           const scheduled = scheduleRetry(
             id,
             getRetryPolicyFrom(appConfig),
             () => {
+              if (cancelledIds.has(id)) return;
               activeOpts.set(id, { ...opts, url: finalUrl });
               void doStartDownload(id, opts).catch(e =>
                 log.error('[VoltGet] retry failed', { error: String(e) })
@@ -1390,6 +1430,17 @@ async function doStartDownload(id: string, opts: any) {
       });
 
       ffProc.on('error', (e: any) => {
+        if (cancelledIds.has(id)) {
+          cancelledIds.delete(id);
+          activeDownloads.delete(id);
+          activeOpts.delete(id);
+          updatePowerSaveBlocker();
+          try {
+            if (fs.existsSync(tempOut)) fs.unlinkSync(tempOut);
+          } catch {}
+          processPending();
+          return;
+        }
         activeDownloads.delete(id);
         updatePowerSaveBlocker();
         try {
@@ -1456,6 +1507,14 @@ async function doStartDownload(id: string, opts: any) {
   });
 
   proc.on('error', (e: any) => {
+    if (cancelledIds.has(id)) {
+      cancelledIds.delete(id);
+      activeDownloads.delete(id);
+      activeOpts.delete(id);
+      updatePowerSaveBlocker();
+      processPending();
+      return;
+    }
     activeDownloads.delete(id);
     activeOpts.delete(id);
     updatePowerSaveBlocker();
@@ -1470,6 +1529,7 @@ registerQueueIpc({
   pendingQueue,
   pausedDownloads,
   pausingIds,
+  cancelledIds,
   canStart,
   processPending,
   doStartDownload,
@@ -1573,6 +1633,7 @@ function httpDeps() {
     activeDownloads,
     activeOpts,
     pausingIds,
+    cancelledIds,
     getSpeedLimitKB: () => appConfig.speedLimitKB,
     getPartsCount: () => appConfig.partsCount || 8,
     getRetryPolicy: () => getRetryPolicyFrom(appConfig),
