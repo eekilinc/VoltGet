@@ -352,5 +352,21 @@
   "idmCancel": "Cancel",
   "clipboardDetectedTitle": "В буфере обмена обнаружена ссылка на скачивание!",
   "downloadNowBtn": "Скачать сейчас",
-  "inspectBtn": "Проверить"
+  "inspectBtn": "Проверить",
+  "batchWildcardTip": "Поддержка подстановок: автоматически разворачивает диапазоны [01-20] или [a-z].",
+  "checksumTitle": "Проверка файла и контрольная сумма (Хэш)",
+  "checksumCompare": "Вставьте ожидаемый хэш-код для сравнения:",
+  "checksumMatch": "✓ Подтверждено! Хэш-значения полностью совпадают.",
+  "checksumMismatch": "✗ Несоответствие! Введенный хэш не совпадает с хэшем файла.",
+  "categoryAll": "Все",
+  "categoryVideo": "Видео",
+  "categoryAudio": "Аудио",
+  "categoryDocument": "Документ",
+  "categoryArchive": "Архив",
+  "categoryProgram": "Программа",
+  "moveUp": "Переместить вверх",
+  "moveDown": "Переместить вниз",
+  "extensionPairingHelp": "Скопируйте ключ, вставьте его в расширение браузера и нажмите «Подключить».",
+  "extensionTokenCopied": "Ключ скопирован",
+  "extensionCopyToken": "Скопировать ключ подключения"
 }

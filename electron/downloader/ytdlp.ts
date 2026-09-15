@@ -1,4 +1,4 @@
-import { spawn, ChildProcess } from 'child_process';
+import { ChildProcess, spawn } from 'child_process';
 import path from 'path';
 
 export function spawnYtDlp(ytdlp: string, args: string[]): ChildProcess {
@@ -6,12 +6,7 @@ export function spawnYtDlp(ytdlp: string, args: string[]): ChildProcess {
     return spawn(ytdlp, args, { shell: false });
   } catch (err) {
     console.error('[VoltGet] spawn failed with primary ytdlp:', ytdlp, err);
-    try {
-      return spawn('yt-dlp', args, { shell: false });
-    } catch (err2) {
-      console.error('[VoltGet] spawn fallback also failed, trying shell:true:', err2);
-      return spawn('yt-dlp', args, { shell: true });
-    }
+    return spawn('yt-dlp', args, { shell: false, windowsHide: true });
   }
 }
 

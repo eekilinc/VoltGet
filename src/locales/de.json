@@ -352,5 +352,21 @@
   "idmCancel": "Cancel",
   "clipboardDetectedTitle": "Download-Link in Zwischenablage erkannt!",
   "downloadNowBtn": "Jetzt herunterladen",
-  "inspectBtn": "Prüfen"
+  "inspectBtn": "Prüfen",
+  "batchWildcardTip": "Platzhalter-Unterstützung: erweitert automatisch [01-20] oder [a-z] Bereiche.",
+  "checksumTitle": "Dateiverifizierung & Prüfsummen-Hash",
+  "checksumCompare": "Fügen Sie den erwarteten Hash-Code zum Vergleichen ein:",
+  "checksumMatch": "✓ Verifiziert! Hash-Werte stimmen exakt überein.",
+  "checksumMismatch": "✗ Keine Übereinstimmung! Eingegebener Hash stimmt nicht überein.",
+  "categoryAll": "Alle",
+  "categoryVideo": "Video",
+  "categoryAudio": "Audio",
+  "categoryDocument": "Dokument",
+  "categoryArchive": "Archiv",
+  "categoryProgram": "Programm",
+  "moveUp": "Nach oben verschieben",
+  "moveDown": "Nach unten verschieben",
+  "extensionPairingHelp": "Verbindungsschlüssel kopieren, in die Browser-Erweiterung einfügen und Verbinden wählen.",
+  "extensionTokenCopied": "Verbindungsschlüssel kopiert",
+  "extensionCopyToken": "Verbindungsschlüssel kopieren"
 }

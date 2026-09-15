@@ -1,7 +1,8 @@
-import { ipcMain, shell } from 'electron';
 import { spawn } from 'child_process';
+import { clipboard, ipcMain, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
+import { getExtensionToken } from '../security/extensionAuth.js';
 
 export function registerExtensionIpc(deps: {
   getExtensionDir: (browser?: string) => string;
@@ -9,6 +10,10 @@ export function registerExtensionIpc(deps: {
   getDefaultDir: () => string;
   getExtensionConnectedCount: () => number;
 }) {
+  ipcMain.handle('copy-extension-token', () => {
+    clipboard.writeText(getExtensionToken());
+    return true;
+  });
   ipcMain.handle('open-extension-folder', async (_e, browser?: string) => {
     const extDir = deps.getExtensionDir(browser);
     if (fs.existsSync(extDir)) {

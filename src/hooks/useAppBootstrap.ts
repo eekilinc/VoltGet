@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 export function useAppBootstrap(hasApi: boolean) {
   const [status, setStatus] = useState<any>(null);
   const [outDir, setOutDir] = useState('');
-  const [appVersion, setAppVersion] = useState<string>('1.0.13');
+  const [appVersion, setAppVersion] = useState<string>('1.1.0');
   const [extConnected, setExtConnected] = useState(false);
   const [clipboardDetectedUrl, setClipboardDetectedUrl] = useState<string | null>(null);
   const [clipboardWatcherActive, setClipboardWatcherActive] = useState<boolean>(true);
@@ -49,9 +49,8 @@ export function useAppBootstrap(hasApi: boolean) {
     const onExt = (res: any) => {
       if (res) setExtConnected(!!res.connected);
     };
-    window.api.onClipboardUrl?.(onClipboard);
-    window.api.onExtensionStatus?.(onExt);
-    return () => {};
+    const cleanups = [window.api.onClipboardUrl(onClipboard), window.api.onExtensionStatus(onExt)];
+    return () => cleanups.forEach(unsubscribe => unsubscribe());
   }, [hasApi]);
 
   const toggleClipboardWatcher = async () => {

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/eekilinc/VoltGet/releases"><img src="https://img.shields.io/badge/version-1.0.13-blue.svg?style=for-the-badge&logo=github" alt="Version"></a>
+  <a href="https://github.com/eekilinc/VoltGet/releases"><img src="https://img.shields.io/badge/version-1.1.0-blue.svg?style=for-the-badge&logo=github" alt="Version"></a>
   <a href="https://github.com/eekilinc/VoltGet/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge" alt="License"></a>
   <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-31.7.7-47848F.svg?style=for-the-badge&logo=electron" alt="Electron"></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.5-3178C6.svg?style=for-the-badge&logo=typescript" alt="TypeScript"></a>
@@ -164,6 +164,13 @@ Output binaries will be generated inside the `release/` directory.
 
 ## 🧩 Browser Extension Setup
 
+### Secure connection (required after updating)
+
+Reload the updated extension in your browser. In VoltGet, open the extension setup
+panel and choose **Copy connection key**. Paste the key into the extension popup
+and select **Bağlan** (Connect). The key is saved for that browser profile.
+Only authenticated requests are accepted; ordinary web page origins are rejected.
+
 To enable IDM-style automatic video sniffing, floating download badges, and browser download interception:
 
 ### 1. Locate the Extension Folder
@@ -217,6 +224,29 @@ VoltGet provides customizable settings stored locally in your app profile:
 ---
 
 ## 🤝 Contributing
+
+### Verification
+
+- `npm test`: unit tests and local HTTP/WebSocket integration tests, including interrupted
+  transfers, incorrect byte ranges, queue persistence and credential protection.
+- `npm run lint`: static checks.
+- `npm run test:e2e`: builds the app and tests the real sandboxed Electron preload and
+  renderer in a hidden window using a temporary profile. It does not start real downloads
+  or change login settings. Windows OS encryption is exercised using the test profile.
+
+The preload is generated from `electron/preload.ts`; use `npm run build:preload`
+instead of editing `electron/preload.cjs` directly.
+
+### Storage and recovery
+
+Passwords and cookies in settings and saved queues use Electron's OS-backed secret
+storage. Existing plaintext credentials are migrated on load/save. The app does not
+fall back to plaintext when OS encryption is unavailable. Exported queues omit passwords
+and cookies; authenticated downloads may require capturing the link again after import.
+
+Queues retain all jobs and use coalesced, atomic writes. Closing the app flushes pending
+writes. Invalid settings are repaired individually. Failed file finalization preserves
+temporary data and does not report a successful download.
 
 Contributions, issues, and feature requests are welcome!
 Feel free to check the [issues page](https://github.com/eekilinc/VoltGet/issues).

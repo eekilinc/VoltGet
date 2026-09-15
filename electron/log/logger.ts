@@ -1,8 +1,14 @@
 import pino from 'pino';
+import { redactSecrets } from '../security/secrets.js';
 
 const isDev = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
 
 const logger = pino({
+  hooks: {
+    logMethod(args, method) {
+      method.apply(this, args.map(value => redactSecrets(value)) as typeof args);
+    },
+  },
   level: process.env.LOG_LEVEL || (isDev ? 'debug' : 'info'),
   transport: isDev
     ? {

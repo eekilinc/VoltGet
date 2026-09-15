@@ -1,76 +1,75 @@
-const { contextBridge, ipcRenderer } = require('electron')
-contextBridge.exposeInMainWorld('api', {
-  analyzeUrl: (url) => ipcRenderer.invoke('analyze-url', url),
-  startDownload: (opts) => ipcRenderer.invoke('start-download', opts),
-  cancelDownload: (id) => ipcRenderer.invoke('cancel-download', id),
-  pauseDownload: (id) => ipcRenderer.invoke('pause-download', id),
-  resumeDownload: (id) => ipcRenderer.invoke('resume-download', id),
-  retryDownload: (opts) => ipcRenderer.invoke('retry-download', opts),
-  directDownload: (opts) => ipcRenderer.invoke('direct-download', opts),
-  httpDownload: (opts) => ipcRenderer.invoke('http-download', opts),
-  selectFolder: () => ipcRenderer.invoke('select-folder'),
-  openFolder: (dir) => ipcRenderer.invoke('open-folder', dir),
-  getDefaultDir: () => ipcRenderer.invoke('get-default-dir'),
-  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-  listFiles: (mode, customDir) => ipcRenderer.invoke('list-files', mode, customDir),
-  openFile: (filePath) => ipcRenderer.invoke('open-file', filePath),
-  showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
-  deleteFile: (payload) => ipcRenderer.invoke('delete-file', payload),
-  checkFileExists: (filePath) => ipcRenderer.invoke('check-file-exists', filePath),
-  removeFromHistory: (idOrPath) => ipcRenderer.invoke('remove-from-history', idOrPath),
-  getConfig: () => ipcRenderer.invoke('get-config'),
-  getDownloadDialogData: () => ipcRenderer.invoke('get-download-dialog-data'),
-  setConfig: (patch) => ipcRenderer.invoke('set-config', patch),
-  getYtDlpStatus: () => ipcRenderer.invoke('get-yt-dlp-status'),
-  checkYtDlpUpdate: () => ipcRenderer.invoke('check-yt-dlp-update'),
-  downloadYtDlp: () => ipcRenderer.invoke('download-yt-dlp'),
-  sniffedUrl: (data) => ipcRenderer.invoke('sniffed-url', data),
-  getQueue: () => ipcRenderer.invoke('get-queue'),
-  saveQueue: (jobs) => ipcRenderer.invoke('save-queue', jobs),
-  onProgress: (cb) => ipcRenderer.on('download-progress', (_e, d) => cb(d)),
-  onLog: (cb) => ipcRenderer.on('download-log', (_e, d) => cb(d)),
-  onDone: (cb) => ipcRenderer.on('download-done', (_e, d) => cb(d)),
-  onError: (cb) => ipcRenderer.on('download-error', (_e, d) => cb(d)),
-  onQueued: (cb) => ipcRenderer.on('download-queued', (_e, d) => cb(d)),
-  onCanceled: (cb) => ipcRenderer.on('download-canceled', (_e, d) => cb(d)),
-  onStarted: (cb) => ipcRenderer.on('download-started', (_e, d) => cb(d)),
-  onPaused: (cb) => ipcRenderer.on('download-paused', (_e, d) => cb(d)),
-  onSniffed: (cb) => ipcRenderer.on('sniffed-url', (_e, d) => cb(d)),
-  onShowDownloadDialog: (cb) => ipcRenderer.on('show-download-dialog', (_e, d) => cb(d)),
-  onOpenSniffItem: (cb) => ipcRenderer.on('open-sniff-item', (_e, d) => cb(d)),
-  onSwitchToSniffTab: (cb) => ipcRenderer.on('switch-to-sniff-tab', (_e, d) => cb(d)),
-  onSwitchToDownloadTab: (cb) => ipcRenderer.on('switch-to-download-tab', (_e, d) => cb(d)),
-  openExtensionFolder: (browser) => ipcRenderer.invoke('open-extension-folder', browser),
-  exportExtensionZip: (browser) => ipcRenderer.invoke('export-extension-zip', browser),
-  getExtensionStatus: () => ipcRenderer.invoke('get-extension-status'),
-  onExtensionStatus: (cb) => ipcRenderer.on('extension-status-changed', (_e, d) => cb(d)),
-  getDiskSpace: (dirPath) => ipcRenderer.invoke('get-disk-space', dirPath),
-  queueDownload: (opts) => ipcRenderer.invoke('queue-download', opts),
-  readClipboard: () => ipcRenderer.invoke('read-clipboard'),
-  onClipboardUrl: (cb) => ipcRenderer.on('clipboard-url-detected', (_e, d) => cb(d)),
-  minimizeDialog: () => ipcRenderer.invoke('minimize-dialog'),
-  closeDialog: () => ipcRenderer.invoke('close-dialog'),
-  onFileConflict: (cb) => ipcRenderer.on('file-conflict-request', (_e, d) => cb(d)),
-  resolveFileConflict: (payload) => ipcRenderer.invoke('resolve-file-conflict', payload),
-  exportQueue: (jobs) => ipcRenderer.invoke('export-queue', jobs),
-  importQueue: () => ipcRenderer.invoke('import-queue'),
-  openExternal: (url) => ipcRenderer.invoke('open-external', url),
-  pauseAllDownloads: () => ipcRenderer.invoke('pause-all-downloads'),
-  resumeAllDownloads: () => ipcRenderer.invoke('resume-all-downloads'),
-  setSpeedLimit: (limitKB) => ipcRenderer.invoke('set-speed-limit', limitKB),
-  setPostDownloadAction: (action) => ipcRenderer.invoke('set-post-download-action', action),
-  removeAll: () => {
-    ipcRenderer.removeAllListeners('file-conflict-request')
-    ipcRenderer.removeAllListeners('download-progress')
-    ipcRenderer.removeAllListeners('download-log')
-    ipcRenderer.removeAllListeners('download-done')
-    ipcRenderer.removeAllListeners('download-error')
-    ipcRenderer.removeAllListeners('download-queued')
-    ipcRenderer.removeAllListeners('download-canceled')
-    ipcRenderer.removeAllListeners('download-started')
-    ipcRenderer.removeAllListeners('download-paused')
-    ipcRenderer.removeAllListeners('sniffed-url')
-    ipcRenderer.removeAllListeners('extension-status-changed')
-    ipcRenderer.removeAllListeners('clipboard-url-detected')
-  }
-})
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const electron_1 = require("electron");
+function subscribe(channel, callback) {
+    const listener = (_event, data) => callback(data);
+    electron_1.ipcRenderer.on(channel, listener);
+    return () => {
+        electron_1.ipcRenderer.removeListener(channel, listener);
+    };
+}
+const api = {
+    copyExtensionToken: () => electron_1.ipcRenderer.invoke('copy-extension-token'),
+    analyzeUrl: (url) => electron_1.ipcRenderer.invoke('analyze-url', url),
+    startDownload: opts => electron_1.ipcRenderer.invoke('start-download', opts),
+    cancelDownload: (id) => electron_1.ipcRenderer.invoke('cancel-download', id),
+    pauseDownload: (id) => electron_1.ipcRenderer.invoke('pause-download', id),
+    resumeDownload: payload => electron_1.ipcRenderer.invoke('resume-download', payload),
+    retryDownload: opts => electron_1.ipcRenderer.invoke('retry-download', opts),
+    directDownload: opts => electron_1.ipcRenderer.invoke('direct-download', opts),
+    httpDownload: opts => electron_1.ipcRenderer.invoke('http-download', opts),
+    selectFolder: () => electron_1.ipcRenderer.invoke('select-folder'),
+    openFolder: (dir) => electron_1.ipcRenderer.invoke('open-folder', dir),
+    getDefaultDir: () => electron_1.ipcRenderer.invoke('get-default-dir'),
+    getAppVersion: () => electron_1.ipcRenderer.invoke('get-app-version'),
+    listFiles: (mode, customDir) => electron_1.ipcRenderer.invoke('list-files', mode, customDir),
+    openFile: (filePath) => electron_1.ipcRenderer.invoke('open-file', filePath),
+    showInFolder: (filePath) => electron_1.ipcRenderer.invoke('show-in-folder', filePath),
+    deleteFile: payload => electron_1.ipcRenderer.invoke('delete-file', payload),
+    checkFileExists: (filePath) => electron_1.ipcRenderer.invoke('check-file-exists', filePath),
+    computeFileHash: (filePath, algorithm) => electron_1.ipcRenderer.invoke('compute-file-hash', filePath, algorithm),
+    removeFromHistory: (idOrPath) => electron_1.ipcRenderer.invoke('remove-from-history', idOrPath),
+    getConfig: () => electron_1.ipcRenderer.invoke('get-config'),
+    getDownloadDialogData: () => electron_1.ipcRenderer.invoke('get-download-dialog-data'),
+    setConfig: patch => electron_1.ipcRenderer.invoke('set-config', patch),
+    setSpeedLimit: (limitKB) => electron_1.ipcRenderer.invoke('set-speed-limit', limitKB),
+    getYtDlpStatus: () => electron_1.ipcRenderer.invoke('get-yt-dlp-status'),
+    checkYtDlpUpdate: () => electron_1.ipcRenderer.invoke('check-yt-dlp-update'),
+    downloadYtDlp: () => electron_1.ipcRenderer.invoke('download-yt-dlp'),
+    sniffedUrl: (data) => electron_1.ipcRenderer.invoke('sniffed-url', data),
+    getQueue: () => electron_1.ipcRenderer.invoke('get-queue'),
+    saveQueue: jobs => electron_1.ipcRenderer.invoke('save-queue', jobs),
+    onProgress: cb => subscribe('download-progress', cb),
+    onLog: cb => subscribe('download-log', cb),
+    onDone: cb => subscribe('download-done', cb),
+    onError: cb => subscribe('download-error', cb),
+    onQueued: cb => subscribe('download-queued', cb),
+    onStarted: cb => subscribe('download-started', cb),
+    onCanceled: cb => subscribe('download-canceled', cb),
+    onPaused: cb => subscribe('download-paused', cb),
+    onSniffed: cb => subscribe('sniffed-url', cb),
+    onShowDownloadDialog: cb => subscribe('show-download-dialog', cb),
+    onOpenSniffItem: cb => subscribe('open-sniff-item', cb),
+    onSwitchToSniffTab: cb => subscribe('switch-to-sniff-tab', cb),
+    onSwitchToDownloadTab: cb => subscribe('switch-to-download-tab', cb),
+    openExtensionFolder: (browser) => electron_1.ipcRenderer.invoke('open-extension-folder', browser),
+    exportExtensionZip: (browser) => electron_1.ipcRenderer.invoke('export-extension-zip', browser),
+    getExtensionStatus: () => electron_1.ipcRenderer.invoke('get-extension-status'),
+    onExtensionStatus: cb => subscribe('extension-status-changed', cb),
+    getDiskSpace: (dirPath) => electron_1.ipcRenderer.invoke('get-disk-space', dirPath),
+    queueDownload: opts => electron_1.ipcRenderer.invoke('queue-download', opts),
+    readClipboard: () => electron_1.ipcRenderer.invoke('read-clipboard'),
+    onClipboardUrl: cb => subscribe('clipboard-url-detected', cb),
+    minimizeDialog: () => electron_1.ipcRenderer.invoke('minimize-dialog'),
+    closeDialog: () => electron_1.ipcRenderer.invoke('close-dialog'),
+    onFileConflict: cb => subscribe('file-conflict-request', cb),
+    resolveFileConflict: (payload) => electron_1.ipcRenderer.invoke('resolve-file-conflict', payload),
+    exportQueue: jobs => electron_1.ipcRenderer.invoke('export-queue', jobs),
+    importQueue: () => electron_1.ipcRenderer.invoke('import-queue'),
+    openExternal: (url) => electron_1.ipcRenderer.invoke('open-external', url),
+    pauseAllDownloads: () => electron_1.ipcRenderer.invoke('pause-all-downloads'),
+    resumeAllDownloads: () => electron_1.ipcRenderer.invoke('resume-all-downloads'),
+    setPostDownloadAction: action => electron_1.ipcRenderer.invoke('set-post-download-action', action),
+    onSwitchToSettingsTab: cb => subscribe('switch-to-settings-tab', cb),
+};
+electron_1.contextBridge.exposeInMainWorld('api', api);

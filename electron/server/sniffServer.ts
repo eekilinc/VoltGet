@@ -1,134 +1,205 @@
+import { timingSafeEqual } from 'crypto';
 import http from 'http';
 import { WebSocketServer } from 'ws';
+import { z } from 'zod';
+
+const maxPayload = 256 * 1024;
+const httpUrl = z
+  .string()
+  .max(16384)
+  .refine(value => {
+    try {
+      return ['http:', 'https:'].includes(new URL(value).protocol);
+    } catch {
+      return false;
+    }
+  });
+export const SniffPayloadSchema = z
+  .object({
+    url: httpUrl,
+    pageUrl: z.union([httpUrl, z.literal('')]).optional(),
+    title: z.string().max(4096).optional(),
+    filename: z.string().max(1024).optional(),
+    cookie: z.string().max(65536).optional(),
+    type: z.string().max(128).optional(),
+    userInitiated: z.boolean().optional(),
+    isGenericDownload: z.boolean().optional(),
+    showDialog: z.boolean().optional(),
+    asAudio: z.boolean().optional(),
+  })
+  .passthrough();
 
 export interface SniffServerDeps {
-  handleIncomingSniff: (data: any) => Promise<void>;
-  getMainWindow: () => any;
+  handleIncomingSniff: (data: z.infer<typeof SniffPayloadSchema>) => Promise<void>;
+  getMainWindow: () => {
+    isDestroyed: () => boolean;
+    webContents: { send: (channel: string, data: unknown) => void };
+  } | null;
+  getToken: () => string;
+  port?: number;
+}
+
+export function allowedOrigin(origin: string | undefined): boolean {
+  return (
+    origin === undefined ||
+    /^(chrome-extension:\/\/[a-p]{32}|moz-extension:\/\/[a-zA-Z0-9-]+)$/.test(origin)
+  );
 }
 
 export function createSniffServer(deps: SniffServerDeps) {
-  let sniffServer: http.Server | null = null;
+  let server: http.Server | null = null;
   let wss: WebSocketServer | null = null;
-  let lastExtensionActivity = 0;
-
-  function getExtensionConnectedCount(): number {
-    if (!wss) return 0;
-    let count = 0;
-    wss.clients.forEach((c: any) => {
-      if (c.readyState === 1) count++;
-    });
-    return count;
+  let lastActivity = 0;
+  let windowStart = Date.now();
+  let messageCount = 0;
+  function withinRateLimit() {
+    if (Date.now() - windowStart >= 1000) {
+      windowStart = Date.now();
+      messageCount = 0;
+    }
+    return ++messageCount <= 100;
   }
-
+  function authorized(token: string | undefined) {
+    const expected = Buffer.from(deps.getToken());
+    const actual = Buffer.from(token || '');
+    return actual.length === expected.length && timingSafeEqual(actual, expected);
+  }
+  function getExtensionConnectedCount() {
+    return [...(wss?.clients || [])].filter(client => client.readyState === 1).length;
+  }
   function broadcastExtensionStatus() {
     const count = getExtensionConnectedCount();
-    const isRecent = Date.now() - lastExtensionActivity < 60000;
-    const isConnected = count > 0 || isRecent;
-    const status = { connected: isConnected, count: Math.max(count, isConnected ? 1 : 0) };
     const w = deps.getMainWindow();
-    if (w && !w.isDestroyed()) {
-      w.webContents.send('extension-status-changed', status);
-    }
+    if (w && !w.isDestroyed())
+      w.webContents.send('extension-status-changed', { connected: count > 0, count });
   }
-
   function startSniffServer() {
-    if (sniffServer) return;
-    sniffServer = http.createServer((req, res) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (server) return;
+    server = http.createServer((req, res) => {
+      if (!allowedOrigin(req.headers.origin)) {
+        res.writeHead(403).end();
+        return;
+      }
+      if (req.headers.origin) {
+        res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
+        res.setHeader('Vary', 'Origin');
+      }
       if (req.method === 'OPTIONS') {
-        res.writeHead(200);
-        res.end();
+        res
+          .writeHead(204, {
+            'Access-Control-Allow-Methods': 'GET, POST',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          })
+          .end();
         return;
       }
-      if (req.url === '/sniff' && req.method === 'POST') {
-        let body = '';
-        req.on('data', c => (body += c));
-        req.on('end', async () => {
-          try {
-            lastExtensionActivity = Date.now();
-            broadcastExtensionStatus();
-            const data = JSON.parse(body);
-            await deps.handleIncomingSniff(data);
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ok: true }));
-          } catch (e: any) {
-            res.writeHead(400);
-            res.end(String(e));
-          }
-        });
+      if (!authorized(req.headers.authorization?.replace(/^Bearer /, ''))) {
+        res.writeHead(401).end();
         return;
       }
-      if (req.url === '/status') {
-        lastExtensionActivity = Date.now();
-        broadcastExtensionStatus();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({ ok: true, app: 'VoltGet', sniff: true, extensionConnected: true })
+      if (!withinRateLimit()) {
+        res.writeHead(429).end();
+        return;
+      }
+      if (req.method === 'GET' && req.url === '/status') {
+        res.writeHead(200, { 'Content-Type': 'application/json' }).end(
+          JSON.stringify({
+            ok: true,
+            app: 'VoltGet',
+            extensionConnected: getExtensionConnectedCount() > 0,
+          })
         );
         return;
       }
-      res.writeHead(404);
-      res.end('not found');
-    });
-    sniffServer.listen(8765, '127.0.0.1', () => {
-      console.log('[VoltGet] sniff server http://127.0.0.1:8765/sniff');
-      wss = new WebSocketServer({ server: sniffServer! });
-      wss.on('connection', ws => {
-        lastExtensionActivity = Date.now();
-        console.log('[VoltGet] WebSocket connected');
-        broadcastExtensionStatus();
-        ws.on('message', async (message: string) => {
-          try {
-            lastExtensionActivity = Date.now();
-            const msg = JSON.parse(message.toString());
-            if (msg.type === 'ping') {
-              try {
-                ws.send(JSON.stringify({ type: 'pong' }));
-              } catch {}
-              broadcastExtensionStatus();
-              return;
-            }
-            if (msg.type === 'sniffed-url') {
-              await deps.handleIncomingSniff(msg.data);
-            }
-          } catch (e: any) {
-            console.error('[VoltGet] WebSocket message error', e);
+      if (req.method !== 'POST' || req.url !== '/sniff') {
+        res.writeHead(404).end();
+        return;
+      }
+      let bytes = 0;
+      const chunks: Buffer[] = [];
+      req.on('data', (chunk: Buffer) => {
+        bytes += chunk.length;
+        if (bytes > maxPayload) {
+          if (!res.writableEnded) res.writeHead(413).end();
+          chunks.length = 0;
+          return;
+        }
+        chunks.push(chunk);
+      });
+      req.on('end', () => {
+        if (res.writableEnded) return;
+        void (async () => {
+          const payload = SniffPayloadSchema.safeParse(
+            JSON.parse(Buffer.concat(chunks).toString())
+          );
+          if (!payload.success) {
+            res.writeHead(400).end('Invalid payload');
+            return;
           }
-        });
-        ws.on('close', () => {
-          console.log('[VoltGet] WebSocket disconnected');
-          broadcastExtensionStatus();
-        });
-        ws.on('error', (e: Error) => {
-          console.error('[VoltGet] WebSocket error', e);
-          broadcastExtensionStatus();
+          lastActivity = Date.now();
+          await deps.handleIncomingSniff(payload.data);
+          res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"ok":true}');
+        })().catch(() => {
+          if (!res.writableEnded) res.writeHead(400).end('Invalid request');
         });
       });
+      req.on('error', () => {
+        if (!res.writableEnded) res.writeHead(400).end();
+      });
     });
-    sniffServer.on('error', (e: any) => console.error('[sniff server]', e.message));
+    server.requestTimeout = 10000;
+    server.headersTimeout = 10000;
+    wss = new WebSocketServer({ noServer: true, maxPayload, handleProtocols: () => 'voltget' });
+    server.on('upgrade', (req, socket, head) => {
+      const protocols = (req.headers['sec-websocket-protocol'] || '')
+        .split(',')
+        .map(value => value.trim());
+      const token = protocols.find(value => value.startsWith('token.'))?.slice(6);
+      if (
+        !allowedOrigin(req.headers.origin) ||
+        !protocols.includes('voltget') ||
+        !authorized(token) ||
+        !withinRateLimit()
+      ) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      wss!.handleUpgrade(req, socket, head, ws => wss!.emit('connection', ws, req));
+    });
+    wss.on('connection', ws => {
+      lastActivity = Date.now();
+      broadcastExtensionStatus();
+      ws.on('message', message => {
+        if (!withinRateLimit()) {
+          ws.close(1008, 'Rate limit');
+          return;
+        }
+        void (async () => {
+          const msg = JSON.parse(message.toString());
+          if (msg.type === 'ping') {
+            ws.send('{"type":"pong"}');
+            return;
+          }
+          if (msg.type !== 'sniffed-url') throw new Error('Invalid message');
+          const payload = SniffPayloadSchema.parse(msg.data);
+          lastActivity = Date.now();
+          await deps.handleIncomingSniff(payload);
+        })().catch(() => ws.close(1008, 'Invalid payload'));
+      });
+      ws.on('close', broadcastExtensionStatus);
+      ws.on('error', () => ws.terminate());
+    });
+    server.on('error', error => console.error('[sniff server]', error.message));
+    server.listen(deps.port ?? 8765, '127.0.0.1');
   }
-
-  function getWss() {
-    return wss;
-  }
-  function getServer() {
-    return sniffServer;
-  }
-  function markActivity() {
-    lastExtensionActivity = Date.now();
-    broadcastExtensionStatus();
-  }
-
   return {
     startSniffServer,
     getExtensionConnectedCount,
     broadcastExtensionStatus,
-    getWss,
-    getServer,
-    markActivity,
-    getLastActivity: () => lastExtensionActivity,
+    getWss: () => wss,
+    getServer: () => server,
+    getLastActivity: () => lastActivity,
   };
 }
 

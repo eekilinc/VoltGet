@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppSettings } from '../context/AppSettingsContext';
+import { useJobFilter, type JobCategory } from '../hooks/useJobFilter';
 import JobStatusBadge from './QueuePanel/JobStatusBadge';
-import { useJobFilter } from '../hooks/useJobFilter';
 
 export type Job = {
   id: string;
@@ -37,6 +37,7 @@ export default function QueuePanel({
   onDeleteJob,
   onClear,
   onImportJobs,
+  onMoveJob,
   compact,
 }: {
   jobs: Job[];
@@ -53,6 +54,7 @@ export default function QueuePanel({
   onDeleteJob?: (job: Job, deleteFromDisk: boolean) => void;
   onClear?: () => void;
   onImportJobs?: (jobs: any[]) => void;
+  onMoveJob?: (id: string, direction: 'up' | 'down') => void;
   compact?: boolean;
 }) {
   const { t } = useAppSettings();
@@ -60,6 +62,8 @@ export default function QueuePanel({
   const {
     filterTab,
     setFilterTab,
+    categoryFilter,
+    setCategoryFilter,
     searchQuery,
     setSearchQuery,
     counts,
@@ -68,7 +72,7 @@ export default function QueuePanel({
   const [postAction, setPostAction] = useState<'none' | 'shutdown' | 'sleep' | 'quit'>('none');
 
   useEffect(() => {
-    const api = (window as any).api;
+    const api = window.api;
     if (api?.getConfig) {
       api
         .getConfig()
@@ -83,7 +87,7 @@ export default function QueuePanel({
 
   const handlePostActionChange = async (val: 'none' | 'shutdown' | 'sleep' | 'quit') => {
     setPostAction(val);
-    const api = (window as any).api;
+    const api = window.api;
     if (api?.setPostDownloadAction) {
       await api.setPostDownloadAction(val).catch(() => {});
     }
@@ -268,7 +272,7 @@ export default function QueuePanel({
           <button
             onClick={async () => {
               try {
-                const r = await (window as any).api?.exportQueue?.(jobs);
+                const r = await window.api?.exportQueue?.(jobs);
                 if (r && !r.canceled) alert(t('queueExported') + `: ${r.count}`);
               } catch (e: any) {
                 alert(String(e?.message || e));
@@ -291,7 +295,7 @@ export default function QueuePanel({
           <button
             onClick={async () => {
               try {
-                const r = await (window as any).api?.importQueue?.();
+                const r = await window.api?.importQueue?.();
                 if (r && !r.canceled && r.jobs?.length) {
                   onImportJobs?.(r.jobs);
                   alert(t('queueImported') + `: ${r.jobs.length}`);
@@ -403,6 +407,44 @@ export default function QueuePanel({
                 >
                   {tab.count}
                 </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Kategori Filtreleri (Tümü, Video, Ses, Belge, Arşiv, Program) */}
+        <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 2 }}>
+          {[
+            { id: 'all' as JobCategory, label: t('categoryAll'), icon: '✨' },
+            { id: 'video' as JobCategory, label: t('categoryVideo'), icon: '🎬' },
+            { id: 'audio' as JobCategory, label: t('categoryAudio'), icon: '🎵' },
+            { id: 'document' as JobCategory, label: t('categoryDocument'), icon: '📄' },
+            { id: 'archive' as JobCategory, label: t('categoryArchive'), icon: '📦' },
+            { id: 'program' as JobCategory, label: t('categoryProgram'), icon: '💻' },
+          ].map(cat => {
+            const active = categoryFilter === cat.id;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setCategoryFilter(cat.id)}
+                style={{
+                  padding: '3px 7px',
+                  borderRadius: 6,
+                  fontSize: 10,
+                  fontWeight: active ? 700 : 500,
+                  whiteSpace: 'nowrap',
+                  background: active ? 'var(--accent-solid)' : 'var(--panel-2)',
+                  color: active ? '#fff' : 'var(--text-muted)',
+                  border: '1px solid ' + (active ? 'var(--accent-solid)' : 'var(--border)'),
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <span>{cat.icon}</span>
+                <span>{cat.label}</span>
               </button>
             );
           })}
@@ -608,6 +650,43 @@ export default function QueuePanel({
                   ▶ {t('resume')}
                 </button>
               )}
+
+              {/* Sıralama Taşıma Butonları (Kuyruk / İndirme Önceliği) */}
+              {(j.status === 'downloading' || j.status === 'queued' || j.status === 'paused') &&
+                onMoveJob && (
+                  <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
+                    <button
+                      onClick={() => onMoveJob(j.id, 'up')}
+                      title={t('moveUp')}
+                      style={{
+                        background: 'var(--panel-2)',
+                        color: 'var(--text)',
+                        border: '1px solid var(--border)',
+                        padding: '4px 6px',
+                        borderRadius: 6,
+                        fontSize: 10,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ⬆️
+                    </button>
+                    <button
+                      onClick={() => onMoveJob(j.id, 'down')}
+                      title={t('moveDown')}
+                      style={{
+                        background: 'var(--panel-2)',
+                        color: 'var(--text)',
+                        border: '1px solid var(--border)',
+                        padding: '4px 6px',
+                        borderRadius: 6,
+                        fontSize: 10,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ⬇️
+                    </button>
+                  </div>
+                )}
 
               {/* Tamamlanmış İndirmeler */}
               {j.status === 'done' && !j.deletedFromDisk && (

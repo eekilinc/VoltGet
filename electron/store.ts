@@ -1,61 +1,20 @@
 import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
-import { ensureDir } from './utils/files.js';
 import { categorizeFile } from './categories.js';
+import { createQueueStore } from './storage/queueStore.js';
+import { ensureDir } from './utils/files.js';
 
-export type AppConfig = {
-  concurrent: number;
-  speedLimitKB: number;
-  siteFolders: boolean;
-  categoryFolders?: boolean;
-  filenameTemplate: string;
-  autoUpdateCheck: boolean;
-  sniffNotifications: boolean;
-  sniffDebounceMs: number;
-  theme: 'dark' | 'light';
-  accentColor: 'blue' | 'purple' | 'green' | 'orange' | 'pink' | 'red' | 'teal';
-  language: 'tr' | 'en' | 'de' | 'es' | 'ru' | 'ar';
-  interceptBrowserDownloads: boolean;
-  captureMediaRequests: boolean;
-  captureDocuments: boolean;
-  captureArchives: boolean;
-  captureInstallers: boolean;
-  openAtLogin: boolean;
-  startMinimized: boolean;
-  closeToTray: boolean;
-  minimizeToTray: boolean;
-  clipboardWatcher: boolean;
-  soundNotification?: boolean;
-  postDownloadAction?: 'none' | 'shutdown' | 'sleep' | 'quit';
-  customOutDir?: string;
-};
+import { defaultConfig, mergeWithDefaults, type AppConfig } from './config/schema.js';
+import { protectSecrets, revealSecrets } from './security/secrets.js';
+export { defaultConfig, type AppConfig } from './config/schema.js';
 
-export const defaultConfig: AppConfig = {
-  concurrent: 3,
-  speedLimitKB: 0,
-  siteFolders: true,
-  categoryFolders: false,
-  filenameTemplate: '%(title)s.%(ext)s',
-  autoUpdateCheck: true,
-  sniffNotifications: true,
-  sniffDebounceMs: 8000,
-  theme: 'dark',
-  accentColor: 'blue',
-  language: 'tr',
-  interceptBrowserDownloads: true,
-  captureMediaRequests: true,
-  captureDocuments: true,
-  captureArchives: true,
-  captureInstallers: true,
-  openAtLogin: false,
-  startMinimized: false,
-  closeToTray: true,
-  minimizeToTray: false,
-  clipboardWatcher: true,
-  soundNotification: true,
-  postDownloadAction: 'none',
-};
+function writeJson(file: string, value: unknown): void {
+  ensureDir(path.dirname(file));
+  const temporary = file + '.tmp';
+  fs.writeFileSync(temporary, JSON.stringify(protectSecrets(value), null, 2), { mode: 0o600 });
+  fs.renameSync(temporary, file);
+}
 
 export function configPath(): string {
   return path.join(app.getPath('userData'), 'config.json');
@@ -68,40 +27,29 @@ export function historyPath(): string {
 }
 
 export function loadConfig(): AppConfig {
-  try {
-    if (fs.existsSync(configPath()))
-      return { ...defaultConfig, ...JSON.parse(fs.readFileSync(configPath(), 'utf-8')) };
-  } catch {}
-  return { ...defaultConfig };
+  if (!fs.existsSync(configPath())) return { ...defaultConfig };
+  const raw = JSON.parse(fs.readFileSync(configPath(), 'utf-8'));
+  return mergeWithDefaults(revealSecrets(raw));
 }
 
 export function saveConfig(c: AppConfig): void {
-  try {
-    ensureDir(path.dirname(configPath()));
-    fs.writeFileSync(configPath(), JSON.stringify(c, null, 2));
-  } catch (e) {
-    console.error(e);
-  }
+  writeJson(configPath(), c);
 }
 
+let queueStore: ReturnType<typeof createQueueStore> | undefined;
+function getQueueStore() {
+  return (queueStore ??= createQueueStore(queuePath(), error =>
+    console.error('[VoltGet] Queue save failed', error)
+  ));
+}
 export function saveQueue(jobs: any[]): void {
-  try {
-    ensureDir(path.dirname(queuePath()));
-    const seen = new Set<string>();
-    const unique = (Array.isArray(jobs) ? jobs : []).filter((j: any) => {
-      if (!j?.id || seen.has(j.id)) return false;
-      seen.add(j.id);
-      return true;
-    });
-    fs.writeFileSync(queuePath(), JSON.stringify(unique.slice(0, 50), null, 2));
-  } catch {}
+  getQueueStore().save(Array.isArray(jobs) ? jobs : []);
 }
-
 export function loadQueue(): any[] {
-  try {
-    if (fs.existsSync(queuePath())) return JSON.parse(fs.readFileSync(queuePath(), 'utf-8'));
-  } catch {}
-  return [];
+  return getQueueStore().load();
+}
+export function flushQueue(): Promise<void> {
+  return getQueueStore().flush();
 }
 
 /** Crash-safe queue recovery: interrupted 'downloading'/'queued' jobs -> 'paused' so UI can resume them. */
@@ -155,7 +103,7 @@ export function loadHistory(): DownloadHistoryItem[] {
 export function saveHistory(items: DownloadHistoryItem[]): void {
   try {
     ensureDir(path.dirname(historyPath()));
-    fs.writeFileSync(historyPath(), JSON.stringify(items.slice(0, 500), null, 2));
+    writeJson(historyPath(), items.slice(0, 500));
   } catch (e) {
     console.error(e);
   }

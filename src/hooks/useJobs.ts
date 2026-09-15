@@ -1,28 +1,9 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { playDownloadCompleteChime } from '../utils/audio';
 import { calcTotalSpeed } from '../utils/speed';
 
-export type Job = {
-  id: string;
-  url: string;
-  title: string;
-  percent: number;
-  speed: string;
-  eta: string;
-  total: string;
-  status: 'downloading' | 'done' | 'error' | 'queued' | 'paused';
-  log: string;
-  opts?: any;
-  filePath?: string;
-  fileName?: string;
-  deletedFromDisk?: boolean;
-};
-
-declare global {
-  interface Window {
-    api: any;
-  }
-}
+import type { DownloadOptions, Job } from '../../electron/contracts';
+export type { Job } from '../../electron/contracts';
 
 function resolveFilePath(j: any): string {
   return (
@@ -34,37 +15,56 @@ function resolveFilePath(j: any): string {
 
 export function useJobs(hasApi: boolean) {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [queueLoaded, setQueueLoaded] = useState(false);
   const recentlyCancelledRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!hasApi) return;
-    window.api.getQueue().then(async (saved: any[]) => {
-      if (saved?.length) {
-        const seenIds = new Set<string>();
-        const uniqueSaved = saved.filter((j: any) => {
-          if (!j?.id || seenIds.has(j.id)) return false;
-          seenIds.add(j.id);
-          return true;
-        });
-        const initialJobs = uniqueSaved
-          .filter((j: any) => j.status === 'done' || j.status === 'error' || j.status === 'paused')
-          .slice(0, 30);
-        const verifiedJobs = await Promise.all(
-          initialJobs.map(async (j: any) => {
-            const fp = resolveFilePath(j);
-            if (j.status === 'done' && fp && window.api?.checkFileExists) {
-              try {
-                const exists = await window.api.checkFileExists(fp);
-                return { ...j, filePath: fp, deletedFromDisk: !exists };
-              } catch {}
-            }
-            return { ...j, filePath: fp || j.filePath };
-          })
-        );
-        setJobs(verifiedJobs);
-      }
-    });
+    let disposed = false;
+    window.api
+      .getQueue()
+      .then(async (saved: any[]) => {
+        if (saved?.length) {
+          const seenIds = new Set<string>();
+          const uniqueSaved = saved.filter((j: any) => {
+            if (!j?.id || seenIds.has(j.id)) return false;
+            seenIds.add(j.id);
+            return true;
+          });
+          const initialJobs = uniqueSaved;
+          const verifiedJobs = await Promise.all(
+            initialJobs.map(async (j: any) => {
+              const fp = resolveFilePath(j);
+              if (j.status === 'done' && fp && window.api?.checkFileExists) {
+                try {
+                  const exists = await window.api.checkFileExists(fp);
+                  return { ...j, filePath: fp, deletedFromDisk: !exists };
+                } catch {}
+              }
+              return { ...j, filePath: fp || j.filePath };
+            })
+          );
+          if (!disposed)
+            setJobs(current => [
+              ...current,
+              ...verifiedJobs.filter(saved => !current.some(job => job.id === saved.id)),
+            ]);
+        }
+        if (!disposed) setQueueLoaded(true);
+      })
+      .catch(error => console.error('[VoltGet] Queue load failed', error));
+    return () => {
+      disposed = true;
+    };
   }, [hasApi]);
+
+  useEffect(() => {
+    if (hasApi && queueLoaded) {
+      void window.api
+        .saveQueue(jobs)
+        .catch(error => console.error('[VoltGet] Queue save failed', error));
+    }
+  }, [hasApi, queueLoaded, jobs]);
 
   useEffect(() => {
     if (!hasApi) return;
@@ -85,7 +85,7 @@ export function useJobs(hasApi: boolean) {
             log: d.raw || 'İndiriliyor...',
           };
           const n = [newJob, ...j];
-          window.api.saveQueue(n);
+
           return n;
         }
         const n = j.map(x =>
@@ -105,7 +105,7 @@ export function useJobs(hasApi: boolean) {
               }
             : x
         );
-        window.api.saveQueue(n);
+
         return n;
       });
     };
@@ -133,7 +133,7 @@ export function useJobs(hasApi: boolean) {
               }
             : x
         );
-        window.api.saveQueue(n);
+
         return n;
       });
     };
@@ -143,7 +143,7 @@ export function useJobs(hasApi: boolean) {
         const n = j.map(x =>
           x.id === d.id ? { ...x, status: 'error' as Job['status'], log: d.error } : x
         );
-        window.api.saveQueue(n);
+
         return n;
       });
     };
@@ -159,7 +159,7 @@ export function useJobs(hasApi: boolean) {
           const n = j.map(x =>
             x.id === d.id ? { ...x, status: 'queued' as const, log: `Sırada #${d.position}` } : x
           );
-          window.api.saveQueue(n);
+
           return n;
         }
         const title = d.opts?.title || d.opts?.filename || d.opts?.url || 'İndirme';
@@ -176,7 +176,7 @@ export function useJobs(hasApi: boolean) {
           opts: d.opts,
         };
         const n = [newJob, ...j];
-        window.api.saveQueue(n);
+
         return n;
       });
     };
@@ -200,7 +200,7 @@ export function useJobs(hasApi: boolean) {
                 }
               : x
           );
-          window.api.saveQueue(n);
+
           return n;
         }
         const newJob: Job = {
@@ -216,7 +216,7 @@ export function useJobs(hasApi: boolean) {
           opts: d.opts,
         };
         const n = [newJob, ...j];
-        window.api.saveQueue(n);
+
         return n;
       });
     };
@@ -230,7 +230,6 @@ export function useJobs(hasApi: boolean) {
       setJobs(j => {
         const n = j.filter(x => x.id !== d.id);
         try {
-          window.api?.saveQueue?.(n);
         } catch {}
         return n;
       });
@@ -240,19 +239,21 @@ export function useJobs(hasApi: boolean) {
         const n = j.map(x =>
           x.id === d.id ? { ...x, status: 'paused' as const, log: 'Duraklatıldı' } : x
         );
-        window.api.saveQueue(n);
+
         return n;
       });
 
-    window.api.onProgress(onP);
-    window.api.onDone(onD);
-    window.api.onError(onE);
-    window.api.onLog(onL);
-    window.api.onQueued(onQ);
-    window.api.onStarted(onS);
-    window.api.onCanceled(onC);
-    window.api.onPaused?.(onPaused);
-    return () => {};
+    const cleanups = [
+      window.api.onProgress(onP),
+      window.api.onDone(onD),
+      window.api.onError(onE),
+      window.api.onLog(onL),
+      window.api.onQueued(onQ),
+      window.api.onStarted(onS),
+      window.api.onCanceled(onC),
+      window.api.onPaused(onPaused),
+    ];
+    return () => cleanups.forEach(unsubscribe => unsubscribe());
   }, [hasApi]);
 
   const totalSpeed = useMemo(() => calcTotalSpeed(jobs), [jobs]);
@@ -267,13 +268,13 @@ export function useJobs(hasApi: boolean) {
         return j.map(x => (x.id === job.id ? { ...x, ...job } : x));
       }
       const n = [job, ...j];
-      window.api.saveQueue(n);
+
       return n;
     });
   }, []);
 
   const handleStartDownload = useCallback(
-    async (opts: any) => {
+    async (opts: DownloadOptions) => {
       const url = opts.url as string;
       const title = opts.title || url.slice(0, 50);
       const res = await window.api.startDownload(opts);
@@ -297,7 +298,7 @@ export function useJobs(hasApi: boolean) {
   );
 
   const handleDirectDownload = useCallback(
-    async (opts: any) => {
+    async (opts: DownloadOptions) => {
       const res = await window.api.directDownload(opts);
       const id = res.id as string;
       const queued = !!res.queued;
@@ -319,7 +320,7 @@ export function useJobs(hasApi: boolean) {
   );
 
   const handleHttpDownload = useCallback(
-    async (opts: any) => {
+    async (opts: DownloadOptions) => {
       const res = await window.api.httpDownload(opts);
       const id = res.id as string;
       const queued = !!res.queued;
@@ -362,64 +363,61 @@ export function useJobs(hasApi: boolean) {
         opts: job.opts,
       };
       const n = [newJob, ...filtered];
-      window.api.saveQueue(n);
+
       return n;
     });
   }, []);
 
-  const persistQueue = useCallback((n: Job[]) => {
+  const handleRemoveJob = useCallback(async (id: string) => {
     try {
-      window.api?.saveQueue?.(n);
+      await window.api?.removeFromHistory?.(id);
     } catch {}
+    setJobs(j => {
+      const n = j.filter(x => x.id !== id);
+      return n;
+    });
   }, []);
 
-  const handleRemoveJob = useCallback(
-    async (id: string) => {
-      try {
-        await window.api?.removeFromHistory?.(id);
-      } catch {}
-      setJobs(j => {
-        const n = j.filter(x => x.id !== id);
-        persistQueue(n);
-        return n;
-      });
-    },
-    [persistQueue]
-  );
+  const handleDeleteJob = useCallback(async (job: Job, deleteFromDisk: boolean) => {
+    const targetPath = job.filePath || job.opts?.outPath;
+    try {
+      await window.api?.deleteFile?.({ filePath: targetPath, deleteFromDisk, id: job.id });
+    } catch {}
+    setJobs(j => {
+      const n = j.filter(x => x.id !== job.id);
+      return n;
+    });
+  }, []);
 
-  const handleDeleteJob = useCallback(
-    async (job: Job, deleteFromDisk: boolean) => {
-      const targetPath = job.filePath || job.opts?.outPath;
-      try {
-        await window.api?.deleteFile?.({ filePath: targetPath, deleteFromDisk, id: job.id });
-      } catch {}
-      setJobs(j => {
-        const n = j.filter(x => x.id !== job.id);
-        persistQueue(n);
-        return n;
-      });
-    },
-    [persistQueue]
-  );
+  const handleCancelJob = useCallback((id: string) => {
+    if (!id) return;
+    recentlyCancelledRef.current.add(id);
+    setTimeout(() => {
+      recentlyCancelledRef.current.delete(id);
+    }, 15000);
+    try {
+      window.api?.cancelDownload?.(id)?.catch?.(() => {});
+    } catch {}
+    setJobs(j => {
+      const n = j.filter(x => x.id !== id);
+      return n;
+    });
+  }, []);
 
-  const handleCancelJob = useCallback(
-    (id: string) => {
-      if (!id) return;
-      recentlyCancelledRef.current.add(id);
-      setTimeout(() => {
-        recentlyCancelledRef.current.delete(id);
-      }, 15000);
-      try {
-        window.api?.cancelDownload?.(id)?.catch?.(() => {});
-      } catch {}
-      setJobs(j => {
-        const n = j.filter(x => x.id !== id);
-        persistQueue(n);
-        return n;
-      });
-    },
-    [persistQueue]
-  );
+  const handleMoveJob = useCallback((id: string, direction: 'up' | 'down') => {
+    setJobs(prevJobs => {
+      const index = prevJobs.findIndex(j => j.id === id);
+      if (index === -1) return prevJobs;
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prevJobs.length) return prevJobs;
+
+      const updated = [...prevJobs];
+      const [moved] = updated.splice(index, 1);
+      updated.splice(targetIndex, 0, moved);
+
+      return updated;
+    });
+  }, []);
 
   return {
     jobs,
@@ -433,5 +431,6 @@ export function useJobs(hasApi: boolean) {
     handleRemoveJob,
     handleDeleteJob,
     handleCancelJob,
+    handleMoveJob,
   };
 }

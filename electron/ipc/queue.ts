@@ -1,6 +1,7 @@
-import { ipcMain, dialog } from 'electron';
+import { dialog, ipcMain } from 'electron';
 import fs from 'fs';
 import path from 'path';
+import { omitSecrets } from '../security/secrets.js';
 
 function cleanTempForJob(id: string, opts?: any) {
   try {
@@ -86,7 +87,7 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
     if (p) {
       const opts = deps.activeOpts.get(id);
       try {
-        p.kill();
+        await p.kill();
       } catch {}
       cleanTempForJob(id, opts);
       deps.activeDownloads.delete(id);
@@ -124,8 +125,8 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
       try {
         deps.cancelScheduledRetry?.(id);
       } catch {}
-      if (typeof p.pause === 'function') p.pause();
-      else if (typeof p.kill === 'function') p.kill();
+      if (typeof p.pause === 'function') await p.pause();
+      else if (typeof p.kill === 'function') await p.kill();
       deps.activeDownloads.delete(id);
       deps.activeOpts.delete(id);
       deps.updatePowerSaveBlocker();
@@ -186,12 +187,18 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
 
   ipcMain.handle('pause-all-downloads', async () => {
     let count = 0;
+    // Remove waiting jobs first so finishing an active pause cannot start them.
+    for (const job of deps.pendingQueue.splice(0)) {
+      deps.pausedDownloads.set(job.id, job.opts);
+      deps.send('download-paused', { id: job.id });
+      count++;
+    }
     for (const [id, proc] of deps.activeDownloads.entries()) {
       const opts = deps.activeOpts.get(id);
       if (opts) deps.pausedDownloads.set(id, opts);
       deps.pausingIds.add(id);
-      if (typeof proc.pause === 'function') proc.pause();
-      else if (typeof proc.kill === 'function') proc.kill();
+      if (typeof proc.pause === 'function') await proc.pause();
+      else if (typeof proc.kill === 'function') await proc.kill();
       deps.activeDownloads.delete(id);
       deps.activeOpts.delete(id);
       deps.send('download-paused', { id });
@@ -236,7 +243,7 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
       url: j?.url || j?.opts?.url || '',
       title: j?.title || '',
       status: j?.status || 'paused',
-      opts: j?.opts || null,
+      opts: omitSecrets(j?.opts || null),
       filePath: j?.filePath || '',
       fileName: j?.fileName || '',
     }));

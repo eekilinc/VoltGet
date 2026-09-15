@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { applyTheme, ThemeMode, AccentColor } from '../theme';
+import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { Lang, t as translate } from '../i18n';
+import { AccentColor, applyTheme, ThemeMode } from '../theme';
 
 type Ctx = {
   theme: ThemeMode;
@@ -21,7 +21,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    const api = (window as any).api;
+    const api = window.api;
     if (api?.getConfig) {
       api
         .getConfig()
@@ -46,7 +46,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   function persist(patch: any) {
-    const api = (window as any).api;
+    const api = window.api;
     if (api?.setConfig) api.setConfig(patch).catch(() => {});
   }
 

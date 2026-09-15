@@ -1,6 +1,23 @@
 import { ipcMain, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+
+export async function computeFileHash(
+  filePath: string,
+  algorithm: 'md5' | 'sha256' | 'sha1' = 'sha256'
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!filePath || !fs.existsSync(filePath)) {
+      return reject(new Error('Dosya bulunamadı'));
+    }
+    const hash = crypto.createHash(algorithm);
+    const stream = fs.createReadStream(filePath);
+    stream.on('data', chunk => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+    stream.on('error', err => reject(err));
+  });
+}
 
 export function registerFileIpc(deps: {
   scanFiles: (dir: string, baseDir: string) => any[];
@@ -140,4 +157,16 @@ export function registerFileIpc(deps: {
       return { free: 'Bilinmiyor', total: '', freeBytes: 0, totalBytes: 0 };
     }
   });
+
+  ipcMain.handle(
+    'compute-file-hash',
+    async (_e, filePath: string, algorithm: 'md5' | 'sha256' | 'sha1' = 'sha256') => {
+      try {
+        const hash = await computeFileHash(filePath, algorithm);
+        return { success: true, hash, algorithm };
+      } catch (e: any) {
+        return { success: false, error: e?.message || String(e) };
+      }
+    }
+  );
 }

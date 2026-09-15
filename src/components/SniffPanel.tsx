@@ -1,6 +1,7 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAppSettings } from '../context/AppSettingsContext';
 import { useToast } from '../context/ToastContext';
+import { useEventCallback } from '../hooks/useEventCallback';
 import ExtensionInstallModal from './ExtensionInstallModal';
 
 type Sniff = {
@@ -77,6 +78,8 @@ export default function SniffPanel({
   const [extConnected, setExtConnected] = useState(false);
   const [extModalOpen, setExtModalOpen] = useState(false);
   const itemRefs = useRef<Record<string, HTMLDivElement>>({});
+  const quickDownloadEvent = useEventCallback(quickDownload);
+  const analyzeEvent = useEventCallback(analyze);
 
   useEffect(() => {
     window.api?.getExtensionStatus?.().then((res: any) => {
@@ -85,7 +88,7 @@ export default function SniffPanel({
     const onExt = (res: any) => {
       if (res) setExtConnected(!!res.connected);
     };
-    window.api?.onExtensionStatus?.(onExt);
+    return window.api?.onExtensionStatus?.(onExt);
   }, []);
 
   useEffect(() => {
@@ -150,19 +153,20 @@ export default function SniffPanel({
         const idx = items.indexOf(found as any);
         if (idx !== -1) {
           if (isGenericFile(found.url, found.type)) {
-            quickDownload(idx, found as any);
+            quickDownloadEvent(idx, found as any);
           } else {
-            await analyze(idx, found as any);
+            await analyzeEvent(idx, found as any);
           }
         }
       }
     };
-    window.api?.onSniffed(handler);
-    window.api?.onOpenSniffItem?.(openHandler);
+    const removeSniffed = window.api?.onSniffed(handler);
+    const removeOpen = window.api?.onOpenSniffItem(openHandler);
     return () => {
-      window.api?.onOpenSniffItem?.(openHandler);
+      removeSniffed?.();
+      removeOpen?.();
     };
-  }, [items]);
+  }, [items, quickDownloadEvent, analyzeEvent]);
 
   async function quickDownload(idx: number, it: Sniff) {
     const generic = isGenericFile(it.url, it.type);

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { useEventCallback } from './hooks/useEventCallback';
 import './index.css';
 import { dragRegion, noDragRegion } from './utils/electron-css';
 import { normalizeToMasterPlaylist } from './utils/playlist';
@@ -226,52 +227,6 @@ function DialogApp() {
     }
   };
 
-  useEffect(() => {
-    window.api?.getDefaultDir?.().then((dir: string) => {
-      if (dir) {
-        setOutDir(dir);
-        window.api?.getDiskSpace?.(dir).then((s: any) => {
-          if (s?.free) setDiskSpace(s);
-        });
-      }
-    });
-
-    window.api?.getDownloadDialogData?.().then((d: any) => {
-      if (d) applyData(d);
-    });
-
-    const cleanup = window.api?.onShowDownloadDialog?.((d: any) => {
-      if (d) applyData(d);
-    });
-
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 6000);
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (window.api?.closeDialog) {
-          window.api.closeDialog();
-        } else {
-          window.close();
-        }
-      } else if (
-        e.key === 'Enter' &&
-        !e.shiftKey &&
-        (e.target as HTMLElement).tagName !== 'TEXTAREA'
-      ) {
-        handleStart('download');
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('keydown', handleKeyDown);
-      if (typeof cleanup === 'function') cleanup();
-    };
-  }, []);
-
   const handleSelectFolder = async () => {
     const chosen = await window.api?.selectFolder?.();
     if (chosen) {
@@ -395,6 +350,54 @@ function DialogApp() {
         };
     }
   }, [siteProfile, isAudioMode, data]);
+
+  const applyDataEvent = useEventCallback(applyData);
+  const handleStartEvent = useEventCallback(handleStart);
+  useEffect(() => {
+    window.api?.getDefaultDir?.().then((dir: string) => {
+      if (dir) {
+        setOutDir(dir);
+        window.api?.getDiskSpace?.(dir).then((s: any) => {
+          if (s?.free) setDiskSpace(s);
+        });
+      }
+    });
+
+    window.api?.getDownloadDialogData?.().then((d: any) => {
+      if (d) applyDataEvent(d);
+    });
+
+    const cleanup = window.api?.onShowDownloadDialog?.((d: any) => {
+      if (d) applyDataEvent(d);
+    });
+
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 6000);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (window.api?.closeDialog) {
+          window.api.closeDialog();
+        } else {
+          window.close();
+        }
+      } else if (
+        e.key === 'Enter' &&
+        !e.shiftKey &&
+        (e.target as HTMLElement).tagName !== 'TEXTAREA'
+      ) {
+        handleStartEvent('download');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('keydown', handleKeyDown);
+      if (typeof cleanup === 'function') cleanup();
+    };
+  }, [applyDataEvent, handleStartEvent]);
 
   return (
     <div

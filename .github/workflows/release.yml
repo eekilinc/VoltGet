@@ -26,6 +26,14 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Check Types and Lint
+        run: |
+          npx tsc --noEmit -p tsconfig.json
+          npm run lint
+
+      - name: Run Unit and Integration Tests
+        run: npm test
+
       - name: Download Latest yt-dlp Binary
         shell: pwsh
         run: |
@@ -40,6 +48,9 @@ jobs:
 
       - name: Build Renderer
         run: npm run build:renderer
+
+      - name: Test Electron Application
+        run: npx playwright test
 
       - name: Package Windows Installers (NSIS & Portable)
         run: npx electron-builder --win --x64 --publish never
@@ -62,6 +73,14 @@ jobs:
             release/latest.yml
             release/checksums.sha256.txt
           generate_release_notes: true
+          body: |
+            ## VoltGet 1.1.0
+            - Verified HTTP byte ranges, safer pause/resume and file finalization.
+            - OS-encrypted passwords and cookies, authenticated browser extension connections.
+            - Full queue retention, atomic background saves and individual settings recovery.
+            - Lower memory use, typed desktop APIs and corrected event cleanup.
+
+            **Browser extension update:** Reload the updated extension, then copy the connection key from VoltGet's extension setup panel and paste it into the extension popup. Select **Bağlan (Connect)** to pair it once per browser profile.
           draft: false
           prerelease: false
           fail_on_unmatched_files: false

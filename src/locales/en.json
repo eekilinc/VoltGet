@@ -413,5 +413,21 @@
   "updateAvailable": "New version available, downloading...",
   "updateDownloaded": "Update downloaded, will install on restart",
   "updateNotAvailable": "Application is up to date",
-  "speedToday": "Today"
+  "speedToday": "Today",
+  "batchWildcardTip": "Wildcard support: automatically expands [01-20] or [a-z] ranges.",
+  "checksumTitle": "File Verification & Checksum Hash",
+  "checksumCompare": "Paste the expected hash code to compare:",
+  "checksumMatch": "✓ Verified! Hash values match perfectly.",
+  "checksumMismatch": "✗ Mismatch! The entered hash does not match the file hash.",
+  "categoryAll": "All",
+  "categoryVideo": "Video",
+  "categoryAudio": "Audio",
+  "categoryDocument": "Document",
+  "categoryArchive": "Archive",
+  "categoryProgram": "Program",
+  "moveUp": "Move Up",
+  "moveDown": "Move Down",
+  "extensionPairingHelp": "Copy the connection key, open the browser extension, paste it and select Connect.",
+  "extensionTokenCopied": "Connection key copied",
+  "extensionCopyToken": "Copy connection key"
 }

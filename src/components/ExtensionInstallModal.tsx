@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { useToast } from '../context/ToastContext';
+import { useEffect, useState } from 'react';
 import { useAppSettings } from '../context/AppSettingsContext';
+import { useToast } from '../context/ToastContext';
 
 interface Props {
   isOpen: boolean;
@@ -288,6 +288,22 @@ export default function ExtensionInstallModal({ isOpen, onClose, connected }: Pr
           </div>
 
           {/* Hızlı Eylemler (Klasör Aç & ZIP İndir) */}
+          <div style={{ marginBottom: 12 }}>
+            <p style={{ fontSize: 12 }}>{t('extensionPairingHelp')}</p>
+            <button
+              className="btn-premium"
+              onClick={async () => {
+                try {
+                  await window.api.copyExtensionToken();
+                  toast.success(t('extensionTokenCopied'));
+                } catch {
+                  toast.error(t('error'));
+                }
+              }}
+            >
+              {t('extensionCopyToken')}
+            </button>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 10 }}>
             <button
               onClick={handleOpenFolder}

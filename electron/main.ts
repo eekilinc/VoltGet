@@ -1,142 +1,86 @@
-import {
-  app,
-  BrowserWindow,
-  ipcMain,
-  dialog,
-  shell,
-  Notification,
-  Tray,
-  Menu,
-  clipboard,
-  powerSaveBlocker,
-} from 'electron';
-import { spawn, ChildProcess, execSync } from 'child_process';
-import path from 'path';
+import { ChildProcess, execSync, spawn } from 'child_process';
+import { app, BrowserWindow, ipcMain, Notification, Tray } from 'electron';
 import fs from 'fs';
-import os from 'os';
-import http from 'http';
-import https from 'https';
+import path from 'path';
 import { fileURLToPath } from 'url';
-import { WebSocketServer, WebSocket } from 'ws';
 import {
-  normalizeToMasterPlaylist as normalizePlaylistUtil,
-  isMasterPlaylistUrl as isMasterUtil,
-  isStreamUrl as isStreamUtil,
-  isPlayerOrEmbedUrl as isEmbedUtil,
-  isDownloadableUrl as isDownloadableUtil,
-} from './utils/playlist.js';
+  parseInfo as parseInfoMod,
+  resolveAnalyzeUrl,
+  tryDirectFileEarlyReturn,
+  tryHlsEarlyReturn,
+} from './analyze.js';
+import { createTrayController } from './app/tray.js';
+import { createDialogWindowFactory, createMainWindowFactory } from './app/windows.js';
+import { categorizeFile } from './categories.js';
+import type { AppConfig } from './config/schema.js';
 import {
-  isValidExecutable as isValidExeUtil,
-  resolveYtDlpPath as resolveYtDlpUtil,
-  resolveFfmpegPath as resolveFfmpegUtil,
+  AppConfigSchema,
+  mergeWithDefaults,
+  defaultConfig as zodDefaultConfig,
+} from './config/schema.js';
+import { createConflictManager } from './conflicts.js';
+import {
+  HttpDownloadController,
+  runMultiPartHttpDownload as runMultiPartHttpDownloadMod,
+} from './downloader/http.js';
+import { createDownloadOrchestrator } from './downloader/orchestrator.js';
+import { cancelScheduledRetry, getRetryPolicyFrom } from './downloader/retry.js';
+import { registerAnalyzeIpc } from './ipc/analyze.js';
+import { registerDialogIpc } from './ipc/dialog.js';
+import { registerExtensionIpc } from './ipc/extension.js';
+import { registerFileIpc } from './ipc/files.js';
+import { registerMiscIpc } from './ipc/misc.js';
+import { registerQueueIpc } from './ipc/queue.js';
+import { registerToolsIpc } from './ipc/tools.js';
+import { createClipboardWatcher } from './lifecycle.js';
+import log from './log/logger.js';
+import {
+  checkPostDownloadAction as checkPostActionUtil,
+  updatePowerSaveBlocker as updatePowerUtil,
+} from './power.js';
+import { applyProxyEnv, applySessionProxy, getProxyAgent } from './proxy.js';
+import { createScheduler } from './scheduler.js';
+import { getExtensionToken } from './security/extensionAuth.js';
+import { redactSecrets } from './security/secrets.js';
+import { createSniffHandler } from './server/sniffHandler.js';
+import { createSniffServer } from './server/sniffServer.js';
+import { SniffDeduper } from './sniff.js';
+import {
+  addDownloadToHistory as addHistoryUtil,
+  flushQueue,
+  loadConfig as loadConfigUtil,
+  loadHistory as loadHistoryUtil,
+  loadQueue as loadQueueUtil,
+  recoverInterruptedQueue,
+  removeDownloadFromHistory as removeHistoryUtil,
+  saveConfig as saveConfigUtil,
+  saveQueue as saveQueueUtil,
+  syncHistoryFromQueue as syncHistoryUtil,
+} from './store.js';
+import { checkForUpdates, quitAndInstallUpdate, setupAutoUpdater } from './updater.js';
+import {
   ensureBinDirOnPath,
+  isValidExecutable as isValidExeUtil,
   parseYtDlpJson as parseYtDlpJsonUtil,
+  resolveFfmpegPath as resolveFfmpegUtil,
+  resolveYtDlpPath as resolveYtDlpUtil,
 } from './utils/binaries.js';
 import {
   ensureDir as ensureDirUtil,
-  getCategoryFromExt as getCategoryUtil,
   isTemporaryOrPartialFile as isTempUtil,
   scanDownloadedFiles as scanFilesUtil,
-  sanitizeFilename,
 } from './utils/files.js';
 import {
-  detectSite as detectSiteUtil,
-  getSiteFolder as getSiteFolderUtil,
+  isPlayerOrEmbedUrl as isEmbedUtil,
+  isStreamUrl as isStreamUtil,
+  normalizeToMasterPlaylist as normalizePlaylistUtil,
+} from './utils/playlist.js';
+import {
   getDefaultDownloadDir as getDefaultDirUtil,
   getAppIconPath as getIconUtil,
+  getSiteFolder as getSiteFolderUtil,
 } from './utils/sites.js';
-import {
-  defaultConfig as defaultConfigUtil,
-  loadConfig as loadConfigUtil,
-  saveConfig as saveConfigUtil,
-  loadQueue as loadQueueUtil,
-  saveQueue as saveQueueUtil,
-  loadHistory as loadHistoryUtil,
-  saveHistory as saveHistoryUtil,
-  addDownloadToHistory as addHistoryUtil,
-  removeDownloadFromHistory as removeHistoryUtil,
-  syncHistoryFromQueue as syncHistoryUtil,
-  recoverInterruptedQueue,
-} from './store.js';
-import {
-  updatePowerSaveBlocker as updatePowerUtil,
-  checkPostDownloadAction as checkPostActionUtil,
-} from './power.js';
-import {
-  resolveFinalUrl,
-  fallbackTitle,
-  isGenericFileUrl,
-  isHlsUrl,
-  isVideoPlatformUrl,
-  isYouTubeUrl,
-} from './downloader/url-resolver.js';
-import { buildYtDlpArgs, buildFfmpegFallbackArgs } from './downloader/args.js';
-import { parseYtDlpProgressLine, parseFfmpegProgressLine } from './downloader/progress.js';
-import { shouldIgnoreSniffUrl, buildDefaultSniffFormats } from './sniff.js';
-import {
-  runMultiPartHttpDownload as runMultiPartHttpDownloadMod,
-  runHttpDownload as runHttpDownloadMod,
-} from './downloader/http.js';
-import { buildMainWindowOptions, buildDialogWindowOptions, getTrayMenuLabels } from './windows.js';
-import { SniffDeduper } from './sniff.js';
-import {
-  spawnYtDlp,
-  extractDestinationFromOutput,
-  buildOutputTemplate,
-  appendFormatArgs,
-} from './downloader/ytdlp.js';
-import {
-  isGenericDownload as isGenericSniffDownload,
-  buildInitialDialogData,
-  pickAnalyzeTarget,
-  mergeAnalyzedIntoDialog,
-  withTimeout,
-} from './sniff-handler.js';
-import {
-  shouldRunFfmpegFallback,
-  findNewestDownload,
-  statSizeOf,
-  buildYtDlpDonePayload,
-  buildFfmpegDonePayload,
-} from './downloader/completion.js';
-import { registerToolsIpc } from './ipc/tools.js';
-import { registerMiscIpc } from './ipc/misc.js';
-import { registerAnalyzeIpc } from './ipc/analyze.js';
-import { registerExtensionIpc } from './ipc/extension.js';
-import { registerDialogIpc } from './ipc/dialog.js';
-import { createTrayController } from './app/tray.js';
-import { createMainWindowFactory, createDialogWindowFactory } from './app/windows.js';
-import { createSniffServer } from './server/sniffServer.js';
-import { registerFileIpc } from './ipc/files.js';
-import { HttpDownloadController } from './downloader/http.js';
-import {
-  validateConfig,
-  mergeWithDefaults,
-  defaultConfig as zodDefaultConfig,
-  AppConfigSchema,
-} from './config/schema.js';
-import log from './log/logger.js';
-import { registerQueueIpc } from './ipc/queue.js';
-import {
-  tryHlsEarlyReturn,
-  tryDirectFileEarlyReturn,
-  resolveAnalyzeUrl,
-  parseInfo as parseInfoMod,
-} from './analyze.js';
-import { createClipboardWatcher, isStartHidden } from './lifecycle.js';
-import { createConflictManager } from './conflicts.js';
-import { categorizeFile } from './categories.js';
-import { setupAutoUpdater, checkForUpdates, quitAndInstallUpdate } from './updater.js';
-import { applyProxyEnv, applySessionProxy, getProxyAgent } from './proxy.js';
 import { maybeVirusScan } from './virusscan.js';
-import { createScheduler } from './scheduler.js';
-import { killProcessTree } from './utils/process.js';
-import {
-  resetRetryAttempts,
-  cancelScheduledRetry,
-  scheduleRetry,
-  getRetryPolicyFrom,
-} from './downloader/retry.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -257,114 +201,6 @@ function isFfmpegOk(): boolean {
     return false;
   }
 }
-
-// ---- Config & Queue Persistence ----
-type AppConfig = {
-  concurrent: number;
-  speedLimitKB: number; // 0 = unlimited
-  siteFolders: boolean;
-  categoryFolders?: boolean;
-  filenameTemplate: string; // e.g. %(title)s.%(ext)s
-  autoUpdateCheck: boolean;
-  sniffNotifications: boolean;
-  sniffDebounceMs: number;
-  theme: 'dark' | 'light';
-  accentColor: 'blue' | 'purple' | 'green' | 'orange' | 'pink' | 'red' | 'teal';
-  language: 'tr' | 'en' | 'de' | 'es' | 'ru' | 'ar';
-  interceptBrowserDownloads: boolean;
-  captureMediaRequests: boolean;
-  captureDocuments: boolean;
-  captureArchives: boolean;
-  captureInstallers: boolean;
-  openAtLogin: boolean;
-  startMinimized: boolean;
-  closeToTray: boolean;
-  minimizeToTray: boolean;
-  clipboardWatcher: boolean;
-  soundNotification?: boolean;
-  postDownloadAction?: 'none' | 'shutdown' | 'sleep' | 'quit';
-  customOutDir?: string;
-  fileConflictAction?: 'ask' | 'resume' | 'overwrite' | 'rename' | 'skip';
-  rememberConflictChoice?: boolean;
-  completionDialog?: boolean;
-  autoRetryEnabled?: boolean;
-  maxAutoRetries?: number;
-  retryBaseDelaySec?: number;
-  scheduler?: { enabled: boolean; startTime: string; stopTime: string; days: number[] };
-  proxy?: {
-    mode: 'system' | 'none' | 'manual' | 'pac';
-    host: string;
-    port: number;
-    username: string;
-    password: string;
-    pacUrl: string;
-    bypass: string;
-  };
-  siteLogins?: Array<{ id: string; host: string; username: string; password: string }>;
-  cookiesFromBrowser?: 'none' | 'chrome' | 'edge' | 'firefox' | 'brave' | 'opera';
-  partsCount?: number;
-  ytDlpFragments?: number;
-  requestTimeoutMs?: number;
-  virusScanEnabled?: boolean;
-  customCategories?: Array<{ name: string; extensions: string[] }>;
-  appAutoUpdate?: boolean;
-};
-const defaultConfig: AppConfig = {
-  concurrent: 3,
-  speedLimitKB: 0,
-  siteFolders: true,
-  categoryFolders: false,
-  filenameTemplate: '%(title)s.%(ext)s',
-  autoUpdateCheck: true,
-  sniffNotifications: true,
-  sniffDebounceMs: 8000,
-  theme: 'dark',
-  accentColor: 'blue',
-  language: 'tr',
-  interceptBrowserDownloads: true,
-  captureMediaRequests: true,
-  captureDocuments: true,
-  captureArchives: true,
-  captureInstallers: true,
-  openAtLogin: false,
-  startMinimized: false,
-  closeToTray: true,
-  minimizeToTray: false,
-  clipboardWatcher: true,
-  soundNotification: true,
-  postDownloadAction: 'none',
-  customOutDir: '',
-  fileConflictAction: 'rename',
-  rememberConflictChoice: false,
-  completionDialog: true,
-  autoRetryEnabled: true,
-  maxAutoRetries: 3,
-  retryBaseDelaySec: 5,
-  scheduler: { enabled: false, startTime: '02:00', stopTime: '07:00', days: [0, 1, 2, 3, 4, 5, 6] },
-  proxy: {
-    mode: 'system',
-    host: '',
-    port: 8080,
-    username: '',
-    password: '',
-    pacUrl: '',
-    bypass: 'localhost,127.0.0.1',
-  },
-  siteLogins: [],
-  cookiesFromBrowser: 'none',
-  partsCount: 8,
-  ytDlpFragments: 16,
-  requestTimeoutMs: 30000,
-  virusScanEnabled: false,
-  customCategories: [],
-  appAutoUpdate: true,
-};
-function configPath() {
-  return path.join(app.getPath('userData'), 'config.json');
-}
-function queuePath() {
-  return path.join(app.getPath('userData'), 'queue.json');
-}
 function loadConfig(): AppConfig {
   const raw = loadConfigUtil();
   const validated = mergeWithDefaults(raw);
@@ -378,7 +214,7 @@ function saveConfig(c: AppConfig) {
   }
   saveConfigUtil(validated.data);
 }
-let appConfig = loadConfig();
+let appConfig = { ...zodDefaultConfig } as AppConfig;
 
 const conflictManager = createConflictManager({
   send: (channel: string, data: any) => {
@@ -418,9 +254,6 @@ function getDefaultDownloadDir() {
 function ensureDir(dir: string) {
   return ensureDirUtil(dir);
 }
-function detectSite(url: string) {
-  return detectSiteUtil(url);
-}
 function getSiteFolder(base: string, url: string, filename?: string) {
   return getSiteFolderUtil(
     base,
@@ -437,7 +270,7 @@ function updatePowerSaveBlocker() {
 function checkPostDownloadAction() {
   return checkPostActionUtil(
     activeDownloads.size,
-    pendingQueue.length,
+    pendingQueue.length + pausedDownloads.size,
     appConfig.postDownloadAction || 'none'
   );
 }
@@ -459,20 +292,8 @@ interface DownloadHistoryItem {
   category: 'video' | 'audio' | 'document' | 'archive' | 'installer' | 'other';
 }
 
-function historyPath() {
-  return path.join(app.getPath('userData'), 'download_history.json');
-}
-
 function loadHistory(): DownloadHistoryItem[] {
   return loadHistoryUtil() as unknown as DownloadHistoryItem[];
-}
-
-function saveHistory(items: DownloadHistoryItem[]) {
-  return saveHistoryUtil(items);
-}
-
-function getCategoryFromExt(extWithOrWithoutDot: string): DownloadHistoryItem['category'] {
-  return getCategoryUtil(extWithOrWithoutDot) as DownloadHistoryItem['category'];
 }
 
 function addDownloadToHistory(
@@ -523,30 +344,8 @@ const createWindow = createMainWindowFactory({
   dirname: __dirname,
 });
 
-const sniffServer: http.Server | null = null;
-const wss: WebSocketServer | null = null;
-
-// Legacy notification helpers - kept for backward compat, server now handles broadcast
-const sniffLastNotify = new Map<string, number>();
-function notifyKeyFor(data: any) {
-  try {
-    const u = new URL(data.pageUrl || data.url);
-    return u.hostname.replace('www.', '') + '|' + (data.type || 'media');
-  } catch {
-    return (data.pageUrl || data.url || 'unknown') + '|' + (data.type || 'media');
-  }
-}
-function shouldNotifySniff(key: string) {
-  if (!loadConfig().sniffNotifications) return false;
-  const debounce = Math.max(loadConfig().sniffDebounceMs || 8000, 10000);
-  const now = Date.now();
-  const last = sniffLastNotify.get(key) || 0;
-  if (now - last < debounce) return false;
-  sniffLastNotify.set(key, now);
-  return true;
-}
-
 const sniffController = createSniffServer({
+  getToken: getExtensionToken,
   handleIncomingSniff: (data: any) => handleIncomingSniff(data),
   getMainWindow: () => mainWindow,
 });
@@ -566,10 +365,6 @@ function getWss() {
   return sniffController.getWss();
 }
 
-function isMasterPlaylistUrl(u: string): boolean {
-  return isMasterUtil(u);
-}
-
 function isStreamUrl(url: string): boolean {
   return isStreamUtil(url);
 }
@@ -581,138 +376,21 @@ function isPlayerOrEmbedUrl(url: string): boolean {
 const recentStreamsByPage = new Map<string, string>();
 const sniffDeduper = new SniffDeduper();
 
+const sniffHandler = createSniffHandler({
+  getMainWindow: () => mainWindow,
+  getWss: () => getWss(),
+  sniffDeduper,
+  recentStreamsByPage,
+  createDownloadDialogWindow,
+  getDownloadDialogWindow: () => downloadDialogWindow,
+  setLastDownloadDialogData: (d: any) => {
+    lastDownloadDialogData = d;
+  },
+  analyzeUrl,
+});
+
 async function handleIncomingSniff(data: any) {
-  if (data && data.url) {
-    data.url = normalizeToMasterPlaylist(data.url);
-  }
-  const sniffId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  const sniffData = { ...data, sniffId, time: new Date().toLocaleTimeString() };
-
-  // 1. Gerçek medya akışını hafızaya al (Master öncelikli tekilleştirme SniffDeduper'da)
-  sniffDeduper.remember(sniffData.url, sniffData.pageUrl);
-  // Geriye dönük uyumluluk: legacy Map'i de güncel tut (doStartDownload/analyzeUrl okuyor)
-  if (sniffData.url && isStreamUrl(sniffData.url)) {
-    const isMaster = isMasterPlaylistUrl(sniffData.url);
-    const existingLatest = recentStreamsByPage.get('latest');
-    if (isMaster || !existingLatest || !isMasterPlaylistUrl(existingLatest)) {
-      recentStreamsByPage.set('latest', sniffData.url);
-    }
-    if (sniffData.pageUrl) {
-      const existingPage = recentStreamsByPage.get(sniffData.pageUrl);
-      if (isMaster || !existingPage || !isMasterPlaylistUrl(existingPage)) {
-        recentStreamsByPage.set(sniffData.pageUrl, sniffData.url);
-      }
-      try {
-        const u = new URL(sniffData.pageUrl);
-        const cleanHost = u.hostname.replace(/^www\./i, '').toLowerCase();
-        const existingHost = recentStreamsByPage.get(cleanHost);
-        if (isMaster || !existingHost || !isMasterPlaylistUrl(existingHost)) {
-          recentStreamsByPage.set(cleanHost, sniffData.url);
-          recentStreamsByPage.set(u.hostname, sniffData.url);
-        }
-      } catch {}
-    }
-    if (sniffData.url) {
-      try {
-        const u = new URL(sniffData.url);
-        const cleanHost = u.hostname.replace(/^www\./i, '').toLowerCase();
-        const existingHost = recentStreamsByPage.get(cleanHost);
-        if (isMaster || !existingHost || !isMasterPlaylistUrl(existingHost)) {
-          recentStreamsByPage.set(cleanHost, sniffData.url);
-        }
-      } catch {}
-    }
-  }
-
-  // 2. Ana pencere ve açık olan WebSocket istemcilerine gönder (Yakalayıcı listesinde görünsün)
-  const curWss = getWss();
-  if (curWss) {
-    curWss.clients.forEach((client: WebSocket) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({ type: 'sniffed-url', data: sniffData }));
-      }
-    });
-  }
-  if (mainWindow) {
-    mainWindow.webContents.send('sniffed-url', sniffData);
-  }
-
-  // 3. IDM Davranışı: Kullanıcı video üstü butona bastıysa VEYA tarayıcıda dosya indirmesi başladıysa pencere aç!
-  if (data.userInitiated || data.isGenericDownload) {
-    let resolvedUrl = data.url;
-    const isVideoPortal =
-      /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(
-        data.pageUrl || ''
-      ) || /youtube\.com|youtu\.be|googlevideo\.com/i.test(resolvedUrl || '');
-    if (
-      isVideoPortal &&
-      data.pageUrl &&
-      /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|dailymotion\.com|vimeo\.com/i.test(
-        data.pageUrl
-      )
-    ) {
-      resolvedUrl = data.pageUrl;
-      data.url = data.pageUrl;
-    } else if (resolvedUrl && isPlayerOrEmbedUrl(resolvedUrl)) {
-      const matched =
-        sniffDeduper.resolve(data.pageUrl, data.url) ||
-        recentStreamsByPage.get(data.pageUrl) ||
-        recentStreamsByPage.get(data.url) ||
-        recentStreamsByPage.get('latest');
-      if (matched && isStreamUrl(matched)) {
-        console.log('[VoltGet] mapped embed/player page to real stream:', matched);
-        resolvedUrl = matched;
-        data.url = matched;
-      }
-    }
-
-    // Web scripti veya stillerini indirme penceresinde açma
-    if (shouldIgnoreSniffUrl(resolvedUrl, data.filename)) {
-      console.log('[VoltGet] Ignored web script in sniff handler:', resolvedUrl);
-      return;
-    }
-
-    const isGen = isGenericSniffDownload(resolvedUrl, data.filename, {
-      isGenericDownload: data.isGenericDownload,
-      type: data.type,
-    });
-
-    const initialData = buildInitialDialogData(data, resolvedUrl, isGen);
-
-    // ANINDA PENCEREYİ AÇ (IDM gibi doğrudan ekrana fırlatılır!)
-    createDownloadDialogWindow(initialData);
-
-    // Arka planda kaliteleri analiz et ve pencereye ilet:
-    if (!isGen && !resolvedUrl.endsWith('.pdf')) {
-      const { target, waitTime } = pickAnalyzeTarget(resolvedUrl, data.pageUrl);
-
-      withTimeout(analyzeUrl(target), waitTime)
-        .then((res: any) => {
-          const analyzed = mergeAnalyzedIntoDialog(initialData, res, data.asAudio);
-          lastDownloadDialogData = analyzed;
-          if (downloadDialogWindow && !downloadDialogWindow.isDestroyed()) {
-            downloadDialogWindow.webContents.send('show-download-dialog', analyzed);
-          }
-        })
-        .catch(err => {
-          console.warn(
-            '[VoltGet] analyze warning/timeout, using default formats:',
-            err?.message || err
-          );
-          const fallback = {
-            ...initialData,
-            loading: false,
-            formats: initialData.formats,
-          };
-          lastDownloadDialogData = fallback;
-          if (downloadDialogWindow && !downloadDialogWindow.isDestroyed()) {
-            downloadDialogWindow.webContents.send('show-download-dialog', fallback);
-          }
-        });
-    }
-    return;
-  }
-  // Video arka plan yakalamalarında masaüstüne bildirim atılmaz (Kullanıcı isteği doğrultusunda sessiz çalışır)
+  return sniffHandler.handleIncomingSniff(data);
 }
 
 app.setName('VoltGet');
@@ -733,11 +411,6 @@ if (!gotTheLock) {
     }
   });
 
-  // legacy helper kept for shared state consumers - delegates to utils/playlist
-  function isDownloadableUrl(text: string): boolean {
-    return isDownloadableUtil(text);
-  }
-
   const clipboardWatcher = createClipboardWatcher({
     getEnabled: () => appConfig.clipboardWatcher,
     onUrl: url => {
@@ -750,6 +423,9 @@ if (!gotTheLock) {
   }
 
   app.whenReady().then(() => {
+    appConfig = loadConfig();
+    // Migrate existing plaintext credentials only after OS encryption is available.
+    saveConfig(appConfig);
     ensureDir(getDefaultDownloadDir());
     try {
       const recovered = recoverInterruptedQueue();
@@ -850,8 +526,26 @@ if (!gotTheLock) {
       if (process.platform !== 'darwin') app.quit();
     }
   });
-  app.on('before-quit', () => {
+  let queueFlushedForQuit = false;
+  app.on('before-quit', event => {
     isQuitting = true;
+    if (!queueFlushedForQuit) {
+      event.preventDefault();
+      void flushQueue()
+        .then(() => {
+          queueFlushedForQuit = true;
+          app.quit();
+        })
+        .catch(error => {
+          isQuitting = false;
+          log.error('[VoltGet] Queue could not be saved before quit', { error });
+          new Notification({
+            title: 'VoltGet',
+            body: 'Kuyruk kaydedilemedi. Disk erişimini kontrol edip yeniden deneyin.',
+          }).show();
+        });
+      return;
+    }
     try {
       getWss()?.close();
       getSniffServer()?.close();
@@ -914,11 +608,7 @@ async function analyzeUrl(url: string): Promise<any> {
       log.warn('[VoltGet] analyzeUrl primary spawn failed, trying fallback', {
         message: e.message,
       });
-      try {
-        proc = spawn('yt-dlp', args, { shell: false, windowsHide: true });
-      } catch (e2: any) {
-        proc = spawn('yt-dlp', args, { shell: true, windowsHide: true });
-      }
+      proc = spawn('yt-dlp', args, { shell: false, windowsHide: true });
     }
     let out = '',
       err = '';
@@ -934,17 +624,11 @@ async function analyzeUrl(url: string): Promise<any> {
           );
         }
       } else {
-        reject(
-          `${err.slice(0, 1500) || `yt-dlp çıkış kodu ${code}`}\nKomut: ${ytdlp} ${args.join(' ')}`
-        );
+        reject(redactSecrets(err.slice(0, 1500) || `yt-dlp çıkış kodu ${code}`));
       }
     });
     proc.on('error', (e: any) => reject(`yt-dlp çalıştırılamadı: ${e.message}\nYol: ${ytdlp}`));
   });
-}
-
-function parseInfo(info: any) {
-  return parseInfoMod(info);
 }
 
 // queue helpers
@@ -958,569 +642,34 @@ function processPending() {
     log.error('[VoltGet] start failed', { error: String(e) })
   );
 }
+
+const orchestrator = createDownloadOrchestrator({
+  getAppConfig: () => appConfig,
+  getMainWindow: () => mainWindow,
+  activeDownloads,
+  activeOpts,
+  pendingQueue,
+  pausedDownloads,
+  pausingIds,
+  cancelledIds,
+  sniffDeduper,
+  recentStreamsByPage,
+  resolveConflictPath: (p: string) => conflictManager.resolveConflictPath(p),
+  getDefaultDir: getDefaultDownloadDir,
+  getSiteFolder,
+  ensureDir,
+  updatePowerSaveBlocker,
+  processPending,
+  addDownloadToHistory,
+  runMultiPartHttpDownload,
+  findYtDlp,
+  getFfmpegPath: () => ffmpegPath,
+  isFfmpegOk,
+  isTemporaryOrPartialFile,
+});
+
 async function doStartDownload(id: string, opts: any) {
-  let finalUrl = normalizeToMasterPlaylist(opts.url || '');
-  opts.url = finalUrl;
-
-  const isYouTube =
-    /youtube\.com|youtu\.be|googlevideo\.com/i.test(finalUrl) ||
-    (opts.pageUrl && /youtube\.com|youtu\.be/i.test(opts.pageUrl));
-
-  if (isYouTube) {
-    if (opts.pageUrl && /youtube\.com|youtu\.be/i.test(opts.pageUrl)) {
-      finalUrl = opts.pageUrl;
-      opts.url = opts.pageUrl;
-    } else if (finalUrl.includes('googlevideo.com')) {
-      // Find matching youtube page from recent streams (deduper first, legacy map fallback)
-      for (const [key] of sniffDeduper.entries()) {
-        if (/youtube\.com\/watch|youtu\.be\//i.test(key)) {
-          finalUrl = key;
-          opts.url = key;
-          break;
-        }
-      }
-      if (finalUrl.includes('googlevideo.com')) {
-        for (const [key] of recentStreamsByPage.entries()) {
-          if (/youtube\.com\/watch|youtu\.be\//i.test(key)) {
-            finalUrl = key;
-            opts.url = key;
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  // 1. Embed veya oynatıcı sayfası geldiyse hafızadaki gerçek akış URL'si ile eşle
-  if (!isYouTube && isPlayerOrEmbedUrl(finalUrl)) {
-    const matched =
-      sniffDeduper.resolve(opts.pageUrl, opts.url) ||
-      recentStreamsByPage.get(opts.pageUrl) ||
-      recentStreamsByPage.get(opts.url) ||
-      recentStreamsByPage.get('latest');
-    if (matched && isStreamUrl(matched)) {
-      console.log('[VoltGet] doStartDownload resolved embed URL to real stream:', matched);
-      finalUrl = matched;
-      opts.url = matched;
-    }
-  }
-
-  const titled = fallbackTitle(opts.title, opts.pageUrl);
-  if (titled) opts.title = titled;
-
-  // 2. Web scripti (.js) veya stil indirme girişimlerini kesinlikle engelle
-  if (shouldIgnoreSniffUrl(finalUrl, opts.filename)) {
-    console.log('[VoltGet] Rejected script download attempt:', finalUrl);
-    return;
-  }
-
-  const isGeneric = opts.isHttp || isGenericFileUrl(finalUrl, opts.filename, opts.isHttp);
-  if (isGeneric) {
-    const filename =
-      opts.filename || finalUrl.split('/').pop()?.split('?')[0] || `file_${Date.now()}`;
-    const baseOut = opts.outDir || getDefaultDownloadDir();
-    const outDir = getSiteFolder(baseOut, finalUrl, filename);
-    ensureDir(outDir);
-    const outPath = path.join(outDir, filename);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('download-started', {
-        id,
-        opts: { ...opts, title: filename },
-        outDir,
-      });
-      mainWindow.webContents.send('switch-to-download-tab');
-    }
-    runMultiPartHttpDownload(id, opts, outDir, outPath, filename);
-    return;
-  }
-
-  // 4. Medya / Video indirmesi
-  const baseOut = opts.outDir || getDefaultDownloadDir();
-  const outDir = getSiteFolder(baseOut, finalUrl, opts.filename || opts.title);
-  ensureDir(outDir);
-  const ytdlp = findYtDlp();
-  const isHls = isHlsUrl(finalUrl);
-
-  const siteLogin = (() => {
-    try {
-      const host = new URL(finalUrl).hostname.replace(/^www\./i, '').toLowerCase();
-      return (appConfig.siteLogins || []).find(
-        l => l.host && (host === l.host.toLowerCase() || host.endsWith('.' + l.host.toLowerCase()))
-      );
-    } catch {
-      return undefined;
-    }
-  })();
-  const built = buildYtDlpArgs({
-    finalUrl,
-    pageUrl: opts.pageUrl,
-    cookie: opts.cookie,
-    speedLimitKB: opts.speedLimitKB ?? appConfig.speedLimitKB,
-    isYouTube,
-    username: siteLogin?.username || undefined,
-    password: siteLogin?.password || undefined,
-    cookiesFromBrowser: appConfig.cookiesFromBrowser || 'none',
-    fragments: appConfig.ytDlpFragments || 16,
-  });
-  const args: string[] = built.args;
-  const embedId = built.embedId;
-
-  appendFormatArgs(args, {
-    asAudio: opts.asAudio,
-    formatId: opts.formatId,
-    isAudioOnly: opts.isAudioOnly,
-  });
-
-  const builtTpl = buildOutputTemplate(
-    { filename: opts.filename, title: opts.title },
-    appConfig.filenameTemplate
-  );
-  let filename = builtTpl.filename;
-  let tmpl = builtTpl.tmpl;
-  // Dosya adı biliniyorsa (şablon değişkeni yoksa) çakışma politikasını uygula
-  if (filename && !filename.includes('%(')) {
-    try {
-      const r = await conflictManager.resolveConflictPath(path.join(outDir, filename));
-      if (!r.proceed) {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('download-canceled', { id });
-        }
-        updatePowerSaveBlocker();
-        processPending();
-        return;
-      }
-      if (r.finalPath !== path.join(outDir, filename)) {
-        filename = path.basename(r.finalPath);
-        tmpl = filename;
-        opts = { ...opts, filename };
-      }
-    } catch {}
-  }
-  const tempDir = path.join(outDir, '.voltget_tmp');
-  ensureDir(tempDir);
-  args.push('-P', `temp:${tempDir}`, '-P', `home:${outDir}`);
-  args.push('-o', tmpl, '--no-playlist', '--newline', '--progress', '--continue');
-  if (ffmpegPath) {
-    const loc =
-      ffmpegPath !== 'ffmpeg' && fs.existsSync(ffmpegPath) ? path.dirname(ffmpegPath) : ffmpegPath;
-    args.push('--ffmpeg-location', loc);
-  }
-  args.push(finalUrl);
-
-  log.info('[VoltGet] starting download process', { id, ytdlp, args: args.join(' ') });
-  const proc: ChildProcess = spawnYtDlp(ytdlp, args);
-
-  proc.on('error', (procErr: any) => {
-    log.error('[VoltGet] download process emitted error', { error: procErr });
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('download-error', {
-        id,
-        error: `İndirme başlatılamadı: ${procErr.message}`,
-      });
-    }
-  });
-
-  activeDownloads.set(id, {
-    pause: () => {
-      try {
-        killProcessTree(proc);
-      } catch {}
-    },
-    kill: () => {
-      try {
-        killProcessTree(proc);
-      } catch {}
-    },
-    resume: async () => {},
-  });
-  activeOpts.set(id, { ...opts, url: finalUrl });
-  updatePowerSaveBlocker();
-
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
-    mainWindow.webContents.send('download-started', {
-      id,
-      opts: { ...opts, url: finalUrl },
-      outDir,
-    });
-    mainWindow.webContents.send('switch-to-download-tab');
-  }
-
-  let downloadedFilePath = '';
-
-  proc.stdout?.on('data', (d: Buffer) => {
-    const text = d.toString();
-    const dest = extractDestinationFromOutput(text, outDir);
-    if (dest) downloadedFilePath = dest;
-
-    const prog = parseYtDlpProgressLine(
-      text.split('\n').find(l => l.includes('[download]')) || text
-    );
-    if (prog && prog.percent > 0 && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('download-progress', {
-        id,
-        percent: prog.percent,
-        total: prog.total,
-        speed: prog.speed,
-        eta: prog.eta,
-        raw: prog.raw,
-        title: activeOpts.get(id)?.title || opts?.title,
-      });
-    } else if (
-      mainWindow &&
-      !mainWindow.isDestroyed() &&
-      (text.includes('[download]') || text.includes('[ExtractAudio]') || text.includes('[Merger]'))
-    ) {
-      mainWindow.webContents.send('download-log', { id, text: text.trim().slice(0, 300) });
-    }
-  });
-
-  proc.stderr?.on('data', (d: Buffer) => {
-    const errText = d.toString();
-    log.error('[yt-dlp error output]', { output: errText.slice(0, 300) });
-    if (mainWindow && !mainWindow.isDestroyed())
-      mainWindow.webContents.send('download-log', { id, text: errText.trim().slice(0, 400) });
-  });
-
-  proc.on('close', code => {
-    if (cancelledIds.has(id)) {
-      log.info('[VoltGet] download process closed after cancel', { id });
-      cancelledIds.delete(id);
-      activeDownloads.delete(id);
-      activeOpts.delete(id);
-      updatePowerSaveBlocker();
-      processPending();
-      try {
-        if (fs.existsSync(tempDir)) {
-          const remaining = fs.readdirSync(tempDir);
-          if (remaining.length === 0) fs.rmdirSync(tempDir);
-        }
-      } catch {}
-      return;
-    }
-    if (pausingIds.has(id)) {
-      pausingIds.delete(id);
-      activeDownloads.delete(id);
-      activeOpts.delete(id);
-      updatePowerSaveBlocker();
-      processPending();
-      return;
-    }
-    const failed = (code ?? 1) !== 0;
-    if (failed && !shouldRunFfmpegFallback(code, isHls)) {
-      const scheduled = scheduleRetry(
-        id,
-        getRetryPolicyFrom(appConfig),
-        () => {
-          if (cancelledIds.has(id)) return;
-          activeOpts.set(id, { ...opts, url: finalUrl });
-          void doStartDownload(id, opts).catch(e =>
-            log.error('[VoltGet] retry failed', { error: String(e) })
-          );
-        },
-        (attempt, max, delayMs) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('download-log', {
-              id,
-              text: `🔄 Otomatik yeniden deneme ${attempt}/${max}: ${Math.round(delayMs / 1000)} sn sonra...`,
-            });
-          }
-        }
-      );
-      if (scheduled) {
-        // Slotu tut: kuyruk ilerlemesin, güç engeli sürsün
-        updatePowerSaveBlocker();
-        return;
-      }
-    }
-    activeDownloads.delete(id);
-    activeOpts.delete(id);
-
-    // Geçici voltget klasörünü temizle
-    try {
-      if (fs.existsSync(tempDir)) {
-        const remaining = fs.readdirSync(tempDir);
-        if (remaining.length === 0) fs.rmdirSync(tempDir);
-      }
-    } catch {}
-
-    // Eğer yt-dlp hata verdiyse ve HLS / doğrudan akış ise otomatik FFmpeg fallback çalıştır!
-    if (shouldRunFfmpegFallback(code, isHls)) {
-      if (cancelledIds.has(id)) return;
-      if (!isFfmpegOk()) {
-        log.error(
-          '[VoltGet] ffmpeg missing, cannot run HLS fallback. Install: winget install Gyan.FFmpeg'
-        );
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('download-error', {
-            id,
-            error:
-              'FFmpeg bulunamadı. HLS akışı birleştirilemiyor. Lütfen kurun: winget install Gyan.FFmpeg ve VoltGet uygulamasını yeniden başlatın.',
-          });
-        }
-        updatePowerSaveBlocker();
-        processPending();
-        return;
-      }
-      log.info('[VoltGet] yt-dlp exited with code', {
-        code,
-        action: 'triggering ffmpeg fallback for HLS',
-        finalUrl,
-      });
-      const rawFileName =
-        opts.filename ||
-        (opts.title
-          ? `${opts.title.replace(/[\\/:*?"<>|]/g, '_')}.mp4`
-          : `video_${Date.now()}.mp4`);
-      const actualOut = path.join(outDir, rawFileName);
-      const tempOut = path.join(tempDir, `ff_${id}_${rawFileName}`);
-      const ffArgs = buildFfmpegFallbackArgs(
-        finalUrl,
-        { pageUrl: opts.pageUrl, cookie: opts.cookie, embedId },
-        tempOut
-      );
-
-      log.info('[VoltGet ffmpeg fallback]', { args: ffArgs.join(' ').slice(0, 300) });
-      const ffProc = spawn(ffmpegPath, ffArgs);
-      activeDownloads.set(id, {
-        pause: () => {
-          try {
-            killProcessTree(ffProc);
-          } catch {}
-        },
-        kill: () => {
-          try {
-            killProcessTree(ffProc);
-          } catch {}
-          try {
-            if (fs.existsSync(tempOut)) fs.unlinkSync(tempOut);
-          } catch {}
-        },
-        resume: async () => {},
-      });
-
-      ffProc.stderr.on('data', (d: Buffer) => {
-        const t = d.toString();
-        const parsed = parseFfmpegProgressLine(t);
-        if (parsed && mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('download-progress', {
-            id,
-            percent: 50,
-            total: 'HLS Akışı',
-            speed: parsed.speed || '',
-            eta: parsed.time || '',
-            raw: `FFmpeg indiriyor: ${parsed.time} (${parsed.speed})`,
-          });
-        } else if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('download-log', {
-            id,
-            text: '[ffmpeg] ' + t.trim().slice(0, 400),
-          });
-        }
-      });
-
-      ffProc.on('close', ffCode => {
-        if (cancelledIds.has(id)) {
-          log.info('[VoltGet] ffmpeg fallback process closed after cancel', { id });
-          cancelledIds.delete(id);
-          activeDownloads.delete(id);
-          activeOpts.delete(id);
-          try {
-            if (fs.existsSync(tempOut)) fs.unlinkSync(tempOut);
-          } catch {}
-          updatePowerSaveBlocker();
-          processPending();
-          return;
-        }
-        if (pausingIds.has(id)) {
-          pausingIds.delete(id);
-          activeDownloads.delete(id);
-          activeOpts.delete(id);
-          updatePowerSaveBlocker();
-          processPending();
-          return;
-        }
-        if ((ffCode ?? 1) !== 0) {
-          const scheduled = scheduleRetry(
-            id,
-            getRetryPolicyFrom(appConfig),
-            () => {
-              if (cancelledIds.has(id)) return;
-              activeOpts.set(id, { ...opts, url: finalUrl });
-              void doStartDownload(id, opts).catch(e =>
-                log.error('[VoltGet] retry failed', { error: String(e) })
-              );
-            },
-            (attempt, max, delayMs) => {
-              if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('download-log', {
-                  id,
-                  text: `🔄 Otomatik yeniden deneme ${attempt}/${max}: ${Math.round(delayMs / 1000)} sn sonra...`,
-                });
-              }
-            }
-          );
-          if (scheduled) {
-            updatePowerSaveBlocker();
-            return;
-          }
-        } else {
-          resetRetryAttempts(id);
-        }
-        activeDownloads.delete(id);
-        updatePowerSaveBlocker();
-        if (ffCode === 0 && fs.existsSync(tempOut)) {
-          try {
-            fs.renameSync(tempOut, actualOut);
-          } catch {
-            try {
-              fs.copyFileSync(tempOut, actualOut);
-              fs.unlinkSync(tempOut);
-            } catch {}
-          }
-        } else {
-          try {
-            fs.unlinkSync(tempOut);
-          } catch {}
-        }
-        try {
-          if (fs.existsSync(tempDir) && fs.readdirSync(tempDir).length === 0) fs.rmdirSync(tempDir);
-        } catch {}
-
-        let statSize = 0;
-        if (ffCode === 0 && fs.existsSync(actualOut)) {
-          maybeVirusScan(actualOut, !!appConfig.virusScanEnabled, text => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('download-log', { id, text });
-            }
-          });
-          try {
-            statSize = fs.statSync(actualOut).size;
-          } catch {}
-          addDownloadToHistory({
-            id,
-            url: finalUrl,
-            title: opts.title || path.basename(actualOut),
-            fileName: path.basename(actualOut),
-            filePath: actualOut,
-            fileSize: statSize,
-            date: Date.now(),
-          });
-        }
-
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          const { payload } = buildFfmpegDonePayload(id, ffCode ?? 1, outDir, actualOut, statSize);
-          mainWindow.webContents.send('download-done', payload);
-        }
-        try {
-          if (ffCode === 0)
-            new Notification({
-              title: 'İndirme tamamlandı (VoltGet)',
-              body: (opts.title || finalUrl).slice(0, 60),
-            }).show();
-          else
-            new Notification({
-              title: 'İndirme hatası',
-              body: `FFmpeg Hata Kodu ${ffCode}`,
-            }).show();
-        } catch {}
-        processPending();
-      });
-
-      ffProc.on('error', (e: any) => {
-        if (cancelledIds.has(id)) {
-          cancelledIds.delete(id);
-          activeDownloads.delete(id);
-          activeOpts.delete(id);
-          updatePowerSaveBlocker();
-          try {
-            if (fs.existsSync(tempOut)) fs.unlinkSync(tempOut);
-          } catch {}
-          processPending();
-          return;
-        }
-        activeDownloads.delete(id);
-        updatePowerSaveBlocker();
-        try {
-          fs.unlinkSync(tempOut);
-        } catch {}
-        if (mainWindow && !mainWindow.isDestroyed())
-          mainWindow.webContents.send('download-error', { id, error: String(e) });
-        processPending();
-      });
-      return;
-    }
-
-    if (code === 0) {
-      resetRetryAttempts(id);
-      if (downloadedFilePath && fs.existsSync(downloadedFilePath)) {
-        maybeVirusScan(downloadedFilePath, !!appConfig.virusScanEnabled, text => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('download-log', { id, text });
-          }
-        });
-      }
-      if (!downloadedFilePath || !fs.existsSync(downloadedFilePath)) {
-        const newest = findNewestDownload(outDir, 45000, isTemporaryOrPartialFile);
-        if (newest) downloadedFilePath = newest;
-      }
-
-      let statSize = 0;
-      if (downloadedFilePath && fs.existsSync(downloadedFilePath)) {
-        try {
-          statSize = fs.statSync(downloadedFilePath).size;
-        } catch {}
-        addDownloadToHistory({
-          id,
-          url: finalUrl,
-          title: opts.title || path.basename(downloadedFilePath),
-          fileName: path.basename(downloadedFilePath),
-          filePath: downloadedFilePath,
-          fileSize: statSize,
-          date: Date.now(),
-        });
-      }
-    }
-
-    const fileSize = statSizeOf(downloadedFilePath);
-
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      const { payload } = buildYtDlpDonePayload(id, code ?? 1, outDir, downloadedFilePath);
-      mainWindow.webContents.send('download-done', payload);
-    }
-    try {
-      if (code === 0)
-        new Notification({
-          title: 'İndirme tamamlandı (VoltGet)',
-          body: (opts.title || finalUrl).slice(0, 60),
-        }).show();
-      else
-        new Notification({
-          title: 'İndirme hatası',
-          body: `Kod ${code} • ${finalUrl.slice(0, 40)}`,
-        }).show();
-    } catch {}
-    updatePowerSaveBlocker();
-    processPending();
-  });
-
-  proc.on('error', (e: any) => {
-    if (cancelledIds.has(id)) {
-      cancelledIds.delete(id);
-      activeDownloads.delete(id);
-      activeOpts.delete(id);
-      updatePowerSaveBlocker();
-      processPending();
-      return;
-    }
-    activeDownloads.delete(id);
-    activeOpts.delete(id);
-    updatePowerSaveBlocker();
-    if (mainWindow) mainWindow.webContents.send('download-error', { id, error: String(e) });
-    processPending();
-  });
+  return orchestrator.doStartDownload(id, opts);
 }
 
 registerQueueIpc({
@@ -1669,8 +818,4 @@ async function runMultiPartHttpDownload(
   filename: string
 ) {
   return runMultiPartHttpDownloadMod(httpDeps(), id, opts, outDir, outPath, filename);
-}
-
-function runHttpDownload(id: string, opts: any, outDir: string, outPath: string, filename: string) {
-  return runHttpDownloadMod(httpDeps(), id, opts, outDir, outPath, filename);
 }

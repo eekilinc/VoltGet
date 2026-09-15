@@ -38,11 +38,22 @@ export const AppConfigSchema = z.object({
   scheduler: z
     .object({
       enabled: z.boolean().default(false),
-      startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default('02:00'),
-      stopTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default('07:00'),
+      startTime: z
+        .string()
+        .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+        .default('02:00'),
+      stopTime: z
+        .string()
+        .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+        .default('07:00'),
       days: z.array(z.number().int().min(0).max(6)).default([0, 1, 2, 3, 4, 5, 6]),
     })
-    .default({ enabled: false, startTime: '02:00', stopTime: '07:00', days: [0, 1, 2, 3, 4, 5, 6] }),
+    .default({
+      enabled: false,
+      startTime: '02:00',
+      stopTime: '07:00',
+      days: [0, 1, 2, 3, 4, 5, 6],
+    }),
   // 7. Proxy
   proxy: z
     .object({
@@ -74,7 +85,9 @@ export const AppConfigSchema = z.object({
       })
     )
     .default([]),
-  cookiesFromBrowser: z.enum(['none', 'chrome', 'edge', 'firefox', 'brave', 'opera']).default('none'),
+  cookiesFromBrowser: z
+    .enum(['none', 'chrome', 'edge', 'firefox', 'brave', 'opera'])
+    .default('none'),
   // 9. Bağlantı ayarları
   partsCount: z.number().int().min(1).max(16).default(8),
   ytDlpFragments: z.number().int().min(1).max(32).default(16),
@@ -109,11 +122,44 @@ export function validateConfig(config: unknown): {
 }
 
 export function mergeWithDefaults(config: unknown): AppConfig {
-  const result = AppConfigSchema.safeParse(config);
-  if (result.success) {
-    return result.data;
+  const defaults = AppConfigSchema.parse({});
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return defaults;
+  const candidate = structuredClone(config) as Record<string, unknown>;
+  // Repair only invalid leaves. Nested valid preferences survive a malformed sibling.
+  for (;;) {
+    const result = AppConfigSchema.safeParse(candidate);
+    if (result.success) return result.data;
+    for (const issue of result.error.issues.slice(0, 1)) {
+      const keys = issue.path.filter((key): key is string | number => typeof key !== 'symbol');
+      if (!keys.length) return defaults;
+      let target: Record<string, unknown> = candidate;
+      let fallback: unknown = defaults;
+      for (let i = 0; i < keys.length - 1; i++) {
+        const key = String(keys[i]);
+        if (!target[key] || typeof target[key] !== 'object') break;
+        target = target[key] as Record<string, unknown>;
+        fallback =
+          fallback && typeof fallback === 'object'
+            ? (fallback as Record<string, unknown>)[key]
+            : undefined;
+      }
+      const leaf = String(keys[keys.length - 1]);
+      const replacement =
+        fallback && typeof fallback === 'object'
+          ? (fallback as Record<string, unknown>)[leaf]
+          : undefined;
+      if (replacement !== undefined) target[leaf] = structuredClone(replacement);
+      else {
+        // Invalid custom list entries have no defaults; remove only that entry.
+        const arrayKey = String(keys[0]);
+        if (Array.isArray(target)) {
+          target.splice(Number(leaf), 1);
+        } else if (Array.isArray(candidate[arrayKey]) && typeof keys[1] === 'number') {
+          (candidate[arrayKey] as unknown[]).splice(keys[1], 1);
+        } else delete target[leaf];
+      }
+    }
   }
-  return AppConfigSchema.parse({});
 }
 
 export const defaultConfig = AppConfigSchema.parse({});

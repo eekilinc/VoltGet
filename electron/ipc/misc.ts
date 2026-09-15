@@ -1,6 +1,6 @@
-import { ipcMain, app, dialog, shell, clipboard } from 'electron';
+import { app, clipboard, dialog, ipcMain, shell } from 'electron';
 import path from 'path';
-import fs from 'fs';
+import { AppConfigSchema } from '../config/schema.js';
 
 export function registerMiscIpc(deps: {
   loadConfig: () => any;
@@ -30,9 +30,9 @@ export function registerMiscIpc(deps: {
   ipcMain.handle('get-config', async () => deps.loadConfig());
   ipcMain.handle('set-config', async (_e, patch: any) => {
     const cur = deps.loadConfig();
-    const next = { ...cur, ...patch };
-    deps.setConfigRef(next);
+    const next = AppConfigSchema.parse({ ...cur, ...patch });
     deps.saveConfig(next);
+    deps.setConfigRef(next);
     try {
       deps.onSchedulerChanged?.();
     } catch {}
@@ -67,9 +67,9 @@ export function registerMiscIpc(deps: {
   ipcMain.handle('get-default-dir', async () => deps.getDefaultDir());
 
   ipcMain.handle('set-speed-limit', async (_e, limitKB: number) => {
-    const cfg = deps.getConfigRef();
-    cfg.speedLimitKB = limitKB;
+    const cfg = AppConfigSchema.parse({ ...deps.getConfigRef(), speedLimitKB: limitKB });
     deps.saveConfig(cfg);
+    deps.setConfigRef(cfg);
     return { success: true, speedLimitKB: limitKB };
   });
   ipcMain.handle(

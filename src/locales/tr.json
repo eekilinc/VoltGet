@@ -413,5 +413,21 @@
   "updateAvailable": "Yeni sürüm mevcut, indiriliyor...",
   "updateDownloaded": "Güncelleme indirildi, yeniden başlatınca kurulacak",
   "updateNotAvailable": "Uygulama güncel",
-  "speedToday": "Bugün"
+  "speedToday": "Bugün",
+  "batchWildcardTip": "Joker desteği: [01-20] veya [a-z] aralıklarını otomatik olarak genişletir.",
+  "checksumTitle": "Dosya Doğrulama & Hash (Sağlama Toplamı)",
+  "checksumCompare": "Karşılaştırmak istediğiniz beklenen hash kodunu yapıştırın:",
+  "checksumMatch": "✓ Doğrulandı! Hash değerleri birebir eşleşiyor.",
+  "checksumMismatch": "✗ Uyuşmazlık! Girilen hash ile dosya hash değeri eşleşmiyor.",
+  "categoryAll": "Tümü",
+  "categoryVideo": "Video",
+  "categoryAudio": "Ses",
+  "categoryDocument": "Belge",
+  "categoryArchive": "Arşiv",
+  "categoryProgram": "Program",
+  "moveUp": "Yukarı Taşı",
+  "moveDown": "Aşağı Taşı",
+  "extensionPairingHelp": "Bağlantı anahtarını kopyalayın; tarayıcı eklentisini açıp anahtarı yapıştırın ve Bağlan’a basın.",
+  "extensionTokenCopied": "Bağlantı anahtarı kopyalandı",
+  "extensionCopyToken": "Bağlantı anahtarını kopyala"
 }

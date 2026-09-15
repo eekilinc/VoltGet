@@ -93,7 +93,7 @@ export function createConflictManager(deps: ConflictManagerDeps) {
     remember: boolean
   ): boolean {
     const p = pendingAsync.get(conflictId);
-    if (!p) return resolveConflictDecision(conflictId, decision, remember);
+    if (!p) return false;
     clearTimeout(p.timer);
     pendingAsync.delete(conflictId);
     if (remember) {

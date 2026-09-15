@@ -13,7 +13,7 @@ export function buildMainWindowOptions(
       preload: preloadPath,
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false,
+      sandbox: true,
     },
   };
 }
@@ -35,7 +35,7 @@ export function buildDialogWindowOptions(
       preload: preloadPath,
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false,
+      sandbox: true,
     },
     show: false,
   };

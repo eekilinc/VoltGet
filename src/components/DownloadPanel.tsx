@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useAppSettings } from '../context/AppSettingsContext';
 import { useToast } from '../context/ToastContext';
+import { parseBatchInput } from '../utils/batch';
 
 type Format = {
   id: string;
@@ -48,7 +49,7 @@ export default function DownloadPanel({
   async function analyze(targetUrl?: string) {
     const u = (targetUrl || url).trim();
     if (!u) return;
-    if (!(window as any).api) {
+    if (!window.api) {
       setError('window.api yok');
       return;
     }
@@ -135,8 +136,8 @@ export default function DownloadPanel({
     }
   };
 
-  // Toplu link ayıklayıcı
-  const extractedBatchUrls = Array.from(new Set(batchText.match(/https?:\/\/[^\s"<>]+/gi) || []));
+  // Toplu link ayıklayıcı & joker genişletici ([01-10] desteği)
+  const extractedBatchUrls = useMemo(() => parseBatchInput(batchText), [batchText]);
 
   const handleStartBatch = async () => {
     if (!extractedBatchUrls.length || batchAdding) return;
@@ -503,8 +504,20 @@ export default function DownloadPanel({
               {extractedBatchUrls.length} {t('batchFoundCount')}
             </span>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
-            {t('batchInstruction')}
+          <div
+            style={{
+              fontSize: 11,
+              color: 'var(--text-muted)',
+              marginBottom: 8,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            <span>{t('batchInstruction')}</span>
+            <span style={{ color: 'var(--accent-solid)', fontSize: 10, fontWeight: 600 }}>
+              💡 {t('batchWildcardTip')}
+            </span>
           </div>
           <textarea
             value={batchText}

@@ -3,6 +3,11 @@ import { vi } from 'vitest';
 
 // Mock Electron APIs for unit tests
 vi.mock('electron', () => ({
+  safeStorage: {
+    isEncryptionAvailable: vi.fn(() => true),
+    encryptString: vi.fn((value: string) => Buffer.from('encrypted:' + value)),
+    decryptString: vi.fn((value: Buffer) => value.toString().replace(/^encrypted:/, '')),
+  },
   app: {
     isPackaged: false,
     getPath: vi.fn(() => '/mock/path'),

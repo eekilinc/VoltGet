@@ -1,23 +1,17 @@
 import { useEffect, useState } from 'react';
+import AboutPanel from './components/AboutPanel';
 import DownloadPanel from './components/DownloadPanel';
+import ExtensionInstallModal from './components/ExtensionInstallModal';
+import FileConflictDialog from './components/FileConflictDialog';
 import FileExplorer from './components/FileExplorer';
-import SniffPanel from './components/SniffPanel';
 import QueuePanel from './components/QueuePanel';
 import SettingsPanel from './components/SettingsPanel';
-import AboutPanel from './components/AboutPanel';
-import ExtensionInstallModal from './components/ExtensionInstallModal';
+import SniffPanel from './components/SniffPanel';
 import VoltLogo from './components/VoltLogo';
-import FileConflictDialog from './components/FileConflictDialog';
-import { formatBytes } from './utils/speed';
 import { useAppSettings } from './context/AppSettingsContext';
-import { useJobs, type Job } from './hooks/useJobs';
 import { useAppBootstrap } from './hooks/useAppBootstrap';
-
-declare global {
-  interface Window {
-    api: any;
-  }
-}
+import { useJobs, type Job } from './hooks/useJobs';
+import { formatBytes } from './utils/speed';
 
 export type { Job };
 
@@ -30,7 +24,7 @@ export default function App() {
   const [isExtModalOpen, setIsExtModalOpen] = useState(false);
   const [conflictInfo, setConflictInfo] = useState<any>(null);
   const [completedInfo, setCompletedInfo] = useState<any>(null);
-  const hasApi = typeof window !== 'undefined' && !!(window as any).api;
+  const hasApi = typeof window !== 'undefined' && !!window.api;
   const {
     jobs,
     setJobs,
@@ -42,6 +36,7 @@ export default function App() {
     handleRemoveJob,
     handleDeleteJob,
     handleCancelJob,
+    handleMoveJob,
   } = useJobs(hasApi);
   const {
     status,
@@ -59,26 +54,26 @@ export default function App() {
 
   useEffect(() => {
     if (!hasApi) return;
-    const onSniffNotify = (_d: any) => {};
-    window.api.onSniffed?.(onSniffNotify);
-    window.api.onOpenSniffItem?.((_d: any) => setTab('sniff'));
-    window.api.onSwitchToSniffTab?.(() => setTab('sniff'));
-    window.api.onSwitchToDownloadTab?.(() => setTab('download'));
-    window.api.onSwitchToSettingsTab?.(() => setTab('settings'));
-    window.api.onFileConflict?.((d: any) => {
-      if (d?.conflictId) setConflictInfo(d);
-    });
-    window.api.onDone?.((d: any) => {
-      if (d?.code === 0 && d?.filePath) {
-        window.api
-          ?.getConfig?.()
-          .then((c: any) => {
-            if (c?.completionDialog !== false) setCompletedInfo(d);
-          })
-          .catch(() => setCompletedInfo(d));
-      }
-    });
-    return () => window.api?.removeAll?.();
+    const cleanups = [
+      window.api.onOpenSniffItem(() => setTab('sniff')),
+      window.api.onSwitchToSniffTab(() => setTab('sniff')),
+      window.api.onSwitchToDownloadTab(() => setTab('download')),
+      window.api.onSwitchToSettingsTab(() => setTab('settings')),
+      window.api.onFileConflict(d => {
+        if (d?.conflictId) setConflictInfo(d);
+      }),
+      window.api.onDone(d => {
+        if (d?.code === 0 && d?.filePath) {
+          window.api
+            ?.getConfig?.()
+            .then((c: any) => {
+              if (c?.completionDialog !== false) setCompletedInfo(d);
+            })
+            .catch(() => setCompletedInfo(d));
+        }
+      }),
+    ];
+    return () => cleanups.forEach(unsubscribe => unsubscribe());
   }, [hasApi]);
 
   const titles: Record<string, string> = {
@@ -534,6 +529,7 @@ export default function App() {
               }}
             >
               <option value={0}>⚡ {t('speedUnlimited')}</option>
+              <option value={500}>🐢 500 KB/s</option>
               <option value={1024}>🐢 1 MB/s</option>
               <option value={2048}>⚡ 2 MB/s</option>
               <option value={5120}>⚡ 5 MB/s</option>
@@ -645,6 +641,7 @@ export default function App() {
       <QueuePanel
         jobs={jobs}
         onCancel={handleCancelJob}
+        onMoveJob={handleMoveJob}
         onPause={id => {
           try {
             window.api?.pauseDownload?.(id)?.catch?.(() => {});

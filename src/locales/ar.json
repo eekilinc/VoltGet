@@ -352,5 +352,21 @@
   "idmCancel": "Cancel",
   "clipboardDetectedTitle": "تم اكتشاف رابط تنزيل في الحافظة!",
   "downloadNowBtn": "تنزيل الآن",
-  "inspectBtn": "فحص"
+  "inspectBtn": "فحص",
+  "batchWildcardTip": "دعم الرموز البديلة: يوسع تلقائيًا النطاقات مثل [01-20] أو [a-z].",
+  "checksumTitle": "التحقق من الملف وتجزئة المجموع الاختباري",
+  "checksumCompare": "الصق رمز التجزئة المتوقع للمقارنة:",
+  "checksumMatch": "✓ تم التحقق! تتطابق قيم التجزئة تمامًا.",
+  "checksumMismatch": "✗ عدم تطابق! التجزئة المدخلة لا تطابق تجزئة الملف.",
+  "categoryAll": "الكل",
+  "categoryVideo": "فيديو",
+  "categoryAudio": "صوت",
+  "categoryDocument": "مستند",
+  "categoryArchive": "أرشيف",
+  "categoryProgram": "برنامج",
+  "moveUp": "تحريك لأعلى",
+  "moveDown": "تحريك لأسفل",
+  "extensionPairingHelp": "انسخ مفتاح الاتصال والصقه في إضافة المتصفح ثم اضغط اتصال.",
+  "extensionTokenCopied": "تم نسخ مفتاح الاتصال",
+  "extensionCopyToken": "نسخ مفتاح الاتصال"
 }

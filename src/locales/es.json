@@ -352,5 +352,21 @@
   "idmCancel": "Cancel",
   "clipboardDetectedTitle": "¡Enlace de descarga detectado en el portapapeles!",
   "downloadNowBtn": "Descargar ahora",
-  "inspectBtn": "Examinar"
+  "inspectBtn": "Examinar",
+  "batchWildcardTip": "Soporte de comodines: expande automáticamente rangos como [01-20] o [a-z].",
+  "checksumTitle": "Verificación de archivo y Hash de suma de comprobación",
+  "checksumCompare": "Pegue el código hash esperado para comparar:",
+  "checksumMatch": "✓ ¡Verificado! Los valores hash coinciden perfectamente.",
+  "checksumMismatch": "✗ ¡Discrepancia! El hash ingresado no coincide con el hash del archivo.",
+  "categoryAll": "Todo",
+  "categoryVideo": "Video",
+  "categoryAudio": "Audio",
+  "categoryDocument": "Documento",
+  "categoryArchive": "Archivo",
+  "categoryProgram": "Programa",
+  "moveUp": "Mover arriba",
+  "moveDown": "Mover abajo",
+  "extensionPairingHelp": "Copia la clave, abre la extensión, pégala y pulsa Conectar.",
+  "extensionTokenCopied": "Clave copiada",
+  "extensionCopyToken": "Copiar clave de conexión"
 }

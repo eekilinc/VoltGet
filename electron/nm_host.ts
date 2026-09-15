@@ -47,7 +47,7 @@ function writeMessage(msg: any) {
   try {
     fs.writeSync(process.stdout.fd, headerBuf);
     fs.writeSync(process.stdout.fd, Buffer.from(jsonStr, 'utf8'));
-  } catch (e) {
+  } catch {
     // ignore
   }
 }
@@ -67,12 +67,15 @@ if (process.argv.includes('--native-msg')) {
           // İndirme talebini yerel HTTP sunucusuna ilet veya dosyaya yaz
           // Yerel HTTP sunucumuz 8765 portunda çalışıyor, oraya POST atabiliriz
           try {
-            await globalThis.fetch('http://127.0.0.1:8765/sniff', {
+            const response = await globalThis.fetch('http://127.0.0.1:8765/sniff', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: 'Bearer ' + (msg.token || ''),
+              },
               body: JSON.stringify(msg.data),
             });
-            writeMessage({ success: true });
+            writeMessage({ success: response.ok });
           } catch (e: any) {
             writeMessage({ success: false, error: e.message });
           }
@@ -80,7 +83,7 @@ if (process.argv.includes('--native-msg')) {
           writeMessage({ success: true, received: msg });
         }
       }
-    } catch (e) {
+    } catch {
       // Stream kapandıysa çık
     }
   }

@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAppSettings } from '../context/AppSettingsContext';
 import { useToast } from '../context/ToastContext';
-import { formatBytes } from '../utils/speed';
-import { formatDate, isTemporaryOrPartialFile } from '../utils/files-client';
 import { useFileList } from '../hooks/useFileList';
+import { formatDate, isTemporaryOrPartialFile } from '../utils/files-client';
+import { formatBytes } from '../utils/speed';
 import { CATEGORY_ICONS } from './FileExplorer/FileIcon';
 
 export interface DownloadedFile {
@@ -29,6 +29,7 @@ type SortType = 'date_desc' | 'date_asc' | 'size_desc' | 'size_asc' | 'name_asc'
 export default function FileExplorer() {
   const { t } = useAppSettings();
   const toast = useToast();
+  const reportError = toast.error;
   const [dir, setDir] = useState<string>('');
   const [files, setFiles] = useState<DownloadedFile[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -39,21 +40,61 @@ export default function FileExplorer() {
   const [sort, setSort] = useState<SortType>('date_desc');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [deleteConfirm, setDeleteConfirm] = useState<DownloadedFile | null>(null);
+  const [checksumModal, setChecksumModal] = useState<{
+    file: DownloadedFile;
+    md5: string;
+    sha256: string;
+    loading: boolean;
+  } | null>(null);
+  const [verifyHashInput, setVerifyHashInput] = useState<string>('');
 
-  const loadFiles = async (mode: SourceMode = sourceMode) => {
-    if (!window.api?.listFiles) return;
-    setLoading(true);
+  const handleCalculateChecksum = async (file: DownloadedFile) => {
+    if (!file.path || file.deletedFromDisk) return;
+    setVerifyHashInput('');
+    setChecksumModal({
+      file,
+      md5: 'Hesaplanıyor...',
+      sha256: 'Hesaplanıyor...',
+      loading: true,
+    });
     try {
-      const defaultDir = await window.api.getDefaultDir();
-      setDir(defaultDir);
-      const list = await window.api.listFiles(mode, defaultDir);
-      setFiles((list || []).filter((f: DownloadedFile) => !isTemporaryOrPartialFile(f.name)));
-    } catch (err: any) {
-      toast.error('Dosyalar yüklenirken hata oluştu: ' + err.message);
-    } finally {
-      setLoading(false);
+      const [md5Res, shaRes] = await Promise.all([
+        window.api?.computeFileHash?.(file.path, 'md5'),
+        window.api?.computeFileHash?.(file.path, 'sha256'),
+      ]);
+      setChecksumModal({
+        file,
+        md5: md5Res?.hash || 'Hata',
+        sha256: shaRes?.hash || 'Hata',
+        loading: false,
+      });
+    } catch {
+      setChecksumModal({
+        file,
+        md5: 'Hesaplanamadı',
+        sha256: 'Hesaplanamadı',
+        loading: false,
+      });
     }
   };
+
+  const loadFiles = useCallback(
+    async (mode: SourceMode = sourceMode) => {
+      if (!window.api?.listFiles) return;
+      setLoading(true);
+      try {
+        const defaultDir = await window.api.getDefaultDir();
+        setDir(defaultDir);
+        const list = await window.api.listFiles(mode, defaultDir);
+        setFiles((list || []).filter((f: DownloadedFile) => !isTemporaryOrPartialFile(f.name)));
+      } catch (err: any) {
+        reportError('Dosyalar yüklenirken hata oluştu: ' + err.message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [sourceMode, reportError]
+  );
 
   useEffect(() => {
     loadFiles(sourceMode);
@@ -63,7 +104,7 @@ export default function FileExplorer() {
     return () => {
       if (typeof cleanup === 'function') cleanup();
     };
-  }, [sourceMode]);
+  }, [sourceMode, loadFiles]);
 
   const categoryIcons: Record<string, string> = CATEGORY_ICONS;
 
@@ -677,6 +718,21 @@ export default function FileExplorer() {
                     >
                       📂 {t('actionLocation')}
                     </button>
+                    <button
+                      onClick={() => handleCalculateChecksum(file)}
+                      title="MD5 & SHA-256 Hash Doğrulama"
+                      style={{
+                        background: 'var(--panel-2)',
+                        border: '1px solid var(--border)',
+                        padding: '7px 9px',
+                        borderRadius: 8,
+                        color: 'var(--text)',
+                        fontSize: 11,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      #️⃣ Hash
+                    </button>
                   </>
                 ) : (
                   <div
@@ -805,7 +861,7 @@ export default function FileExplorer() {
                             </button>
                             <button
                               onClick={() => handleShowInFolder(file)}
-                              title="Klasörde seçili gösterir"
+                              title={t('actionLocation')}
                               style={{
                                 background: 'var(--panel-2)',
                                 border: '1px solid var(--border)',
@@ -816,7 +872,22 @@ export default function FileExplorer() {
                                 cursor: 'pointer',
                               }}
                             >
-                              Konum
+                              📂
+                            </button>
+                            <button
+                              onClick={() => handleCalculateChecksum(file)}
+                              title="MD5 & SHA-256 Hash Doğrulama"
+                              style={{
+                                background: 'var(--panel-2)',
+                                border: '1px solid var(--border)',
+                                padding: '5px 8px',
+                                borderRadius: 6,
+                                color: 'var(--text)',
+                                fontSize: 11,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              #️⃣
                             </button>
                           </>
                         )}
@@ -966,6 +1037,240 @@ export default function FileExplorer() {
                 }}
               >
                 Vazgeç
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Checksum / Hash Doğrulama Modalı */}
+      {checksumModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 999999,
+            background: 'rgba(0,0,0,0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backdropFilter: 'blur(6px)',
+          }}
+        >
+          <div
+            className="card-premium"
+            style={{
+              width: 520,
+              borderRadius: 16,
+              padding: 22,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 14,
+              border: '1px solid var(--accent-solid)',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.8)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                color: 'var(--accent-solid)',
+                fontWeight: 900,
+                fontSize: 15,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span>#️⃣</span> {t('checksumTitle')}
+              </div>
+              <button
+                onClick={() => {
+                  setChecksumModal(null);
+                  setVerifyHashInput('');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 0,
+                  color: 'var(--text-muted)',
+                  fontSize: 16,
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div
+              style={{
+                background: 'var(--panel-2)',
+                padding: '10px 12px',
+                borderRadius: 10,
+                border: '1px solid var(--border)',
+                fontSize: 11,
+                wordBreak: 'break-all',
+              }}
+            >
+              <strong>{checksumModal.file.name}</strong>
+              <div style={{ color: 'var(--text-muted)', fontSize: 10, marginTop: 2 }}>
+                {formatBytes(checksumModal.file.size)} • {checksumModal.file.path}
+              </div>
+            </div>
+
+            {/* SHA-256 */}
+            <div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 4,
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>
+                  SHA-256
+                </span>
+                <button
+                  disabled={checksumModal.loading}
+                  onClick={() => {
+                    navigator.clipboard.writeText(checksumModal.sha256);
+                    toast.success('SHA-256 panoya kopyalandı');
+                  }}
+                  style={{
+                    background: 'var(--panel-2)',
+                    border: '1px solid var(--border)',
+                    padding: '2px 8px',
+                    borderRadius: 6,
+                    fontSize: 10,
+                    cursor: 'pointer',
+                    color: 'var(--text)',
+                  }}
+                >
+                  📋 Kopyala
+                </button>
+              </div>
+              <div
+                style={{
+                  background: 'var(--panel-2)',
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  wordBreak: 'break-all',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text)',
+                }}
+              >
+                {checksumModal.sha256}
+              </div>
+            </div>
+
+            {/* MD5 */}
+            <div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 4,
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>
+                  MD5
+                </span>
+                <button
+                  disabled={checksumModal.loading}
+                  onClick={() => {
+                    navigator.clipboard.writeText(checksumModal.md5);
+                    toast.success('MD5 panoya kopyalandı');
+                  }}
+                  style={{
+                    background: 'var(--panel-2)',
+                    border: '1px solid var(--border)',
+                    padding: '2px 8px',
+                    borderRadius: 6,
+                    fontSize: 10,
+                    cursor: 'pointer',
+                    color: 'var(--text)',
+                  }}
+                >
+                  📋 Kopyala
+                </button>
+              </div>
+              <div
+                style={{
+                  background: 'var(--panel-2)',
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  wordBreak: 'break-all',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text)',
+                }}
+              >
+                {checksumModal.md5}
+              </div>
+            </div>
+
+            {/* Karşılaştırma & Doğrulama Kutusu */}
+            <div>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: 'var(--text-muted)',
+                  display: 'block',
+                  marginBottom: 4,
+                }}
+              >
+                {t('checksumCompare')}
+              </span>
+              <input
+                type="text"
+                value={verifyHashInput}
+                onChange={e => setVerifyHashInput(e.target.value.trim().toLowerCase())}
+                placeholder="MD5 / SHA-256 / SHA-1..."
+                style={{
+                  width: '100%',
+                  background: 'var(--panel-2)',
+                  border: '1px solid var(--border)',
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  fontSize: 11,
+                  color: 'var(--text)',
+                  boxSizing: 'border-box',
+                }}
+              />
+              {verifyHashInput && (
+                <div style={{ marginTop: 6, fontSize: 11, fontWeight: 700 }}>
+                  {verifyHashInput === checksumModal.sha256.toLowerCase() ||
+                  verifyHashInput === checksumModal.md5.toLowerCase() ? (
+                    <span style={{ color: '#22c55e' }}>{t('checksumMatch')}</span>
+                  ) : (
+                    <span style={{ color: '#ef4444' }}>{t('checksumMismatch')}</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+              <button
+                onClick={() => {
+                  setChecksumModal(null);
+                  setVerifyHashInput('');
+                }}
+                className="brand-gradient"
+                style={{
+                  border: 0,
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                {t('close')}
               </button>
             </div>
           </div>
