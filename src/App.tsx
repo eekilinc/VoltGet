@@ -24,6 +24,7 @@ export default function App() {
   const [isExtModalOpen, setIsExtModalOpen] = useState(false);
   const [conflictInfo, setConflictInfo] = useState<any>(null);
   const [completedInfo, setCompletedInfo] = useState<any>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const hasApi = typeof window !== 'undefined' && !!window.api;
   const {
     jobs,
@@ -99,8 +100,70 @@ export default function App() {
 
   return (
     <div
-      style={{ display: 'flex', height: '100vh', background: 'var(--bg)', color: 'var(--text)' }}
+      style={{
+        display: 'flex',
+        height: '100vh',
+        background: 'var(--bg)',
+        color: 'var(--text)',
+        position: 'relative',
+      }}
+      onDragOver={e => {
+        e.preventDefault();
+        if (!isDragging) setIsDragging(true);
+      }}
+      onDragLeave={() => setIsDragging(false)}
+      onDrop={e => {
+        e.preventDefault();
+        setIsDragging(false);
+        const url = e.dataTransfer.getData('text/plain');
+        if (url) {
+          setDownloadModal({
+            sniff: {
+              url: url,
+              filename: '',
+              pageUrl: url,
+            },
+            formats: [],
+          });
+        }
+      }}
     >
+      {isDragging && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            gap: 20,
+            animation: 'fadeIn 0.2s ease-out',
+          }}
+        >
+          <div style={{ fontSize: 72, animation: 'bounce 1s infinite' }}>📦</div>
+          <div
+            style={{
+              fontSize: 24,
+              fontWeight: 900,
+              color: '#fff',
+              background: 'rgba(59, 130, 246, 0.2)',
+              padding: '16px 32px',
+              borderRadius: 16,
+              border: '2px dashed var(--accent-solid)',
+              boxShadow: '0 20px 40px rgba(59, 130, 246, 0.3)',
+            }}
+          >
+            ✨ Bağlantıyı buraya sürükleyin
+          </div>
+          <div className="text-muted" style={{ fontSize: 13, animation: 'pulse 1.5s infinite' }}>
+            URL veya dosya bileşenini açın
+          </div>
+        </div>
+      )}
       <div
         style={{
           width: 224,

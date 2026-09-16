@@ -59,6 +59,8 @@ export default function QueuePanel({
 }) {
   const { t } = useAppSettings();
   const [confirmDeleteJob, setConfirmDeleteJob] = useState<Job | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; job: Job } | null>(null);
+  const [speedHistory, setSpeedHistory] = useState<Record<string, number[]>>({});
   const {
     filterTab,
     setFilterTab,
@@ -92,6 +94,27 @@ export default function QueuePanel({
       await api.setPostDownloadAction(val).catch(() => {});
     }
   };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSpeedHistory(prev => {
+        const next: Record<string, number[]> = {};
+        for (const j of jobs) {
+          if (j.status === 'downloading') {
+            const raw = j.speed || '';
+            let kb = 0;
+            const numMatch = raw.match(/[\d.]+/);
+            if (numMatch) kb = parseFloat(numMatch[0]);
+            if (/mb/i.test(raw)) kb *= 1024;
+            const arr = [...(prev[j.id] || []), kb].slice(-20);
+            next[j.id] = arr;
+          }
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [jobs]);
 
   const downloadingCount = counts.downloading;
   const doneCount = counts.doneVisible;
@@ -482,10 +505,16 @@ export default function QueuePanel({
           <div
             key={j.id}
             className="card-premium"
+            onContextMenu={e => {
+              e.preventDefault();
+              setContextMenu({ x: e.clientX, y: e.clientY, job: j });
+            }}
             style={{
               borderRadius: 14,
               padding: 12,
               border: j.deletedFromDisk ? '1px solid rgba(239, 68, 68, 0.35)' : undefined,
+              cursor: 'context-menu',
+              transition: 'all 0.15s ease',
             }}
           >
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
@@ -570,22 +599,114 @@ export default function QueuePanel({
                   transition: 'width 0.4s ease',
                 }}
               />
+              {j.status === 'downloading' && (
+                <div
+                  className="shimmer-progress"
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    borderRadius: 10,
+                  }}
+                />
+              )}
             </div>
+
+            {/* Mini Hız Grafiği (Sparkline) */}
+            {j.status === 'downloading' && speedHistory[j.id] && speedHistory[j.id].length > 1 && (
+              <div
+                style={{
+                  height: 28,
+                  marginTop: 6,
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  gap: 1,
+                  overflow: 'hidden',
+                  borderRadius: 6,
+                  background: 'rgba(0, 0, 0, 0.15)',
+                  padding: '2px 4px',
+                }}
+              >
+                {speedHistory[j.id].map((val, idx) => {
+                  const max = Math.max(...speedHistory[j.id], 1);
+                  const h = Math.max(2, (val / max) * 22);
+                  const intensity = val / max;
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        flex: 1,
+                        height: h,
+                        minHeight: 2,
+                        borderRadius: 2,
+                        background: `rgba(${Math.round(34 + intensity * 0)}, ${Math.round(197 - intensity * 40)}, ${Math.round(94 + intensity * 100)}, ${0.3 + intensity * 0.7})`,
+                        transition: 'height 0.3s ease',
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            )}
 
             {/* Hız & Süre & Boyut Bilgisi */}
             <div
-              className="text-muted"
               style={{
                 display: 'flex',
+                alignItems: 'center',
                 justifyContent: 'space-between',
                 fontSize: 11,
                 marginTop: 6,
+                flexWrap: 'wrap',
+                gap: 6,
               }}
             >
-              <span>
-                {j.percent.toFixed(1)}% {j.total ? `• ${j.total}` : ''} • {j.speed}{' '}
-                {j.eta && j.eta !== '-' ? `• ${j.eta}` : ''}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                <span style={{ fontWeight: 700, color: 'var(--text-bright)' }}>
+                  {j.percent.toFixed(1)}%
+                </span>
+                {j.total ? <span className="text-muted">• {j.total}</span> : null}
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  flexShrink: 0,
+                  marginLeft: 'auto',
+                }}
+              >
+                {j.speed && j.status === 'downloading' ? (
+                  <span
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      background: 'rgba(34, 197, 94, 0.15)',
+                      color: '#86efac',
+                      padding: '3px 8px',
+                      borderRadius: 8,
+                      fontWeight: 700,
+                    }}
+                  >
+                    🚀 {j.speed}
+                  </span>
+                ) : null}
+                {j.eta && j.eta !== '-' && j.status === 'downloading' ? (
+                  <span
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      background: 'rgba(59, 130, 246, 0.15)',
+                      color: '#60a5fa',
+                      padding: '3px 8px',
+                      borderRadius: 8,
+                      fontWeight: 700,
+                    }}
+                  >
+                    ⏳ {j.eta}
+                  </span>
+                ) : null}
+              </div>
             </div>
             <div
               className="text-muted"
@@ -874,6 +995,331 @@ export default function QueuePanel({
           <option value="quit">🚪 {t('actionQuit')}</option>
         </select>
       </div>
+
+      {/* Sağ Tık Bağlam Menüsü */}
+      {contextMenu && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 99998 }}
+            onClick={() => setContextMenu(null)}
+          />
+          <div
+            className="context-menu"
+            style={{
+              position: 'fixed',
+              left: contextMenu.x,
+              top: contextMenu.y,
+              zIndex: 99999,
+              background: 'var(--panel)',
+              border: '1px solid var(--border)',
+              borderRadius: 12,
+              padding: 6,
+              minWidth: 200,
+              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255,255,255,0.05)',
+              backdropFilter: 'blur(16px)',
+            }}
+          >
+            {contextMenu.job.status === 'downloading' && (
+              <button
+                onClick={() => {
+                  onPause?.(contextMenu.job.id);
+                  setContextMenu(null);
+                }}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: 0,
+                  background: 'transparent',
+                  color: 'var(--text)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span>⏸</span> <span>{t('pause')}</span>
+              </button>
+            )}
+            {contextMenu.job.status === 'paused' && (
+              <button
+                onClick={() => {
+                  onResume?.(contextMenu.job);
+                  setContextMenu(null);
+                }}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: 0,
+                  background: 'transparent',
+                  color: 'var(--text)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span>▶️</span> <span>{t('resume')}</span>
+              </button>
+            )}
+            {contextMenu.job.status === 'error' && (
+              <button
+                onClick={() => {
+                  onRetry?.(contextMenu.job);
+                  setContextMenu(null);
+                }}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: 0,
+                  background: 'transparent',
+                  color: 'var(--text)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span>🔄</span> <span>{t('retry')}</span>
+              </button>
+            )}
+            {(contextMenu.job.status === 'downloading' ||
+              contextMenu.job.status === 'queued' ||
+              contextMenu.job.status === 'paused') && (
+              <button
+                onClick={() => {
+                  onCancel(contextMenu.job.id);
+                  setContextMenu(null);
+                }}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: 0,
+                  background: 'transparent',
+                  color: '#f87171',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span>⏹</span> <span>{t('cancel')}</span>
+              </button>
+            )}
+            <div style={{ height: 1, background: 'var(--border)', margin: '4px 8px' }} />
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(contextMenu.job.url);
+                setContextMenu(null);
+              }}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 12px',
+                borderRadius: 8,
+                border: 0,
+                background: 'transparent',
+                color: 'var(--text)',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <span>📋</span> <span>URL'yi Kopyala</span>
+            </button>
+            {contextMenu.job.status === 'done' && contextMenu.job.filePath && (
+              <>
+                <button
+                  onClick={() => {
+                    onOpenFile?.(contextMenu.job.filePath!);
+                    setContextMenu(null);
+                  }}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    border: 0,
+                    background: 'transparent',
+                    color: 'var(--text)',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span>⚡</span> <span>Dosyayı Aç</span>
+                </button>
+                <button
+                  onClick={() => {
+                    onShowInFolder?.(contextMenu.job.filePath!);
+                    setContextMenu(null);
+                  }}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    border: 0,
+                    background: 'transparent',
+                    color: 'var(--text)',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span>📁</span> <span>Klasörde Göster</span>
+                </button>
+              </>
+            )}
+            <div style={{ height: 1, background: 'var(--border)', margin: '4px 8px' }} />
+            {onMoveJob &&
+              (contextMenu.job.status === 'downloading' ||
+                contextMenu.job.status === 'queued' ||
+                contextMenu.job.status === 'paused') && (
+                <div style={{ display: 'flex', gap: 2, padding: '0 8px' }}>
+                  <button
+                    onClick={() => {
+                      onMoveJob(contextMenu.job.id, 'up');
+                      setContextMenu(null);
+                    }}
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      padding: '6px 8px',
+                      borderRadius: 6,
+                      border: '1px solid var(--border)',
+                      background: 'var(--panel-2)',
+                      color: 'var(--text)',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ⬆️ Yukarı Taşı
+                  </button>
+                  <button
+                    onClick={() => {
+                      onMoveJob(contextMenu.job.id, 'down');
+                      setContextMenu(null);
+                    }}
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      padding: '6px 8px',
+                      borderRadius: 6,
+                      border: '1px solid var(--border)',
+                      background: 'var(--panel-2)',
+                      color: 'var(--text)',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ⬇️ Aşağı Taşı
+                  </button>
+                </div>
+              )}
+            <div style={{ height: 1, background: 'var(--border)', margin: '4px 8px' }} />
+            {contextMenu.job.status === 'done' ? (
+              <button
+                onClick={() => {
+                  setConfirmDeleteJob(contextMenu.job);
+                  setContextMenu(null);
+                }}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: 0,
+                  background: 'transparent',
+                  color: '#f87171',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span>🗑️</span> <span>Sil / Kaldır</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  onRemoveJob?.(contextMenu.job.id);
+                  setContextMenu(null);
+                }}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: 0,
+                  background: 'transparent',
+                  color: '#f87171',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span>🗑️</span> <span>Listeden Kaldır</span>
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Silme & Kaldırma Onay Modalı */}
       {confirmDeleteJob && (
