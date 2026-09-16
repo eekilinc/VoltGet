@@ -59,6 +59,7 @@ export default function QueuePanel({
 }) {
   const { t } = useAppSettings();
   const [confirmDeleteJob, setConfirmDeleteJob] = useState<Job | null>(null);
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; job: Job } | null>(null);
   const [speedHistory, setSpeedHistory] = useState<Record<string, number[]>>({});
   const {
@@ -191,6 +192,24 @@ export default function QueuePanel({
             )}
           </div>
           <div style={{ flex: 1 }} />
+          <button
+            onClick={() => setViewMode(prev => (prev === 'card' ? 'table' : 'card'))}
+            title={t('toggleViewMode')}
+            style={{
+              background: 'var(--panel-2)',
+              color: 'var(--text)',
+              border: '1px solid var(--border)',
+              padding: '5px 8px',
+              borderRadius: 8,
+              fontSize: 11,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <span>{viewMode === 'card' ? '📋' : '📇'}</span>
+          </button>
           <button
             onClick={onOpenFolder}
             title={t('openDownloadFolder')}

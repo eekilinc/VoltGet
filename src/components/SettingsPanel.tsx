@@ -736,6 +736,141 @@ export default function SettingsPanel() {
         </label>
       </div>
 
+      {/* İndirme Zamanlayıcı (Scheduler) */}
+      <div className="card-premium" style={{ borderRadius: 18, padding: 18 }}>
+        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 12 }}>
+          ⏰ {t('schedulerTitle') || 'İndirme Zamanlayıcı'}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 12 }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={!!cfg.scheduler?.enabled}
+              onChange={e =>
+                saveCfg({ scheduler: { ...cfg.scheduler, enabled: e.target.checked } })
+              }
+            />
+            {t('schedulerEnabled') || 'Zamanlanmış indirmeyi etkinleştir'}
+          </label>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <label style={{ flex: 1 }}>
+              {t('schedulerStart') || 'Başlangıç Saati'}
+              <input
+                type="time"
+                value={cfg.scheduler?.startTime || '00:00'}
+                onChange={e =>
+                  saveCfg({ scheduler: { ...cfg.scheduler, startTime: e.target.value } })
+                }
+                style={{
+                  width: '100%',
+                  marginTop: 4,
+                  padding: 6,
+                  borderRadius: 8,
+                  background: 'var(--panel-2)',
+                  color: 'var(--text)',
+                  border: '1px solid var(--border)',
+                  outline: 'none',
+                }}
+              />
+            </label>
+            <label style={{ flex: 1 }}>
+              {t('schedulerStop') || 'Bitiş Saati'}
+              <input
+                type="time"
+                value={cfg.scheduler?.stopTime || '00:00'}
+                onChange={e =>
+                  saveCfg({ scheduler: { ...cfg.scheduler, stopTime: e.target.value } })
+                }
+                style={{
+                  width: '100%',
+                  marginTop: 4,
+                  padding: 6,
+                  borderRadius: 8,
+                  background: 'var(--panel-2)',
+                  color: 'var(--text)',
+                  border: '1px solid var(--border)',
+                  outline: 'none',
+                }}
+              />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Proxy Ayarları */}
+      <div className="card-premium" style={{ borderRadius: 18, padding: 18 }}>
+        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 12 }}>
+          🌐 {t('proxyTitle') || 'Proxy Ayarları'}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 12 }}>
+          <label>
+            {t('proxyMode') || 'Proxy Modu'}
+            <select
+              value={cfg.proxy?.mode || 'none'}
+              onChange={e => saveCfg({ proxy: { ...cfg.proxy, mode: e.target.value } })}
+              style={{
+                width: '100%',
+                marginTop: 4,
+                padding: 8,
+                borderRadius: 8,
+                background: 'var(--panel-2)',
+                color: 'var(--text)',
+                border: '1px solid var(--border)',
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="none">{t('proxyNone') || 'Proxy Yok'}</option>
+              <option value="manual">{t('proxyManual') || 'Manuel Proxy'}</option>
+            </select>
+          </label>
+          {cfg.proxy?.mode === 'manual' && (
+            <div style={{ display: 'flex', gap: 10 }}>
+              <label style={{ flex: 2 }}>
+                {t('proxyHost') || 'Host'}
+                <input
+                  type="text"
+                  placeholder="127.0.0.1"
+                  value={cfg.proxy?.host || ''}
+                  onChange={e => saveCfg({ proxy: { ...cfg.proxy, host: e.target.value } })}
+                  style={{
+                    width: '100%',
+                    marginTop: 4,
+                    padding: 6,
+                    borderRadius: 8,
+                    background: 'var(--panel-2)',
+                    color: 'var(--text)',
+                    border: '1px solid var(--border)',
+                    outline: 'none',
+                  }}
+                />
+              </label>
+              <label style={{ flex: 1 }}>
+                Port
+                <input
+                  type="number"
+                  placeholder="8080"
+                  value={cfg.proxy?.port || ''}
+                  onChange={e =>
+                    saveCfg({ proxy: { ...cfg.proxy, port: parseInt(e.target.value) || 0 } })
+                  }
+                  style={{
+                    width: '100%',
+                    marginTop: 4,
+                    padding: 6,
+                    borderRadius: 8,
+                    background: 'var(--panel-2)',
+                    color: 'var(--text)',
+                    border: '1px solid var(--border)',
+                    outline: 'none',
+                  }}
+                />
+              </label>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="card-premium" style={{ borderRadius: 18, padding: 18 }}>
         <div style={{ fontWeight: 800, fontSize: 13 }}>{t('settingsTools')}</div>
         {status ? (
