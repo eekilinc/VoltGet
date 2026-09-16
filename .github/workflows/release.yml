@@ -74,13 +74,16 @@ jobs:
             release/checksums.sha256.txt
           generate_release_notes: true
           body: |
-            ## VoltGet 1.1.0
-            - Verified HTTP byte ranges, safer pause/resume and file finalization.
-            - OS-encrypted passwords and cookies, authenticated browser extension connections.
-            - Full queue retention, atomic background saves and individual settings recovery.
-            - Lower memory use, typed desktop APIs and corrected event cleanup.
-
-            **Browser extension update:** Reload the updated extension, then copy the connection key from VoltGet's extension setup panel and paste it into the extension popup. Select **Bağlan (Connect)** to pair it once per browser profile.
+            ## VoltGet 1.1.2
+            ### Yeni UI İyileştirmeleri
+            - **Sürükle-Bırak ile Hızlı İndirme Ekleme**: URL'leri doğrudan uygulamaya sürükle-bırak desteği.
+            - **Gelişmiş İlerleme Görselleştirmeleri**: Renk kodlu hız, ETA ve yüzde göstergeleri.
+            - **Mini Hız Grafikleri (Sparkline)**: Aktif indirmelerde gerçek zamanlı hız trendi.
+            - **Zengin Sağ Tık Bağlam Menüsü**: URL kopyalama, klasörde gösterme, yeniden deneme seçenekleri.
+            - **Tablo / Liste Görünüm Modu**: Kart veya tablo görünümü arasında geçiş (IDM/JDownloader tarzı).
+            - **Zamanlayıcı ve Proxy Ayarları**: Ayarlar paneline indirme zamanlayıcı ve proxy yapılandırma kartları eklendi.
+            - **Bırakma Alanı Overlay Animasyonu**: Sürükleme sırasında animasyonlu görsel geri bildirim.
+            - **Shimmer İlerleme Çubuğu**: Aktif indirmelerde kayan parlak efekt.
           draft: false
           prerelease: false
           fail_on_unmatched_files: false
