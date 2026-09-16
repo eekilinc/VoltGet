@@ -794,6 +794,44 @@ export default function SettingsPanel() {
               />
             </label>
           </div>
+          <div>
+            <div style={{ fontWeight: 700 }}>{t('schedulerDays') || 'Günler'}</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+              {[
+                { d: 1, l: 'Pzt' },
+                { d: 2, l: 'Sal' },
+                { d: 3, l: 'Çar' },
+                { d: 4, l: 'Per' },
+                { d: 5, l: 'Cum' },
+                { d: 6, l: 'Cmt' },
+                { d: 0, l: 'Paz' },
+              ].map(day => {
+                const days: number[] = cfg.scheduler?.days ?? [0, 1, 2, 3, 4, 5, 6];
+                const active = days.includes(day.d);
+                return (
+                  <button
+                    key={day.d}
+                    onClick={() => {
+                      const next = active ? days.filter(x => x !== day.d) : [...days, day.d];
+                      saveCfg({ scheduler: { ...cfg.scheduler, days: next } });
+                    }}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 8,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      color: active ? '#fff' : 'var(--text)',
+                      background: active ? 'var(--accent-solid)' : 'var(--panel-2)',
+                      border: '1px solid ' + (active ? 'var(--accent-solid)' : 'var(--border)'),
+                    }}
+                  >
+                    {day.l}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -820,8 +858,10 @@ export default function SettingsPanel() {
                 cursor: 'pointer',
               }}
             >
+              <option value="system">{t('proxySystem') || 'Sistem Proxy'}</option>
               <option value="none">{t('proxyNone') || 'Proxy Yok'}</option>
               <option value="manual">{t('proxyManual') || 'Manuel Proxy'}</option>
+              <option value="pac">{t('proxyPac') || 'Otomatik (PAC)'}</option>
             </select>
           </label>
           {cfg.proxy?.mode === 'manual' && (
@@ -867,6 +907,88 @@ export default function SettingsPanel() {
                 />
               </label>
             </div>
+          )}
+          {cfg.proxy?.mode === 'manual' && (
+            <div style={{ display: 'flex', gap: 10 }}>
+              <label style={{ flex: 1 }}>
+                Kullanıcı Adı
+                <input
+                  type="text"
+                  value={cfg.proxy?.username || ''}
+                  onChange={e => saveCfg({ proxy: { ...cfg.proxy, username: e.target.value } })}
+                  style={{
+                    width: '100%',
+                    marginTop: 4,
+                    padding: 6,
+                    borderRadius: 8,
+                    background: 'var(--panel-2)',
+                    color: 'var(--text)',
+                    border: '1px solid var(--border)',
+                    outline: 'none',
+                  }}
+                />
+              </label>
+              <label style={{ flex: 1 }}>
+                Şifre
+                <input
+                  type="password"
+                  value={cfg.proxy?.password || ''}
+                  onChange={e => saveCfg({ proxy: { ...cfg.proxy, password: e.target.value } })}
+                  style={{
+                    width: '100%',
+                    marginTop: 4,
+                    padding: 6,
+                    borderRadius: 8,
+                    background: 'var(--panel-2)',
+                    color: 'var(--text)',
+                    border: '1px solid var(--border)',
+                    outline: 'none',
+                  }}
+                />
+              </label>
+            </div>
+          )}
+          {cfg.proxy?.mode === 'manual' && (
+            <label>
+              Hariç Tut (bypass, virgülle)
+              <input
+                type="text"
+                placeholder="localhost,127.0.0.1"
+                value={cfg.proxy?.bypass || ''}
+                onChange={e => saveCfg({ proxy: { ...cfg.proxy, bypass: e.target.value } })}
+                style={{
+                  width: '100%',
+                  marginTop: 4,
+                  padding: 6,
+                  borderRadius: 8,
+                  background: 'var(--panel-2)',
+                  color: 'var(--text)',
+                  border: '1px solid var(--border)',
+                  outline: 'none',
+                }}
+              />
+            </label>
+          )}
+          {cfg.proxy?.mode === 'pac' && (
+            <label>
+              PAC URL
+              <input
+                type="text"
+                placeholder="http://ornek/proxy.pac"
+                value={cfg.proxy?.pacUrl || ''}
+                onChange={e => saveCfg({ proxy: { ...cfg.proxy, pacUrl: e.target.value } })}
+                style={{
+                  width: '100%',
+                  marginTop: 4,
+                  padding: 6,
+                  borderRadius: 8,
+                  background: 'var(--panel-2)',
+                  color: 'var(--text)',
+                  border: '1px solid var(--border)',
+                  outline: 'none',
+                }}
+              />
+            </label>
           )}
         </div>
       </div>

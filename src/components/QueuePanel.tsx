@@ -520,453 +520,552 @@ export default function QueuePanel({
           </div>
         )}
 
-        {filteredJobs.map(j => (
+        {viewMode === 'table' ? (
           <div
-            key={j.id}
-            className="card-premium"
-            onContextMenu={e => {
-              e.preventDefault();
-              setContextMenu({ x: e.clientX, y: e.clientY, job: j });
-            }}
             style={{
-              borderRadius: 14,
-              padding: 12,
-              border: j.deletedFromDisk ? '1px solid rgba(239, 68, 68, 0.35)' : undefined,
-              cursor: 'context-menu',
-              transition: 'all 0.15s ease',
+              background: 'var(--panel)',
+              borderRadius: 12,
+              border: '1px solid var(--border)',
+              overflow: 'hidden',
             }}
           >
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead>
+                <tr
+                  style={{
+                    background: 'var(--panel-2)',
+                    borderBottom: '1px solid var(--border)',
+                    textAlign: 'left',
+                    color: 'var(--muted)',
+                  }}
+                >
+                  <th style={{ padding: '8px 10px' }}>Dosya</th>
+                  <th style={{ padding: '8px 6px', width: 70 }}>Boyut</th>
+                  <th style={{ padding: '8px 6px', width: 90 }}>Durum</th>
+                  <th style={{ padding: '8px 10px', width: 110 }}>İlerleme</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredJobs.map(j => (
+                  <tr
+                    key={j.id}
+                    onContextMenu={e => {
+                      e.preventDefault();
+                      setContextMenu({ x: e.clientX, y: e.clientY, job: j });
+                    }}
+                    style={{ borderBottom: '1px solid var(--border)', cursor: 'context-menu' }}
+                  >
+                    <td
+                      style={{
+                        padding: '8px 10px',
+                        maxWidth: 140,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        color: 'var(--text)',
+                      }}
+                      title={j.title}
+                    >
+                      {j.title}
+                    </td>
+                    <td style={{ padding: '8px 6px', color: 'var(--muted)' }}>{j.total || '-'}</td>
+                    <td style={{ padding: '8px 6px' }}>
+                      <JobStatusBadge
+                        status={j.status}
+                        label={label(j)}
+                        deletedFromDisk={j.deletedFromDisk}
+                      />
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div
+                          style={{
+                            flex: 1,
+                            height: 6,
+                            background: 'var(--bg)',
+                            borderRadius: 4,
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${j.percent}%`,
+                              height: '100%',
+                              background:
+                                j.status === 'done'
+                                  ? '#22c55e'
+                                  : j.status === 'error'
+                                    ? '#dc2626'
+                                    : 'var(--accent-solid)',
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontSize: 10, fontWeight: 700 }}>
+                          {Math.round(j.percent)}%
+                        </span>
+                      </div>
+                      {j.status === 'downloading' && (
+                        <div className="text-muted" style={{ fontSize: 10, marginTop: 2 }}>
+                          {j.speed} {j.eta && j.eta !== '-' ? `• ${j.eta}` : ''}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          filteredJobs.map(j => (
+            <div
+              key={j.id}
+              className="card-premium"
+              onContextMenu={e => {
+                e.preventDefault();
+                setContextMenu({ x: e.clientX, y: e.clientY, job: j });
+              }}
+              style={{
+                borderRadius: 14,
+                padding: 12,
+                border: j.deletedFromDisk ? '1px solid rgba(239, 68, 68, 0.35)' : undefined,
+                cursor: 'context-menu',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        color: j.deletedFromDisk ? 'var(--text-muted)' : 'var(--text)',
+                        textDecoration: j.deletedFromDisk ? 'line-through' : 'none',
+                      }}
+                    >
+                      {j.title}
+                    </div>
+                    {isMultiSegment(j) && (
+                      <span
+                        title={t('segmentsBadge')}
+                        style={{
+                          flexShrink: 0,
+                          fontSize: 9,
+                          padding: '1px 5px',
+                          borderRadius: 6,
+                          background: 'rgba(59, 130, 246, 0.15)',
+                          color: '#60a5fa',
+                          border: '1px solid rgba(59, 130, 246, 0.3)',
+                          fontWeight: 800,
+                        }}
+                      >
+                        ⚡ 8P
+                      </span>
+                    )}
+                  </div>
                   <div
+                    className="text-muted"
                     style={{
-                      fontSize: 12,
-                      fontWeight: 700,
+                      fontSize: 11,
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
-                      color: j.deletedFromDisk ? 'var(--text-muted)' : 'var(--text)',
-                      textDecoration: j.deletedFromDisk ? 'line-through' : 'none',
                     }}
                   >
-                    {j.title}
+                    {j.url}
                   </div>
-                  {isMultiSegment(j) && (
-                    <span
-                      title={t('segmentsBadge')}
-                      style={{
-                        flexShrink: 0,
-                        fontSize: 9,
-                        padding: '1px 5px',
-                        borderRadius: 6,
-                        background: 'rgba(59, 130, 246, 0.15)',
-                        color: '#60a5fa',
-                        border: '1px solid rgba(59, 130, 246, 0.3)',
-                        fontWeight: 800,
-                      }}
-                    >
-                      ⚡ 8P
-                    </span>
-                  )}
                 </div>
-                <div
-                  className="text-muted"
-                  style={{
-                    fontSize: 11,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {j.url}
-                </div>
+
+                {/* Durum Rozeti */}
+                <JobStatusBadge
+                  status={j.status}
+                  label={label(j)}
+                  deletedFromDisk={j.deletedFromDisk}
+                />
               </div>
 
-              {/* Durum Rozeti */}
-              <JobStatusBadge
-                status={j.status}
-                label={label(j)}
-                deletedFromDisk={j.deletedFromDisk}
-              />
-            </div>
-
-            {/* İlerleme Çubuğu */}
-            <div
-              style={{
-                height: 8,
-                background: 'var(--bg)',
-                borderRadius: 10,
-                marginTop: 10,
-                overflow: 'hidden',
-                border: '1px solid var(--border)',
-                position: 'relative',
-              }}
-            >
+              {/* İlerleme Çubuğu */}
               <div
                 style={{
-                  width: `${j.percent}%`,
-                  height: '100%',
-                  background:
-                    j.status === 'done'
-                      ? j.deletedFromDisk
-                        ? 'linear-gradient(90deg,#991b1b,#ef4444)'
-                        : 'linear-gradient(90deg,#16a34a,#22c55e)'
-                      : j.status === 'error'
-                        ? 'linear-gradient(90deg,#7f1d1d,#dc2626)'
-                        : 'linear-gradient(90deg,var(--accent-from),var(--accent-to))',
-                  transition: 'width 0.4s ease',
-                }}
-              />
-              {j.status === 'downloading' && (
-                <div
-                  className="shimmer-progress"
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    borderRadius: 10,
-                  }}
-                />
-              )}
-            </div>
-
-            {/* Mini Hız Grafiği (Sparkline) */}
-            {j.status === 'downloading' && speedHistory[j.id] && speedHistory[j.id].length > 1 && (
-              <div
-                style={{
-                  height: 28,
-                  marginTop: 6,
-                  display: 'flex',
-                  alignItems: 'flex-end',
-                  gap: 1,
+                  height: 8,
+                  background: 'var(--bg)',
+                  borderRadius: 10,
+                  marginTop: 10,
                   overflow: 'hidden',
-                  borderRadius: 6,
-                  background: 'rgba(0, 0, 0, 0.15)',
-                  padding: '2px 4px',
+                  border: '1px solid var(--border)',
+                  position: 'relative',
                 }}
               >
-                {speedHistory[j.id].map((val, idx) => {
-                  const max = Math.max(...speedHistory[j.id], 1);
-                  const h = Math.max(2, (val / max) * 22);
-                  const intensity = val / max;
-                  return (
-                    <div
-                      key={idx}
-                      style={{
-                        flex: 1,
-                        height: h,
-                        minHeight: 2,
-                        borderRadius: 2,
-                        background: `rgba(${Math.round(34 + intensity * 0)}, ${Math.round(197 - intensity * 40)}, ${Math.round(94 + intensity * 100)}, ${0.3 + intensity * 0.7})`,
-                        transition: 'height 0.3s ease',
-                      }}
-                    />
-                  );
-                })}
+                <div
+                  style={{
+                    width: `${j.percent}%`,
+                    height: '100%',
+                    background:
+                      j.status === 'done'
+                        ? j.deletedFromDisk
+                          ? 'linear-gradient(90deg,#991b1b,#ef4444)'
+                          : 'linear-gradient(90deg,#16a34a,#22c55e)'
+                        : j.status === 'error'
+                          ? 'linear-gradient(90deg,#7f1d1d,#dc2626)'
+                          : 'linear-gradient(90deg,var(--accent-from),var(--accent-to))',
+                    transition: 'width 0.4s ease',
+                  }}
+                />
+                {j.status === 'downloading' && (
+                  <div
+                    className="shimmer-progress"
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      borderRadius: 10,
+                    }}
+                  />
+                )}
               </div>
-            )}
 
-            {/* Hız & Süre & Boyut Bilgisi */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: 11,
-                marginTop: 6,
-                flexWrap: 'wrap',
-                gap: 6,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                <span style={{ fontWeight: 700, color: 'var(--text-bright)' }}>
-                  {j.percent.toFixed(1)}%
-                </span>
-                {j.total ? <span className="text-muted">• {j.total}</span> : null}
-              </div>
+              {/* Mini Hız Grafiği (Sparkline) */}
+              {j.status === 'downloading' &&
+                speedHistory[j.id] &&
+                speedHistory[j.id].length > 1 && (
+                  <div
+                    style={{
+                      height: 28,
+                      marginTop: 6,
+                      display: 'flex',
+                      alignItems: 'flex-end',
+                      gap: 1,
+                      overflow: 'hidden',
+                      borderRadius: 6,
+                      background: 'rgba(0, 0, 0, 0.15)',
+                      padding: '2px 4px',
+                    }}
+                  >
+                    {speedHistory[j.id].map((val, idx) => {
+                      const max = Math.max(...speedHistory[j.id], 1);
+                      const h = Math.max(2, (val / max) * 22);
+                      const intensity = val / max;
+                      return (
+                        <div
+                          key={idx}
+                          style={{
+                            flex: 1,
+                            height: h,
+                            minHeight: 2,
+                            borderRadius: 2,
+                            background: `rgba(${Math.round(34 + intensity * 0)}, ${Math.round(197 - intensity * 40)}, ${Math.round(94 + intensity * 100)}, ${0.3 + intensity * 0.7})`,
+                            transition: 'height 0.3s ease',
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+
+              {/* Hız & Süre & Boyut Bilgisi */}
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 8,
-                  flexShrink: 0,
-                  marginLeft: 'auto',
+                  justifyContent: 'space-between',
+                  fontSize: 11,
+                  marginTop: 6,
+                  flexWrap: 'wrap',
+                  gap: 6,
                 }}
               >
-                {j.speed && j.status === 'downloading' ? (
-                  <span
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      background: 'rgba(34, 197, 94, 0.15)',
-                      color: '#86efac',
-                      padding: '3px 8px',
-                      borderRadius: 8,
-                      fontWeight: 700,
-                    }}
-                  >
-                    🚀 {j.speed}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  <span style={{ fontWeight: 700, color: 'var(--text-bright)' }}>
+                    {j.percent.toFixed(1)}%
                   </span>
-                ) : null}
-                {j.eta && j.eta !== '-' && j.status === 'downloading' ? (
-                  <span
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      background: 'rgba(59, 130, 246, 0.15)',
-                      color: '#60a5fa',
-                      padding: '3px 8px',
-                      borderRadius: 8,
-                      fontWeight: 700,
-                    }}
-                  >
-                    ⏳ {j.eta}
-                  </span>
-                ) : null}
+                  {j.total ? <span className="text-muted">• {j.total}</span> : null}
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    flexShrink: 0,
+                    marginLeft: 'auto',
+                  }}
+                >
+                  {j.speed && j.status === 'downloading' ? (
+                    <span
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        background: 'rgba(34, 197, 94, 0.15)',
+                        color: '#86efac',
+                        padding: '3px 8px',
+                        borderRadius: 8,
+                        fontWeight: 700,
+                      }}
+                    >
+                      🚀 {j.speed}
+                    </span>
+                  ) : null}
+                  {j.eta && j.eta !== '-' && j.status === 'downloading' ? (
+                    <span
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        background: 'rgba(59, 130, 246, 0.15)',
+                        color: '#60a5fa',
+                        padding: '3px 8px',
+                        borderRadius: 8,
+                        fontWeight: 700,
+                      }}
+                    >
+                      ⏳ {j.eta}
+                    </span>
+                  ) : null}
+                </div>
               </div>
-            </div>
-            <div
-              className="text-muted"
-              style={{
-                fontSize: 10,
-                marginTop: 4,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-            >
-              {j.deletedFromDisk ? `⚠️ ${t('deletedFromDiskMsg')}` : j.log}
-            </div>
+              <div
+                className="text-muted"
+                style={{
+                  fontSize: 10,
+                  marginTop: 4,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {j.deletedFromDisk ? `⚠️ ${t('deletedFromDiskMsg')}` : j.log}
+              </div>
 
-            {/* Eylem Butonları */}
-            <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
-              {(j.status === 'downloading' || j.status === 'queued') && (
-                <button
-                  onClick={() => onPause?.(j.id)}
-                  style={{
-                    background: 'var(--badge-warning-bg)',
-                    color: 'var(--badge-warning-text)',
-                    border: '1px solid var(--badge-warning-border)',
-                    padding: '6px 8px',
-                    borderRadius: 8,
-                    fontSize: 11,
-                    cursor: 'pointer',
-                  }}
-                >
-                  ⏸ {t('pause')}
-                </button>
-              )}
-              {(j.status === 'downloading' || j.status === 'queued' || j.status === 'paused') && (
-                <button
-                  onClick={() => onCancel(j.id)}
-                  style={{
-                    background: 'var(--badge-danger-bg)',
-                    color: 'var(--badge-danger-text)',
-                    border: '1px solid var(--badge-danger-border)',
-                    padding: '6px 8px',
-                    borderRadius: 8,
-                    fontSize: 11,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {t('cancel')}
-                </button>
-              )}
-              {j.status === 'paused' && (
-                <button
-                  onClick={() => onResume?.(j)}
-                  className="brand-gradient"
-                  style={{
-                    color: '#fff',
-                    border: 0,
-                    padding: '6px 8px',
-                    borderRadius: 8,
-                    fontSize: 11,
-                    cursor: 'pointer',
-                  }}
-                >
-                  ▶ {t('resume')}
-                </button>
-              )}
-
-              {/* Sıralama Taşıma Butonları (Kuyruk / İndirme Önceliği) */}
-              {(j.status === 'downloading' || j.status === 'queued' || j.status === 'paused') &&
-                onMoveJob && (
-                  <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
-                    <button
-                      onClick={() => onMoveJob(j.id, 'up')}
-                      title={t('moveUp')}
-                      style={{
-                        background: 'var(--panel-2)',
-                        color: 'var(--text)',
-                        border: '1px solid var(--border)',
-                        padding: '4px 6px',
-                        borderRadius: 6,
-                        fontSize: 10,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      ⬆️
-                    </button>
-                    <button
-                      onClick={() => onMoveJob(j.id, 'down')}
-                      title={t('moveDown')}
-                      style={{
-                        background: 'var(--panel-2)',
-                        color: 'var(--text)',
-                        border: '1px solid var(--border)',
-                        padding: '4px 6px',
-                        borderRadius: 6,
-                        fontSize: 10,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      ⬇️
-                    </button>
-                  </div>
+              {/* Eylem Butonları */}
+              <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                {(j.status === 'downloading' || j.status === 'queued') && (
+                  <button
+                    onClick={() => onPause?.(j.id)}
+                    style={{
+                      background: 'var(--badge-warning-bg)',
+                      color: 'var(--badge-warning-text)',
+                      border: '1px solid var(--badge-warning-border)',
+                      padding: '6px 8px',
+                      borderRadius: 8,
+                      fontSize: 11,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ⏸ {t('pause')}
+                  </button>
+                )}
+                {(j.status === 'downloading' || j.status === 'queued' || j.status === 'paused') && (
+                  <button
+                    onClick={() => onCancel(j.id)}
+                    style={{
+                      background: 'var(--badge-danger-bg)',
+                      color: 'var(--badge-danger-text)',
+                      border: '1px solid var(--badge-danger-border)',
+                      padding: '6px 8px',
+                      borderRadius: 8,
+                      fontSize: 11,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {t('cancel')}
+                  </button>
+                )}
+                {j.status === 'paused' && (
+                  <button
+                    onClick={() => onResume?.(j)}
+                    className="brand-gradient"
+                    style={{
+                      color: '#fff',
+                      border: 0,
+                      padding: '6px 8px',
+                      borderRadius: 8,
+                      fontSize: 11,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ▶ {t('resume')}
+                  </button>
                 )}
 
-              {/* Tamamlanmış İndirmeler */}
-              {j.status === 'done' && !j.deletedFromDisk && (
-                <>
-                  <button
-                    onClick={() => {
-                      if (j.filePath) onOpenFile?.(j.filePath);
-                      else onOpenFolder();
-                    }}
-                    className="brand-gradient"
-                    style={{
-                      color: '#fff',
-                      border: 0,
-                      padding: '6px 10px',
-                      borderRadius: 8,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    ⚡ {t('openFile')}
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (j.filePath) onShowInFolder?.(j.filePath);
-                      else onOpenFolder();
-                    }}
-                    style={{
-                      background: 'var(--panel-2)',
-                      color: 'var(--text)',
-                      border: '1px solid var(--border)',
-                      padding: '6px 9px',
-                      borderRadius: 8,
-                      fontSize: 11,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      cursor: 'pointer',
-                    }}
-                    title={t('showInFolderTooltip')}
-                  >
-                    📁 {t('showInFolder')}
-                  </button>
-                  <button
-                    onClick={() => setConfirmDeleteJob(j)}
-                    style={{
-                      background: 'transparent',
-                      color: 'var(--text-muted)',
-                      border: '1px solid var(--border)',
-                      padding: '6px 8px',
-                      borderRadius: 8,
-                      fontSize: 11,
-                      marginLeft: 'auto',
-                      cursor: 'pointer',
-                    }}
-                    title={t('deleteOrRemoveTitle')}
-                  >
-                    🗑️
-                  </button>
-                </>
-              )}
+                {/* Sıralama Taşıma Butonları (Kuyruk / İndirme Önceliği) */}
+                {(j.status === 'downloading' || j.status === 'queued' || j.status === 'paused') &&
+                  onMoveJob && (
+                    <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
+                      <button
+                        onClick={() => onMoveJob(j.id, 'up')}
+                        title={t('moveUp')}
+                        style={{
+                          background: 'var(--panel-2)',
+                          color: 'var(--text)',
+                          border: '1px solid var(--border)',
+                          padding: '4px 6px',
+                          borderRadius: 6,
+                          fontSize: 10,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        ⬆️
+                      </button>
+                      <button
+                        onClick={() => onMoveJob(j.id, 'down')}
+                        title={t('moveDown')}
+                        style={{
+                          background: 'var(--panel-2)',
+                          color: 'var(--text)',
+                          border: '1px solid var(--border)',
+                          padding: '4px 6px',
+                          borderRadius: 6,
+                          fontSize: 10,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        ⬇️
+                      </button>
+                    </div>
+                  )}
 
-              {/* Diskten Silinmiş İndirmeler */}
-              {j.status === 'done' && j.deletedFromDisk && (
-                <>
-                  <button
-                    onClick={() => onRetry?.(j)}
-                    className="brand-gradient"
-                    style={{
-                      color: '#fff',
-                      border: 0,
-                      padding: '6px 10px',
-                      borderRadius: 8,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    🔄 {t('redownload')}
-                  </button>
-                  <button
-                    onClick={() => onRemoveJob?.(j.id)}
-                    style={{
-                      background: 'var(--panel-2)',
-                      color: 'var(--text)',
-                      border: '1px solid var(--border)',
-                      padding: '6px 9px',
-                      borderRadius: 8,
-                      fontSize: 11,
-                      marginLeft: 'auto',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    🗑️ {t('removeFromList')}
-                  </button>
-                </>
-              )}
+                {/* Tamamlanmış İndirmeler */}
+                {j.status === 'done' && !j.deletedFromDisk && (
+                  <>
+                    <button
+                      onClick={() => {
+                        if (j.filePath) onOpenFile?.(j.filePath);
+                        else onOpenFolder();
+                      }}
+                      className="brand-gradient"
+                      style={{
+                        color: '#fff',
+                        border: 0,
+                        padding: '6px 10px',
+                        borderRadius: 8,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ⚡ {t('openFile')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (j.filePath) onShowInFolder?.(j.filePath);
+                        else onOpenFolder();
+                      }}
+                      style={{
+                        background: 'var(--panel-2)',
+                        color: 'var(--text)',
+                        border: '1px solid var(--border)',
+                        padding: '6px 9px',
+                        borderRadius: 8,
+                        fontSize: 11,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        cursor: 'pointer',
+                      }}
+                      title={t('showInFolderTooltip')}
+                    >
+                      📁 {t('showInFolder')}
+                    </button>
+                    <button
+                      onClick={() => setConfirmDeleteJob(j)}
+                      style={{
+                        background: 'transparent',
+                        color: 'var(--text-muted)',
+                        border: '1px solid var(--border)',
+                        padding: '6px 8px',
+                        borderRadius: 8,
+                        fontSize: 11,
+                        marginLeft: 'auto',
+                        cursor: 'pointer',
+                      }}
+                      title={t('deleteOrRemoveTitle')}
+                    >
+                      🗑️
+                    </button>
+                  </>
+                )}
 
-              {j.status === 'error' && (
-                <>
-                  <button
-                    onClick={() => onRetry?.(j)}
-                    className="brand-gradient"
-                    style={{
-                      color: '#fff',
-                      border: 0,
-                      padding: '6px 8px',
-                      borderRadius: 8,
-                      fontSize: 11,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    🔄 {t('retry')}
-                  </button>
-                  <button
-                    onClick={() => onRemoveJob?.(j.id)}
-                    style={{
-                      background: 'transparent',
-                      color: 'var(--text-muted)',
-                      border: '1px solid var(--border)',
-                      padding: '6px 8px',
-                      borderRadius: 8,
-                      fontSize: 11,
-                      marginLeft: 'auto',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    ✕
-                  </button>
-                </>
-              )}
+                {/* Diskten Silinmiş İndirmeler */}
+                {j.status === 'done' && j.deletedFromDisk && (
+                  <>
+                    <button
+                      onClick={() => onRetry?.(j)}
+                      className="brand-gradient"
+                      style={{
+                        color: '#fff',
+                        border: 0,
+                        padding: '6px 10px',
+                        borderRadius: 8,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      🔄 {t('redownload')}
+                    </button>
+                    <button
+                      onClick={() => onRemoveJob?.(j.id)}
+                      style={{
+                        background: 'var(--panel-2)',
+                        color: 'var(--text)',
+                        border: '1px solid var(--border)',
+                        padding: '6px 9px',
+                        borderRadius: 8,
+                        fontSize: 11,
+                        marginLeft: 'auto',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      🗑️ {t('removeFromList')}
+                    </button>
+                  </>
+                )}
+
+                {j.status === 'error' && (
+                  <>
+                    <button
+                      onClick={() => onRetry?.(j)}
+                      className="brand-gradient"
+                      style={{
+                        color: '#fff',
+                        border: 0,
+                        padding: '6px 8px',
+                        borderRadius: 8,
+                        fontSize: 11,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      🔄 {t('retry')}
+                    </button>
+                    <button
+                      onClick={() => onRemoveJob?.(j.id)}
+                      style={{
+                        background: 'transparent',
+                        color: 'var(--text-muted)',
+                        border: '1px solid var(--border)',
+                        padding: '6px 8px',
+                        borderRadius: 8,
+                        fontSize: 11,
+                        marginLeft: 'auto',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Alt Eylem Barı: İndirme Bittiğinde Yapılacak Eylem (Post-download action) */}
