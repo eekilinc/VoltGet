@@ -685,7 +685,14 @@ export default function App() {
         </div>
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', background: 'var(--bg-2)' }}>
           {tab === 'download' && (
-            <DownloadPanel outDir={outDir} onStartDownload={handleStartDownload} />
+            <DownloadPanel
+              outDir={outDir}
+              onStartDownload={handleStartDownload}
+              jobs={jobs}
+              onCancelJob={handleCancelJob}
+              onMoveJob={handleMoveJob}
+              onPauseJob={() => {}}
+            />
           )}
           {tab === 'sniff' && (
             <SniffPanel
@@ -815,6 +822,7 @@ export default function App() {
             return n;
           })
         }
+        compact
       />
 
       {/* IDM Tarzı Gelişmiş Dosya Özellikleri ve İndirme Penceresi (Download Properties Dialog) */}

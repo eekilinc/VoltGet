@@ -146,145 +146,281 @@ export default function QueuePanel({
   return (
     <div
       style={{
-        width: compact ? '100%' : '400px',
-        minWidth: compact ? undefined : '360px',
+        width: compact ? '80px' : '400px',
+        minWidth: compact ? '80px' : '360px',
         background: 'var(--panel)',
-        borderLeft: compact ? 'none' : '1px solid var(--border)',
+        borderLeft: compact ? '1px solid var(--border)' : '1px solid var(--border)',
         borderTop: compact ? '1px solid var(--border)' : 'none',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
         position: 'relative',
+        borderRadius: compact ? 12 : 16,
       }}
     >
-      {/* Üst Başlık ve Hızlı Eylemler */}
-      <div
-        style={{
-          padding: '12px 14px',
-          borderBottom: '1px solid var(--border)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div
-            style={{ fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <span>📋</span>
-            <span>{t('queue')}</span>
+      {/* Üst Başlık ve Hızlı Eylemler (Compact Mode) */}
+      {compact ? (
+        <>
+        <div
+          style={{
+            padding: '8px 10px',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            background: 'var(--panel-2)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 99,
+                background: 'var(--accent-solid)',
+                border: '2px solid var(--panel-3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 14,
+                color: '#fff',
+              }}
+            >
+              ⬇️
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 11 }}>{t('queue')}</div>
+              <div style={{ fontSize: 9, color: 'var(--muted)' }}>{jobs.length} {t('downloads')}</div>
+            </div>
           </div>
-          <div
-            style={{
-              fontSize: 11,
-              background: 'var(--panel-2)',
-              padding: '2px 8px',
-              borderRadius: 20,
-              border: '1px solid var(--border)',
-              fontWeight: 600,
-            }}
-          >
-            {jobs.length} {t('downloads')}
-            {deletedFromDiskCount > 0 && (
-              <span style={{ color: 'var(--badge-danger-text)', marginLeft: 4 }}>
-                • ⚠️ {deletedFromDiskCount}
-              </span>
-            )}
+
+          {/* Status counts */}
+          <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+            <span
+              style={{
+                padding: '2px 6px',
+                borderRadius: 10,
+                fontSize: 8,
+                fontWeight: 700,
+                background: 'var(--badge-info-bg)',
+                color: 'var(--badge-info-text)',
+                border: '1px solid var(--badge-info-border)',
+              }}
+            >
+              {counts.downloading} {t('statusDownloading')}
+            </span>
+            <span
+              style={{
+                padding: '2px 6px',
+                borderRadius: 10,
+                fontSize: 8,
+                fontWeight: 700,
+                background: 'var(--badge-warning-bg)',
+                color: 'var(--badge-warning-text)',
+                border: '1px solid var(--badge-warning-border)',
+              }}
+            >
+              {counts.paused} {t('statusPaused')}
+            </span>
+            <span
+              style={{
+                padding: '2px 6px',
+                borderRadius: 10,
+                fontSize: 8,
+                fontWeight: 700,
+                background: 'var(--badge-success-bg)',
+                color: 'var(--badge-success-text)',
+                border: '1px solid var(--badge-success-border)',
+              }}
+            >
+              {counts.doneVisible} {t('done')}
+            </span>
           </div>
-          <div style={{ flex: 1 }} />
-          <button
-            onClick={() => setViewMode(prev => (prev === 'card' ? 'table' : 'card'))}
-            title={t('toggleViewMode')}
-            style={{
-              background: 'var(--panel-2)',
-              color: 'var(--text)',
-              border: '1px solid var(--border)',
-              padding: '5px 8px',
-              borderRadius: 8,
-              fontSize: 11,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}
-          >
-            <span>{viewMode === 'card' ? '📋' : '📇'}</span>
-          </button>
-          <button
-            onClick={onOpenFolder}
-            title={t('openDownloadFolder')}
-            style={{
-              background: 'var(--panel-2)',
-              color: 'var(--text)',
-              border: '1px solid var(--border)',
-              padding: '5px 8px',
-              borderRadius: 8,
-              fontSize: 11,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}
-          >
-            <span>📂</span>
-            <span>{t('open')}</span>
-          </button>
+
+          {/* Quick actions */}
+          <div style={{ marginTop: 4, display: 'flex', gap: 4 }}>
+            <button
+              onClick={() => onPauseAll?.()}
+              disabled={counts.downloading === 0}
+              style={{
+                flex: 1,
+                padding: '4px 6px',
+                borderRadius: 6,
+                background: counts.downloading > 0 ? 'var(--badge-warning-bg)' : 'var(--panel-2)',
+                color: counts.downloading > 0 ? 'var(--badge-warning-text)' : 'var(--text-muted)',
+                border: '1px solid ' + (counts.downloading > 0 ? 'var(--badge-warning-border)' : 'var(--border)'),
+                fontSize: 9,
+                fontWeight: 700,
+                cursor: counts.downloading > 0 ? 'pointer' : 'default',
+              }}
+            >
+              ⏸ {t('pauseAll')}
+            </button>
+            <button
+              onClick={() => onResumeAll?.()}
+              disabled={counts.paused === 0}
+              style={{
+                flex: 1,
+                padding: '4px 6px',
+                borderRadius: 6,
+                background: counts.paused > 0 ? 'var(--badge-info-bg)' : 'var(--panel-2)',
+                color: counts.paused > 0 ? 'var(--badge-info-text)' : 'var(--text-muted)',
+                border: '1px solid ' + (counts.paused > 0 ? 'var(--badge-info-border)' : 'var(--border)'),
+                fontSize: 9,
+                fontWeight: 700,
+                cursor: counts.paused > 0 ? 'pointer' : 'default',
+              }}
+            >
+              ▶ {t('resumeAll')}
+            </button>
+            <button
+              onClick={() => onClear?.()}
+              style={{
+                flex: 1,
+                padding: '4px 6px',
+                borderRadius: 6,
+                background: 'var(--badge-danger-bg)',
+                color: 'var(--badge-danger-text)',
+                border: '1px solid var(--badge-danger-border)',
+                fontSize: 9,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              🗑️ {t('clear')}
+            </button>
+          </div>
         </div>
+        </>
+      ) : (
+        <>
+        <div
+          style={{
+            padding: '12px 14px',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div
+              style={{ fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <span>📋</span>
+              <span>{t('queue')}</span>
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                background: 'var(--panel-2)',
+                padding: '2px 8px',
+                borderRadius: 20,
+                border: '1px solid var(--border)',
+                fontWeight: 600,
+              }}
+            >
+              {jobs.length} {t('downloads')}
+              {deletedFromDiskCount > 0 && (
+                <span style={{ color: 'var(--badge-danger-text)', marginLeft: 4 }}>
+                  • ⚠️ {deletedFromDiskCount}
+                </span>
+              )}
+            </div>
+            <div style={{ flex: 1 }} />
+            <button
+              onClick={() => setViewMode(prev => (prev === 'card' ? 'table' : 'card'))}
+              title={t('toggleViewMode')}
+              style={{
+                background: 'var(--panel-2)',
+                color: 'var(--text)',
+                border: '1px solid var(--border)',
+                padding: '5px 8px',
+                borderRadius: 8,
+                fontSize: 11,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <span>{viewMode === 'card' ? '📋' : '📇'}</span>
+            </button>
+            <button
+              onClick={onOpenFolder}
+              title={t('openDownloadFolder')}
+              style={{
+                background: 'var(--panel-2)',
+                color: 'var(--text)',
+                border: '1px solid var(--border)',
+                padding: '5px 8px',
+                borderRadius: 8,
+                fontSize: 11,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <span>📂</span>
+              <span>{t('open')}</span>
+            </button>
+          </div>
 
-        {/* Toplu Kontrol Butonları (Pause All / Resume All / Clear) */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <button
-            onClick={() => onPauseAll?.()}
-            disabled={downloadingCount === 0}
-            title={t('pauseAll')}
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4,
-              background: downloadingCount > 0 ? 'var(--badge-warning-bg)' : 'var(--panel-2)',
-              color: downloadingCount > 0 ? 'var(--badge-warning-text)' : 'var(--text-muted)',
-              border:
-                '1px solid ' +
-                (downloadingCount > 0 ? 'var(--badge-warning-border)' : 'var(--border)'),
-              padding: '6px 8px',
-              borderRadius: 8,
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: downloadingCount > 0 ? 'pointer' : 'default',
-              opacity: downloadingCount > 0 ? 1 : 0.6,
-            }}
-          >
-            <span>⏸️</span>
-            <span>{t('pauseAll')}</span>
-          </button>
+          {/* Toplu Kontrol Butonları */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button
+              onClick={() => onPauseAll?.()}
+              disabled={downloadingCount === 0}
+              title={t('pauseAll')}
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                background: downloadingCount > 0 ? 'var(--badge-warning-bg)' : 'var(--panel-2)',
+                color: downloadingCount > 0 ? 'var(--badge-warning-text)' : 'var(--text-muted)',
+                border:
+                  '1px solid ' + (downloadingCount > 0 ? 'var(--badge-warning-border)' : 'var(--border)'),
+                padding: '6px 8px',
+                borderRadius: 8,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: downloadingCount > 0 ? 'pointer' : 'default',
+                opacity: downloadingCount > 0 ? 1 : 0.6,
+              }}
+            >
+              <span>⏸️</span>
+              <span>{t('pauseAll')}</span>
+            </button>
 
-          <button
-            onClick={() => onResumeAll?.()}
-            disabled={pausedCount === 0}
-            title={t('resumeAll')}
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4,
-              background: pausedCount > 0 ? 'var(--badge-info-bg)' : 'var(--panel-2)',
-              color: pausedCount > 0 ? 'var(--badge-info-text)' : 'var(--text-muted)',
-              border:
-                '1px solid ' + (pausedCount > 0 ? 'var(--badge-info-border)' : 'var(--border)'),
-              padding: '6px 8px',
-              borderRadius: 8,
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: pausedCount > 0 ? 'pointer' : 'default',
-              opacity: pausedCount > 0 ? 1 : 0.6,
-            }}
-          >
-            <span>▶️</span>
-            <span>{t('resumeAll')}</span>
-          </button>
+            <button
+              onClick={() => onResumeAll?.()}
+              disabled={pausedCount === 0}
+              title={t('resumeAll')}
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                background: pausedCount > 0 ? 'var(--badge-info-bg)' : 'var(--panel-2)',
+                color: pausedCount > 0 ? 'var(--badge-info-text)' : 'var(--text-muted)',
+                border:
+                  '1px solid ' + (pausedCount > 0 ? 'var(--badge-info-border)' : 'var(--border)'),
+                padding: '6px 8px',
+                borderRadius: 8,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: pausedCount > 0 ? 'pointer' : 'default',
+                opacity: pausedCount > 0 ? 1 : 0.6,
+              }}
+            >
+              <span>▶️</span>
+              <span>{t('resumeAll')}</span>
+            </button>
+          </div>
 
           {jobs.some(j => j.status === 'done' || j.status === 'error') && (
             <button
@@ -307,204 +443,273 @@ export default function QueuePanel({
               <span>{t('clear')}</span>
             </button>
           )}
-        </div>
 
-        {/* Kuyruk Dışa/İçe Aktarma */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <button
-            onClick={async () => {
-              try {
-                const r = await window.api?.exportQueue?.(jobs);
-                if (r && !r.canceled) alert(t('queueExported') + `: ${r.count}`);
-              } catch (e: any) {
-                alert(String(e?.message || e));
-              }
-            }}
-            title={t('exportQueue')}
-            style={{
-              flex: 1,
-              background: 'var(--panel-2)',
-              color: 'var(--text)',
-              border: '1px solid var(--border)',
-              padding: '6px 8px',
-              borderRadius: 8,
-              fontSize: 11,
-              cursor: 'pointer',
-            }}
-          >
-            📤 {t('exportQueue')}
-          </button>
-          <button
-            onClick={async () => {
-              try {
-                const r = await window.api?.importQueue?.();
-                if (r && !r.canceled && r.jobs?.length) {
-                  onImportJobs?.(r.jobs);
-                  alert(t('queueImported') + `: ${r.jobs.length}`);
-                }
-              } catch (e: any) {
-                alert(String(e?.message || e));
-              }
-            }}
-            title={t('importQueue')}
-            style={{
-              flex: 1,
-              background: 'var(--panel-2)',
-              color: 'var(--text)',
-              border: '1px solid var(--border)',
-              padding: '6px 8px',
-              borderRadius: 8,
-              fontSize: 11,
-              cursor: 'pointer',
-            }}
-          >
-            📥 {t('importQueue')}
-          </button>
-        </div>
-
-        {/* Anlık Arama Kutusu */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-          <span style={{ position: 'absolute', left: 8, fontSize: 11, color: 'var(--text-muted)' }}>
-            🔍
-          </span>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder={t('searchDownloads')}
-            style={{
-              width: '100%',
-              padding: '6px 26px 6px 26px',
-              borderRadius: 8,
-              fontSize: 11,
-              background: 'var(--bg)',
-              color: 'var(--text)',
-              border: '1px solid var(--border)',
-              outline: 'none',
-            }}
-          />
-          {searchQuery && (
+          {/* Kuyruk Dışa/İçe Aktarma */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <button
-              onClick={() => setSearchQuery('')}
+              onClick={async () => {
+                try {
+                  const r = await window.api?.exportQueue?.(jobs);
+                  if (r && !r.canceled) alert(t('queueExported') + `: ${r.count}`);
+                } catch (e: any) {
+                  alert(String(e?.message || e));
+                }
+              }}
+              title={t('exportQueue')}
               style={{
-                position: 'absolute',
-                right: 6,
-                background: 'none',
-                border: 'none',
-                color: 'var(--text-muted)',
-                fontSize: 12,
+                flex: 1,
+                background: 'var(--panel-2)',
+                color: 'var(--text)',
+                border: '1px solid var(--border)',
+                padding: '6px 8px',
+                borderRadius: 8,
+                fontSize: 11,
                 cursor: 'pointer',
-                padding: 2,
               }}
             >
-              ✕
+              📤 {t('exportQueue')}
             </button>
-          )}
-        </div>
+            <button
+              onClick={async () => {
+                try {
+                  const r = await window.api?.importQueue?.();
+                  if (r && !r.canceled && r.jobs?.length) {
+                    onImportJobs?.(r.jobs);
+                    alert(t('queueImported') + `: ${r.jobs.length}`);
+                  }
+                } catch (e: any) {
+                  alert(String(e?.message || e));
+                }
+              }}
+              title={t('importQueue')}
+              style={{
+                flex: 1,
+                background: 'var(--panel-2)',
+                color: 'var(--text)',
+                border: '1px solid var(--border)',
+                padding: '6px 8px',
+                borderRadius: 8,
+                fontSize: 11,
+                cursor: 'pointer',
+              }}
+            >
+              📥 {t('importQueue')}
+            </button>
+          </div>
 
-        {/* Filtre Sekmeleri (Tümü, İndirilen, Biten, Duraklatılan, Hata) */}
-        <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 2 }}>
-          {[
-            { id: 'all' as FilterTab, label: t('filterAll'), count: jobs.length },
-            {
-              id: 'downloading' as FilterTab,
-              label: t('filterDownloading'),
-              count: downloadingCount,
-            },
-            { id: 'done' as FilterTab, label: t('filterDone'), count: doneCount },
-            { id: 'paused' as FilterTab, label: t('filterPaused'), count: pausedCount },
-            { id: 'error' as FilterTab, label: t('filterError'), count: errorCount },
-          ].map(tab => {
-            const active = filterTab === tab.id;
-            return (
+          {/* Anlık Arama Kutusu */}
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <span style={{ position: 'absolute', left: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+              🔍
+            </span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder={t('searchDownloads')}
+              style={{
+                width: '100%',
+                padding: '6px 26px 6px 26px',
+                borderRadius: 8,
+                fontSize: 11,
+                background: 'var(--bg)',
+                color: 'var(--text)',
+                border: '1px solid var(--border)',
+                outline: 'none',
+              }}
+            />
+            {searchQuery && (
               <button
-                key={tab.id}
-                onClick={() => setFilterTab(tab.id)}
+                onClick={() => setSearchQuery('')}
                 style={{
-                  padding: '4px 8px',
-                  borderRadius: 6,
-                  fontSize: 10,
-                  fontWeight: active ? 800 : 600,
-                  whiteSpace: 'nowrap',
-                  background: active
-                    ? 'color-mix(in srgb, var(--accent-solid) 16%, var(--panel-2))'
-                    : 'var(--panel-2)',
-                  color: active ? 'var(--accent-solid)' : 'var(--text-muted)',
-                  border: '1px solid ' + (active ? 'var(--accent-solid)' : 'var(--border)'),
+                  position: 'absolute',
+                  right: 6,
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  fontSize: 12,
                   cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
+                  padding: 2,
                 }}
               >
-                <span>{tab.label}</span>
-                <span
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Filtre Sekmeleri */}
+          <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 2 }}>
+            {[
+              { id: 'all' as FilterTab, label: t('filterAll'), count: jobs.length },
+              {
+                id: 'downloading' as FilterTab,
+                label: t('filterDownloading'),
+                count: downloadingCount,
+              },
+              { id: 'done' as FilterTab, label: t('filterDone'), count: doneCount },
+              { id: 'paused' as FilterTab, label: t('filterPaused'), count: pausedCount },
+              { id: 'error' as FilterTab, label: t('filterError'), count: errorCount },
+            ].map(tab => {
+              const active = filterTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setFilterTab(tab.id)}
                   style={{
-                    fontSize: 9,
-                    background: active ? 'var(--accent-solid)' : 'var(--border)',
-                    color: active ? '#fff' : 'var(--text)',
-                    padding: '1px 5px',
-                    borderRadius: 10,
+                    padding: '4px 8px',
+                    borderRadius: 6,
+                    fontSize: 10,
+                    fontWeight: active ? 800 : 600,
+                    whiteSpace: 'nowrap',
+                    background: active
+                      ? 'color-mix(in srgb, var(--accent-solid) 16%, var(--panel-2))'
+                      : 'var(--panel-2)',
+                    color: active ? 'var(--accent-solid)' : 'var(--text-muted)',
+                    border: '1px solid ' + (active ? 'var(--accent-solid)' : 'var(--border)'),
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
                   }}
                 >
-                  {tab.count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                  <span>{tab.label}</span>
+                  <span
+                    style={{
+                      fontSize: 9,
+                      background: active ? 'var(--accent-solid)' : 'var(--border)',
+                      color: active ? '#fff' : 'var(--text)',
+                      padding: '1px 5px',
+                      borderRadius: 10,
+                    }}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-        {/* Kategori Filtreleri (Tümü, Video, Ses, Belge, Arşiv, Program) */}
-        <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 2 }}>
-          {[
-            { id: 'all' as JobCategory, label: t('categoryAll'), icon: '✨' },
-            { id: 'video' as JobCategory, label: t('categoryVideo'), icon: '🎬' },
-            { id: 'audio' as JobCategory, label: t('categoryAudio'), icon: '🎵' },
-            { id: 'document' as JobCategory, label: t('categoryDocument'), icon: '📄' },
-            { id: 'archive' as JobCategory, label: t('categoryArchive'), icon: '📦' },
-            { id: 'program' as JobCategory, label: t('categoryProgram'), icon: '💻' },
-          ].map(cat => {
-            const active = categoryFilter === cat.id;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setCategoryFilter(cat.id)}
-                style={{
-                  padding: '3px 7px',
-                  borderRadius: 6,
-                  fontSize: 10,
-                  fontWeight: active ? 700 : 500,
-                  whiteSpace: 'nowrap',
-                  background: active ? 'var(--accent-solid)' : 'var(--panel-2)',
-                  color: active ? '#fff' : 'var(--text-muted)',
-                  border: '1px solid ' + (active ? 'var(--accent-solid)' : 'var(--border)'),
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 3,
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <span>{cat.icon}</span>
-                <span>{cat.label}</span>
-              </button>
-            );
-          })}
+          {/* Kategori Filtreleri */}
+          <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 2 }}>
+            {[
+              { id: 'all' as JobCategory, label: t('categoryAll'), icon: '✨' },
+              { id: 'video' as JobCategory, label: t('categoryVideo'), icon: '🎬' },
+              { id: 'audio' as JobCategory, label: t('categoryAudio'), icon: '🎵' },
+              { id: 'document' as JobCategory, label: t('categoryDocument'), icon: '📄' },
+              { id: 'archive' as JobCategory, label: t('categoryArchive'), icon: '📦' },
+              { id: 'program' as JobCategory, label: t('categoryProgram'), icon: '💻' },
+            ].map(cat => {
+              const active = categoryFilter === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setCategoryFilter(cat.id)}
+                  style={{
+                    padding: '3px 7px',
+                    borderRadius: 6,
+                    fontSize: 10,
+                    fontWeight: active ? 700 : 500,
+                    whiteSpace: 'nowrap',
+                    background: active ? 'var(--accent-solid)' : 'var(--panel-2)',
+                    color: active ? '#fff' : 'var(--text-muted)',
+                    border: '1px solid ' + (active ? 'var(--accent-solid)' : 'var(--border)'),
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 3,
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <span>{cat.icon}</span>
+                  <span>{cat.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+        </>
+      )}
 
       {/* İndirmeler Listesi */}
       <div
         style={{
           flex: 1,
           overflow: 'auto',
-          padding: 12,
+          padding: compact ? 6 : 12,
           display: 'flex',
           flexDirection: 'column',
-          gap: 10,
+          gap: compact ? 6 : 10,
           background: 'var(--bg-2)',
         }}
       >
+        {compact ? (
+          /* Compact mini progress list */
+          jobs.length === 0 ? (
+            <div className="text-muted" style={{ textAlign: 'center', padding: 12, fontSize: 10 }}>
+              ⬇️
+            </div>
+          ) : (
+            jobs.slice(0, 12).map(j => (
+              <div
+                key={j.id}
+                title={`${j.title}\n${j.status} • ${j.percent}%\n${j.speed || ''} ${j.eta || ''}`}
+                onClick={() => {
+                  if (j.status === 'paused') onResume?.(j);
+                  else if (j.status === 'downloading' || j.status === 'queued') onPause?.(j.id);
+                }}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 3,
+                  padding: '6px 4px',
+                  borderRadius: 8,
+                  background: 'var(--panel-2)',
+                  border: '1px solid var(--border)',
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ fontSize: 11 }}>
+                  {j.status === 'downloading'
+                    ? '⬇️'
+                    : j.status === 'paused'
+                      ? '⏸️'
+                      : j.status === 'queued'
+                        ? '⏳'
+                        : j.status === 'error'
+                          ? '⚠️'
+                          : '✓'}
+                </span>
+                <div
+                  style={{
+                    width: '100%',
+                    height: 4,
+                    background: 'var(--bg)',
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${Math.min(j.percent, 100)}%`,
+                      height: '100%',
+                      background:
+                        j.status === 'done'
+                          ? '#22c55e'
+                          : j.status === 'error'
+                            ? '#dc2626'
+                            : 'var(--accent-solid)',
+                      transition: 'width 0.3s ease',
+                    }}
+                  />
+                </div>
+                <span style={{ fontSize: 8, color: 'var(--muted)' }}>{Math.round(j.percent)}%</span>
+              </div>
+            ))
+          )
+        ) : (
+          <>
         {filteredJobs.length === 0 && (
           <div className="text-muted" style={{ textAlign: 'center', padding: 28, fontSize: 12 }}>
             <div style={{ fontSize: 24, marginBottom: 8 }}>⬇️</div>
@@ -1066,9 +1271,12 @@ export default function QueuePanel({
             </div>
           ))
         )}
+        </>
+        )}
       </div>
 
       {/* Alt Eylem Barı: İndirme Bittiğinde Yapılacak Eylem (Post-download action) */}
+      {!compact && (
       <div
         style={{
           padding: '8px 12px',
@@ -1113,6 +1321,7 @@ export default function QueuePanel({
           <option value="quit">🚪 {t('actionQuit')}</option>
         </select>
       </div>
+      )}
 
       {/* Sağ Tık Bağlam Menüsü */}
       {contextMenu && (

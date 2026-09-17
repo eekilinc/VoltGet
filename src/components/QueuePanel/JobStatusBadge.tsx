@@ -1,4 +1,4 @@
-import type { Job } from '../QueuePanel';
+import type { Job } from '../../../electron/contracts';
 
 export function jobBadgeVars(
   status: Job['status'],
