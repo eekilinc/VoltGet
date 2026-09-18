@@ -74,11 +74,11 @@ jobs:
             release/checksums.sha256.txt
           generate_release_notes: true
           body: |
-            ## VoltGet 1.1.6
+            ## VoltGet 1.1.7
             ### IDM Benzeri 3-Kolon Layout
-            - **Sağ Sidebar Kuyruk**: İndirme kuyruğu artık kalıcı sağ panelde (280px) - progress bar, hız/ETA, hızlı aksiyonlar
+            - **Sağ Sidebar Genişletildi**: 280px → 400px - QueuePanel tam görünüm (progress bar, hız/ETA, aksiyon butonları)
             - **DownloadPanel Temizlendi**: Sadece URL girişi/analiz; inline job kartları kaldırıldı
-            - **3-Kolon Düzen**: Sol nav (224px) + Ana içerik + Sağ sidebar - IDM benzeri tek ekran deneyimi
+            - **3-Kolon Düzen**: Sol nav (224px) + Ana içerik + Sağ sidebar (400px) - IDM benzeri tek ekran deneyimi
             - **Duplicate Kaldırıldı**: Alt kısımdaki ikinci QueuePanel silindi
           draft: false
           prerelease: false
