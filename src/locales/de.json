@@ -410,5 +410,6 @@
   "checkUpdates": "Check for Updates",
   "updateAvailable": "New version available, downloading...",
   "updateDownloaded": "Update downloaded, will install on restart",
-  "updateNotAvailable": "Application is up to date"
+  "updateNotAvailable": "Application is up to date",
+  "filesLoadError": "Fehler beim Laden der Dateien"
 }

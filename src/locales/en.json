@@ -410,5 +410,6 @@
   "sniffToastNew": "New media captured",
   "todayDownloaded": "Downloaded today",
   "toggleViewMode": "Toggle view",
-  "updateRestart": "Restart and Install"
+  "updateRestart": "Restart and Install",
+  "filesLoadError": "Failed to load files"
 }

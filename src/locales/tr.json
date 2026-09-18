@@ -410,5 +410,6 @@
   "sniffToastNew": "Yeni medya yakalandı",
   "todayDownloaded": "Bugün indirilen",
   "toggleViewMode": "Görünümü değiştir",
-  "updateRestart": "Yeniden Başlat ve Kur"
+  "updateRestart": "Yeniden Başlat ve Kur",
+  "filesLoadError": "Dosyalar yüklenirken hata oluştu"
 }

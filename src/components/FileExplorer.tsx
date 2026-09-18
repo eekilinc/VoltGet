@@ -26,7 +26,18 @@ type StatusFilter = 'all' | 'existing' | 'deleted';
 type CategoryType = 'all' | 'video' | 'audio' | 'document' | 'archive' | 'installer';
 type SortType = 'date_desc' | 'date_asc' | 'size_desc' | 'size_asc' | 'name_asc';
 
-export default function FileExplorer() {
+export interface FileJobKey {
+  id?: string;
+  path?: string;
+}
+
+export default function FileExplorer({
+  refreshKey,
+  onRemoveJobs,
+}: {
+  refreshKey?: number;
+  onRemoveJobs?: (keys: FileJobKey[]) => void;
+}) {
   const { t } = useAppSettings();
   const toast = useToast();
   const reportError = toast.error;
@@ -88,12 +99,12 @@ export default function FileExplorer() {
         const list = await window.api.listFiles(mode, defaultDir);
         setFiles((list || []).filter((f: DownloadedFile) => !isTemporaryOrPartialFile(f.name)));
       } catch (err: any) {
-        reportError('Dosyalar yüklenirken hata oluştu: ' + err.message);
+        reportError(t('filesLoadError') + ': ' + err.message);
       } finally {
         setLoading(false);
       }
     },
-    [sourceMode, reportError]
+    [sourceMode, reportError, t]
   );
 
   useEffect(() => {
@@ -104,7 +115,9 @@ export default function FileExplorer() {
     return () => {
       if (typeof cleanup === 'function') cleanup();
     };
-  }, [sourceMode, loadFiles]);
+    // refreshKey: kuyruk tarafından yapılan silmeler sonrası listeyi tazele
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceMode, loadFiles, refreshKey]);
 
   const categoryIcons: Record<string, string> = CATEGORY_ICONS;
 
@@ -154,6 +167,7 @@ export default function FileExplorer() {
       });
       if (res?.success) {
         setFiles(prev => prev.filter(f => f.path !== file.path && f.id !== file.id));
+        onRemoveJobs?.([{ id: file.id, path: file.path }]);
         toast.success(t('fileDeletedToTrash').replace('{name}', file.name));
       } else {
         toast.error(t('deleteFailed') + ': ' + (res?.error || t('error')));
@@ -174,6 +188,7 @@ export default function FileExplorer() {
       });
       if (res?.success) {
         setFiles(prev => prev.filter(f => f.path !== file.path && f.id !== file.id));
+        onRemoveJobs?.([{ id: file.id, path: file.path }]);
         toast.info(t('fileRemovedFromList').replace('{name}', file.name));
       }
     } catch (e: any) {

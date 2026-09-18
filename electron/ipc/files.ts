@@ -89,14 +89,20 @@ export function registerFileIpc(deps: {
     return false;
   });
 
+  function purgeQueue(idOrPath: string): void {
+    try {
+      const q = deps.loadQueue();
+      const updated = q.filter(
+        (x: any) => x.id !== idOrPath && x.filePath !== idOrPath && x.opts?.outPath !== idOrPath
+      );
+      if (updated.length !== q.length) deps.saveQueue(updated);
+    } catch {}
+  }
+
   ipcMain.handle('remove-from-history', async (_e, idOrPath: string) => {
     if (!idOrPath) return false;
     deps.removeFromHistory(idOrPath);
-    const q = deps.loadQueue();
-    const updated = q.filter(
-      (x: any) => x.id !== idOrPath && x.filePath !== idOrPath && x.opts?.outPath !== idOrPath
-    );
-    if (updated.length !== q.length) deps.saveQueue(updated);
+    purgeQueue(idOrPath);
     return true;
   });
 
@@ -133,8 +139,13 @@ export function registerFileIpc(deps: {
       }
     }
     try {
-      if (id) deps.removeFromHistory(id);
-      else if (filePath) deps.removeFromHistory(filePath);
+      if (id) {
+        deps.removeFromHistory(id);
+        purgeQueue(id);
+      } else if (filePath) {
+        deps.removeFromHistory(filePath);
+        purgeQueue(filePath);
+      }
     } catch {}
     return { success: true };
   });

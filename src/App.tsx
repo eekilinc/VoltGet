@@ -27,6 +27,8 @@ export default function App() {
   const [conflictInfo, setConflictInfo] = useState<any>(null);
   const [completedInfo, setCompletedInfo] = useState<any>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [filesRefreshKey, setFilesRefreshKey] = useState(0);
+  const bumpFiles = () => setFilesRefreshKey(k => k + 1);
   const hasApi = typeof window !== 'undefined' && !!window.api;
   const {
     jobs,
@@ -699,7 +701,30 @@ export default function App() {
               onHttpDownload={handleHttpDownload}
             />
           )}
-          {tab === 'explorer' && <FileExplorer />}
+          {tab === 'explorer' && (
+            <FileExplorer
+              refreshKey={filesRefreshKey}
+              onRemoveJobs={keys => {
+                if (!keys?.length) return;
+                setJobs(prev => {
+                  const n = prev.filter(
+                    x =>
+                      !keys.some(
+                        k =>
+                          (k.id && x.id === k.id) ||
+                          (k.path && (x.filePath === k.path || x.opts?.outPath === k.path))
+                      )
+                  );
+                  if (n.length !== prev.length) {
+                    try {
+                      window.api?.saveQueue?.(n);
+                    } catch {}
+                  }
+                  return n;
+                });
+              }}
+            />
+          )}
           {tab === 'settings' && <SettingsPanel />}
           {tab === 'about' && <AboutPanel />}
         </div>
@@ -791,8 +816,14 @@ export default function App() {
           onOpenFolder={() => window.api.openFolder(outDir)}
           onOpenFile={filePath => window.api.openFile(filePath)}
           onShowInFolder={filePath => window.api.showInFolder(filePath)}
-          onRemoveJob={handleRemoveJob}
-          onDeleteJob={handleDeleteJob}
+          onRemoveJob={id => {
+            handleRemoveJob(id);
+            bumpFiles();
+          }}
+          onDeleteJob={(job, deleteFromDisk) => {
+            handleDeleteJob(job, deleteFromDisk);
+            bumpFiles();
+          }}
           onImportJobs={imported => {
             const stamp = Date.now().toString(36);
             const list = imported || [];
@@ -850,7 +881,7 @@ export default function App() {
               return next;
             });
           }}
-          onClear={() =>
+          onClear={() => {
             setJobs(j => {
               const n = j.filter(
                 x => x.status === 'downloading' || x.status === 'queued' || x.status === 'paused'
@@ -865,8 +896,9 @@ export default function App() {
                 });
               } catch {}
               return n;
-            })
-          }
+            });
+            bumpFiles();
+          }}
         />
       </div>
 
