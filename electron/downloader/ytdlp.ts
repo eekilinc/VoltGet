@@ -19,13 +19,21 @@ export function extractDestinationFromOutput(text: string, outDir: string): stri
   return path.isAbsolute(cand) ? cand : path.join(outDir, cand);
 }
 
+function sanitizeTemplateName(name: string): string {
+  return (name || '')
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_')
+    .replace(/[.\s]+$/g, '')
+    .trim()
+    .slice(0, 180);
+}
+
 export function buildOutputTemplate(
   opts: { filename?: string; title?: string },
   filenameTemplate: string
 ): { filename?: string; tmpl: string } {
-  let filename = opts.filename;
+  let filename = opts.filename ? sanitizeTemplateName(opts.filename) : undefined;
   if (!filename && opts.title && opts.title !== 'Video' && opts.title !== 'Dosya') {
-    const cleanTitle = opts.title.replace(/[\\/:*?"<>|]/g, '_').trim();
+    const cleanTitle = sanitizeTemplateName(opts.title);
     if (cleanTitle) filename = `${cleanTitle}.%(ext)s`;
   }
   return { filename, tmpl: filename || filenameTemplate || '%(title)s.%(ext)s' };

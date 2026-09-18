@@ -9,6 +9,7 @@ import SettingsPanel from './components/SettingsPanel';
 import SniffPanel from './components/SniffPanel';
 import VoltLogo from './components/VoltLogo';
 import { useAppSettings } from './context/AppSettingsContext';
+import { useToast } from './context/ToastContext';
 import { useAppBootstrap } from './hooks/useAppBootstrap';
 import { useJobs, type Job } from './hooks/useJobs';
 import { formatBytes } from './utils/speed';
@@ -17,6 +18,7 @@ export type { Job };
 
 export default function App() {
   const { t } = useAppSettings();
+  const toast = useToast();
   const [tab, setTab] = useState<'download' | 'sniff' | 'explorer' | 'settings' | 'about'>(
     'download'
   );
@@ -157,10 +159,10 @@ export default function App() {
               boxShadow: '0 20px 40px rgba(59, 130, 246, 0.3)',
             }}
           >
-            ✨ Bağlantıyı buraya sürükleyin
+            ✨ {t('dropHereTitle')}
           </div>
           <div className="text-muted" style={{ fontSize: 13, animation: 'pulse 1.5s infinite' }}>
-            URL veya dosya bileşenini açın
+            {t('dropHereDesc')}
           </div>
         </div>
       )}
@@ -422,7 +424,7 @@ export default function App() {
                 textOverflow: 'ellipsis',
               }}
             >
-              {extConnected ? 'Eklenti Bağlı ✓' : 'Eklenti Kurulumu ⚡'}
+              {extConnected ? `${t('extConnectedBadge')} ✓` : `${t('extSetupBadge')} ⚡`}
             </div>
             <div
               className="text-muted"
@@ -433,7 +435,7 @@ export default function App() {
                 textOverflow: 'ellipsis',
               }}
             >
-              {extConnected ? 'IDM Yakalayıcı Aktif' : 'Chrome & Firefox'}
+              {extConnected ? t('extCatcherActive') : t('extBrowsers')}
             </div>
           </div>
         </div>
@@ -465,9 +467,11 @@ export default function App() {
                   gap: 5,
                 }}
               >
-                <span>⚡</span> Motor Durumu
+                <span>⚡</span> {t('engineStatus')}
               </span>
-              <span style={{ fontSize: 10, color: '#22c55e', fontWeight: 800 }}>HAZIR</span>
+              <span style={{ fontSize: 10, color: '#22c55e', fontWeight: 800 }}>
+                {t('engineReady')}
+              </span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
               <div
@@ -685,10 +689,7 @@ export default function App() {
         </div>
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: 'var(--bg-2)' }}>
           {tab === 'download' && (
-            <DownloadPanel
-              outDir={outDir}
-              onStartDownload={handleStartDownload}
-            />
+            <DownloadPanel outDir={outDir} onStartDownload={handleStartDownload} />
           )}
           {tab === 'sniff' && (
             <SniffPanel
@@ -705,7 +706,18 @@ export default function App() {
       </div>
 
       {/* Sağ Sidebar - Kuyruk */}
-      <div style={{ width: 400, minWidth: 400, maxWidth: 400, borderLeft: '1px solid var(--border)', flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--panel)' }}>
+      <div
+        style={{
+          width: 'clamp(300px, 30vw, 400px)',
+          minWidth: 300,
+          borderLeft: '1px solid var(--border)',
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--panel)',
+          overflow: 'hidden',
+        }}
+      >
         <QueuePanel
           jobs={jobs}
           onCancel={handleCancelJob}
@@ -757,15 +769,18 @@ export default function App() {
             });
           }}
           onResumeAll={async () => {
+            let started = Number.MAX_SAFE_INTEGER;
             try {
-              await window.api.resumeAllDownloads?.();
+              const n = await window.api.resumeAllDownloads?.();
+              if (typeof n === 'number') started = n;
             } catch {}
+            let remaining = started;
             setJobs(j => {
-              const n = j.map(x =>
-                x.status === 'paused'
-                  ? { ...x, status: 'downloading' as const, log: 'Devam ediyor...' }
-                  : x
-              );
+              const n = j.map(x => {
+                if (x.status !== 'paused' || remaining <= 0) return x;
+                remaining--;
+                return { ...x, status: 'downloading' as const, log: 'Devam ediyor...' };
+              });
               try {
                 window.api?.saveQueue?.(n);
               } catch {}
@@ -775,57 +790,92 @@ export default function App() {
           onRetry={job => handleRetry(job as any)}
           onOpenFolder={() => window.api.openFolder(outDir)}
           onOpenFile={filePath => window.api.openFile(filePath)}
-        onShowInFolder={filePath => window.api.showInFolder(filePath)}
-        onRemoveJob={handleRemoveJob}
-        onDeleteJob={handleDeleteJob}
-        onImportJobs={imported => {
-          const stamp = Date.now().toString(36);
-          setJobs(j => {
-            const existing = new Set(j.map(x => x.url));
-            const fresh = (imported || [])
-              .filter((x: any) => x?.url && !existing.has(x.url))
-              .map((x: any, i: number) => ({
-                id: `${stamp}${i}`,
-                url: x.url,
-                title: (x.title || x.url).slice(0, 70),
-                percent: 0,
-                speed: '-',
-                eta: '-',
-                total: '',
-                status: 'paused' as const,
-                log: 'İçe aktarıldı',
-                opts: x.opts,
-              }));
-            const n = [...fresh, ...j];
-            try {
-              window.api?.saveQueue?.(n);
-            } catch {}
-            return n;
-          });
-        }}
-        onClear={() =>
-          setJobs(j => {
-            const n = j.filter(
-              x => x.status === 'downloading' || x.status === 'queued' || x.status === 'paused'
+          onShowInFolder={filePath => window.api.showInFolder(filePath)}
+          onRemoveJob={handleRemoveJob}
+          onDeleteJob={handleDeleteJob}
+          onImportJobs={imported => {
+            const stamp = Date.now().toString(36);
+            const list = imported || [];
+            const valid = list.filter((x: any) => x?.url);
+            const existing = new Set(jobs.map(x => x.url));
+            const added = valid.filter((x: any) => !existing.has(x.url)).length;
+            const skipped = list.length - added;
+            setJobs(j => {
+              const seen = new Set(j.map(x => x.url));
+              const fresh = valid
+                .filter((x: any) => !seen.has(x.url))
+                .map((x: any, i: number) => ({
+                  id: `${stamp}${i}`,
+                  url: x.url,
+                  title: (x.title || x.url).slice(0, 70),
+                  percent: 0,
+                  speed: '-',
+                  eta: '-',
+                  total: '',
+                  status: 'paused' as const,
+                  log: 'İçe aktarıldı',
+                  opts: x.opts,
+                }));
+              const n = [...fresh, ...j];
+              try {
+                window.api?.saveQueue?.(n);
+              } catch {}
+              return n;
+            });
+            toast.success(
+              `${t('queueImported')}: ${added}` +
+                (skipped > 0 ? ` • ${t('importSkipped')}: ${skipped}` : '')
             );
-            try {
-              window.api?.saveQueue?.(n);
-            } catch {}
-            // Hata veren/biten kayıtları history'den de temizle
-            try {
-              j.filter(x => x.status === 'done' || x.status === 'error').forEach(x => {
-                window.api?.removeFromHistory?.(x.id)?.catch?.(() => {});
-              });
-            } catch {}
-            return n;
-          })
-        }
-      />
+          }}
+          onReorderJob={(dragId, targetId) => {
+            setJobs(prev => {
+              const from = prev.findIndex(x => x.id === dragId);
+              const to = prev.findIndex(x => x.id === targetId);
+              if (from === -1 || to === -1 || from === to) return prev;
+              const next = [...prev];
+              const [moved] = next.splice(from, 1);
+              next.splice(to > from ? to - 1 : to, 0, moved);
+              try {
+                window.api?.saveQueue?.(next);
+              } catch {}
+              return next;
+            });
+          }}
+          onUpdateJob={(id, patch) => {
+            setJobs(prev => {
+              const next = prev.map(x => (x.id === id ? { ...x, ...patch } : x));
+              try {
+                window.api?.saveQueue?.(next);
+              } catch {}
+              return next;
+            });
+          }}
+          onClear={() =>
+            setJobs(j => {
+              const n = j.filter(
+                x => x.status === 'downloading' || x.status === 'queued' || x.status === 'paused'
+              );
+              try {
+                window.api?.saveQueue?.(n);
+              } catch {}
+              // Hata veren/biten kayıtları history'den de temizle
+              try {
+                j.filter(x => x.status === 'done' || x.status === 'error').forEach(x => {
+                  window.api?.removeFromHistory?.(x.id)?.catch?.(() => {});
+                });
+              } catch {}
+              return n;
+            })
+          }
+        />
       </div>
 
       {/* IDM Tarzı Gelişmiş Dosya Özellikleri ve İndirme Penceresi (Download Properties Dialog) */}
       {downloadModal && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('idmPropsTitle')}
           style={{
             position: 'fixed',
             inset: 0,
@@ -1178,6 +1228,9 @@ export default function App() {
       {/* İndirme Tamamlandı Diyaloğu */}
       {completedInfo && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('downloadDoneTitle')}
           style={{
             position: 'fixed',
             inset: 0,

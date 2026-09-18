@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppSettings } from '../context/AppSettingsContext';
+import { useToast } from '../context/ToastContext';
 import { useJobFilter, type JobCategory } from '../hooks/useJobFilter';
+import { isMultiSegmentUrl } from '../utils/fileTypes';
+import { formatBytes } from '../utils/speed';
 import JobStatusBadge from './QueuePanel/JobStatusBadge';
 
 export type Job = {
@@ -18,6 +21,9 @@ export type Job = {
   filePath?: string;
   fileName?: string;
   deletedFromDisk?: boolean;
+  note?: string;
+  tags?: string[];
+  size?: number;
 };
 
 type FilterTab = 'all' | 'downloading' | 'done' | 'paused' | 'error';
@@ -38,7 +44,8 @@ export default function QueuePanel({
   onClear,
   onImportJobs,
   onMoveJob,
-  compact,
+  onReorderJob,
+  onUpdateJob,
 }: {
   jobs: Job[];
   onCancel: (id: string) => void;
@@ -55,9 +62,11 @@ export default function QueuePanel({
   onClear?: () => void;
   onImportJobs?: (jobs: any[]) => void;
   onMoveJob?: (id: string, direction: 'up' | 'down') => void;
-  compact?: boolean;
+  onReorderJob?: (dragId: string, targetId: string) => void;
+  onUpdateJob?: (id: string, patch: Partial<Job>) => void;
 }) {
   const { t } = useAppSettings();
+  const toast = useToast();
   const [confirmDeleteJob, setConfirmDeleteJob] = useState<Job | null>(null);
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; job: Job } | null>(null);
@@ -139,161 +148,83 @@ export default function QueuePanel({
       j.opts?.isHttp ||
       j.log?.includes('parça') ||
       j.log?.includes('parts') ||
-      /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf)($|\?)/i.test(j.url || j.fileName || '')
+      isMultiSegmentUrl(j.url || '', j.fileName || '')
     );
   };
+
+  const openContextMenu = (e: React.MouseEvent, job: Job) => {
+    e.preventDefault();
+    const w = typeof window !== 'undefined' ? window.innerWidth : 1280;
+    const h = typeof window !== 'undefined' ? window.innerHeight : 800;
+    setContextMenu({
+      x: Math.max(8, Math.min(e.clientX, w - 220)),
+      y: Math.max(8, Math.min(e.clientY, h - 340)),
+      job,
+    });
+  };
+
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [noteEditing, setNoteEditing] = useState<Record<string, boolean>>({});
+  const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
+  const [tagsDraft, setTagsDraft] = useState<Record<string, string>>({});
+
+  const saveNoteTags = (j: Job) => {
+    const note = (noteDraft[j.id] ?? j.note ?? '').trim().slice(0, 280);
+    const tags = (tagsDraft[j.id] ?? (j.tags || []).join(', '))
+      .split(',')
+      .map(s => s.trim().slice(0, 32))
+      .filter(Boolean)
+      .slice(0, 8);
+    onUpdateJob?.(j.id, { note, tags });
+    setNoteEditing(s => ({ ...s, [j.id]: false }));
+  };
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDragId(id);
+    e.dataTransfer.effectAllowed = 'move';
+    try {
+      e.dataTransfer.setData('text/plain', id);
+    } catch {}
+  };
+  const handleDropOnJob = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    let from = dragId;
+    if (!from) {
+      try {
+        from = e.dataTransfer.getData('text/plain');
+      } catch {}
+    }
+    if (from && from !== targetId) onReorderJob?.(from, targetId);
+    setDragId(null);
+  };
+
+  const todayBytes = useMemo(() => {
+    try {
+      const key = 'voltget-daily-' + new Date().toISOString().slice(0, 10);
+      return parseInt(localStorage.getItem(key) || '0', 10) || 0;
+    } catch {
+      return 0;
+    }
+    // jobs değişiminde günlük sayacı tazele (bilinçli bağımlılık)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobs]);
 
   return (
     <div
       style={{
-        width: compact ? '80px' : '400px',
-        minWidth: compact ? '80px' : '360px',
+        width: '100%',
+        height: '100%',
         background: 'var(--panel)',
-        borderLeft: compact ? '1px solid var(--border)' : '1px solid var(--border)',
-        borderTop: compact ? '1px solid var(--border)' : 'none',
+        borderLeft: '1px solid var(--border)',
+        borderTop: 'none',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
         position: 'relative',
-        borderRadius: compact ? 12 : 16,
+        borderRadius: 16,
       }}
     >
-      {/* Üst Başlık ve Hızlı Eylemler (Compact Mode) */}
-      {compact ? (
-        <>
-        <div
-          style={{
-            padding: '8px 10px',
-            borderBottom: '1px solid var(--border)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-            background: 'var(--panel-2)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 99,
-                background: 'var(--accent-solid)',
-                border: '2px solid var(--panel-3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 14,
-                color: '#fff',
-              }}
-            >
-              ⬇️
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 11 }}>{t('queue')}</div>
-              <div style={{ fontSize: 9, color: 'var(--muted)' }}>{jobs.length} {t('downloads')}</div>
-            </div>
-          </div>
-
-          {/* Status counts */}
-          <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-            <span
-              style={{
-                padding: '2px 6px',
-                borderRadius: 10,
-                fontSize: 8,
-                fontWeight: 700,
-                background: 'var(--badge-info-bg)',
-                color: 'var(--badge-info-text)',
-                border: '1px solid var(--badge-info-border)',
-              }}
-            >
-              {counts.downloading} {t('statusDownloading')}
-            </span>
-            <span
-              style={{
-                padding: '2px 6px',
-                borderRadius: 10,
-                fontSize: 8,
-                fontWeight: 700,
-                background: 'var(--badge-warning-bg)',
-                color: 'var(--badge-warning-text)',
-                border: '1px solid var(--badge-warning-border)',
-              }}
-            >
-              {counts.paused} {t('statusPaused')}
-            </span>
-            <span
-              style={{
-                padding: '2px 6px',
-                borderRadius: 10,
-                fontSize: 8,
-                fontWeight: 700,
-                background: 'var(--badge-success-bg)',
-                color: 'var(--badge-success-text)',
-                border: '1px solid var(--badge-success-border)',
-              }}
-            >
-              {counts.doneVisible} {t('done')}
-            </span>
-          </div>
-
-          {/* Quick actions */}
-          <div style={{ marginTop: 4, display: 'flex', gap: 4 }}>
-            <button
-              onClick={() => onPauseAll?.()}
-              disabled={counts.downloading === 0}
-              style={{
-                flex: 1,
-                padding: '4px 6px',
-                borderRadius: 6,
-                background: counts.downloading > 0 ? 'var(--badge-warning-bg)' : 'var(--panel-2)',
-                color: counts.downloading > 0 ? 'var(--badge-warning-text)' : 'var(--text-muted)',
-                border: '1px solid ' + (counts.downloading > 0 ? 'var(--badge-warning-border)' : 'var(--border)'),
-                fontSize: 9,
-                fontWeight: 700,
-                cursor: counts.downloading > 0 ? 'pointer' : 'default',
-              }}
-            >
-              ⏸ {t('pauseAll')}
-            </button>
-            <button
-              onClick={() => onResumeAll?.()}
-              disabled={counts.paused === 0}
-              style={{
-                flex: 1,
-                padding: '4px 6px',
-                borderRadius: 6,
-                background: counts.paused > 0 ? 'var(--badge-info-bg)' : 'var(--panel-2)',
-                color: counts.paused > 0 ? 'var(--badge-info-text)' : 'var(--text-muted)',
-                border: '1px solid ' + (counts.paused > 0 ? 'var(--badge-info-border)' : 'var(--border)'),
-                fontSize: 9,
-                fontWeight: 700,
-                cursor: counts.paused > 0 ? 'pointer' : 'default',
-              }}
-            >
-              ▶ {t('resumeAll')}
-            </button>
-            <button
-              onClick={() => onClear?.()}
-              style={{
-                flex: 1,
-                padding: '4px 6px',
-                borderRadius: 6,
-                background: 'var(--badge-danger-bg)',
-                color: 'var(--badge-danger-text)',
-                border: '1px solid var(--badge-danger-border)',
-                fontSize: 9,
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              🗑️ {t('clear')}
-            </button>
-          </div>
-        </div>
-        </>
-      ) : (
-        <>
+      {/* Üst Başlık ve Hızlı Eylemler */}
+      <>
         <div
           style={{
             padding: '12px 14px',
@@ -305,7 +236,13 @@ export default function QueuePanel({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div
-              style={{ fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+              style={{
+                fontWeight: 800,
+                fontSize: 13,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
             >
               <span>📋</span>
               <span>{t('queue')}</span>
@@ -324,6 +261,14 @@ export default function QueuePanel({
               {deletedFromDiskCount > 0 && (
                 <span style={{ color: 'var(--badge-danger-text)', marginLeft: 4 }}>
                   • ⚠️ {deletedFromDiskCount}
+                </span>
+              )}
+              {todayBytes > 0 && (
+                <span
+                  style={{ color: 'var(--accent-solid)', marginLeft: 4 }}
+                  title={t('todayDownloaded')}
+                >
+                  • 📥 {formatBytes(todayBytes)}
                 </span>
               )}
             </div>
@@ -382,7 +327,8 @@ export default function QueuePanel({
                 background: downloadingCount > 0 ? 'var(--badge-warning-bg)' : 'var(--panel-2)',
                 color: downloadingCount > 0 ? 'var(--badge-warning-text)' : 'var(--text-muted)',
                 border:
-                  '1px solid ' + (downloadingCount > 0 ? 'var(--badge-warning-border)' : 'var(--border)'),
+                  '1px solid ' +
+                  (downloadingCount > 0 ? 'var(--badge-warning-border)' : 'var(--border)'),
                 padding: '6px 8px',
                 borderRadius: 8,
                 fontSize: 11,
@@ -450,9 +396,9 @@ export default function QueuePanel({
               onClick={async () => {
                 try {
                   const r = await window.api?.exportQueue?.(jobs);
-                  if (r && !r.canceled) alert(t('queueExported') + `: ${r.count}`);
+                  if (r && !r.canceled) toast.success(`${t('queueExported')}: ${r.count}`);
                 } catch (e: any) {
-                  alert(String(e?.message || e));
+                  toast.error(String(e?.message || e));
                 }
               }}
               title={t('exportQueue')}
@@ -475,10 +421,10 @@ export default function QueuePanel({
                   const r = await window.api?.importQueue?.();
                   if (r && !r.canceled && r.jobs?.length) {
                     onImportJobs?.(r.jobs);
-                    alert(t('queueImported') + `: ${r.jobs.length}`);
+                    toast.success(`${t('queueImported')}: ${r.jobs.length}`);
                   }
                 } catch (e: any) {
-                  alert(String(e?.message || e));
+                  toast.error(String(e?.message || e));
                 }
               }}
               title={t('importQueue')}
@@ -499,7 +445,9 @@ export default function QueuePanel({
 
           {/* Anlık Arama Kutusu */}
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <span style={{ position: 'absolute', left: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+            <span
+              style={{ position: 'absolute', left: 8, fontSize: 11, color: 'var(--text-muted)' }}
+            >
               🔍
             </span>
             <input
@@ -598,6 +546,7 @@ export default function QueuePanel({
               { id: 'document' as JobCategory, label: t('categoryDocument'), icon: '📄' },
               { id: 'archive' as JobCategory, label: t('categoryArchive'), icon: '📦' },
               { id: 'program' as JobCategory, label: t('categoryProgram'), icon: '💻' },
+              { id: 'other' as JobCategory, label: t('categoryOther'), icon: '📁' },
             ].map(cat => {
               const active = categoryFilter === cat.id;
               return (
@@ -627,656 +576,694 @@ export default function QueuePanel({
             })}
           </div>
         </div>
-        </>
-      )}
+      </>
 
       {/* İndirmeler Listesi */}
       <div
         style={{
           flex: 1,
           overflow: 'auto',
-          padding: compact ? 6 : 12,
+          padding: 12,
           display: 'flex',
           flexDirection: 'column',
-          gap: compact ? 6 : 10,
+          gap: 10,
           background: 'var(--bg-2)',
         }}
       >
-        {compact ? (
-          /* Compact mini progress list */
-          jobs.length === 0 ? (
-            <div className="text-muted" style={{ textAlign: 'center', padding: 12, fontSize: 10 }}>
-              ⬇️
+        <>
+          {filteredJobs.length === 0 && (
+            <div className="text-muted" style={{ textAlign: 'center', padding: 28, fontSize: 12 }}>
+              <div style={{ fontSize: 24, marginBottom: 8 }}>⬇️</div>
+              {jobs.length === 0 ? (
+                <>
+                  {t('noDownloadsYet')}
+                  <br />
+                  <span style={{ fontSize: 11 }}>{t('pasteOrCapture')}</span>
+                </>
+              ) : (
+                <span>{t('noFilteredResults')}</span>
+              )}
+            </div>
+          )}
+
+          {viewMode === 'table' ? (
+            <div
+              style={{
+                background: 'var(--panel)',
+                borderRadius: 12,
+                border: '1px solid var(--border)',
+                overflow: 'hidden',
+              }}
+            >
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr
+                    style={{
+                      background: 'var(--panel-2)',
+                      borderBottom: '1px solid var(--border)',
+                      textAlign: 'left',
+                      color: 'var(--muted)',
+                    }}
+                  >
+                    <th style={{ padding: '8px 10px' }}>Dosya</th>
+                    <th style={{ padding: '8px 6px', width: 70 }}>Boyut</th>
+                    <th style={{ padding: '8px 6px', width: 90 }}>Durum</th>
+                    <th style={{ padding: '8px 10px', width: 110 }}>İlerleme</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredJobs.map(j => (
+                    <tr
+                      key={j.id}
+                      draggable={!!onReorderJob}
+                      onDragStart={e => handleDragStart(e, j.id)}
+                      onDragOver={e => e.preventDefault()}
+                      onDrop={e => handleDropOnJob(e, j.id)}
+                      onContextMenu={e => openContextMenu(e, j)}
+                      style={{
+                        borderBottom: '1px solid var(--border)',
+                        cursor: 'context-menu',
+                        opacity: dragId === j.id ? 0.5 : 1,
+                      }}
+                    >
+                      <td
+                        style={{
+                          padding: '8px 10px',
+                          maxWidth: 140,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          color: 'var(--text)',
+                        }}
+                        title={j.title}
+                      >
+                        {j.title}
+                      </td>
+                      <td style={{ padding: '8px 6px', color: 'var(--muted)' }}>
+                        {j.total || '-'}
+                      </td>
+                      <td style={{ padding: '8px 6px' }}>
+                        <JobStatusBadge
+                          status={j.status}
+                          label={label(j)}
+                          deletedFromDisk={j.deletedFromDisk}
+                        />
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div
+                            style={{
+                              flex: 1,
+                              height: 6,
+                              background: 'var(--bg)',
+                              borderRadius: 4,
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: `${j.percent}%`,
+                                height: '100%',
+                                background:
+                                  j.status === 'done'
+                                    ? '#22c55e'
+                                    : j.status === 'error'
+                                      ? '#dc2626'
+                                      : 'var(--accent-solid)',
+                              }}
+                            />
+                          </div>
+                          <span style={{ fontSize: 10, fontWeight: 700 }}>
+                            {Math.round(j.percent)}%
+                          </span>
+                        </div>
+                        {j.status === 'downloading' && (
+                          <div className="text-muted" style={{ fontSize: 10, marginTop: 2 }}>
+                            {j.speed} {j.eta && j.eta !== '-' ? `• ${j.eta}` : ''}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : (
-            jobs.slice(0, 12).map(j => (
+            filteredJobs.map(j => (
               <div
                 key={j.id}
-                title={`${j.title}\n${j.status} • ${j.percent}%\n${j.speed || ''} ${j.eta || ''}`}
-                onClick={() => {
-                  if (j.status === 'paused') onResume?.(j);
-                  else if (j.status === 'downloading' || j.status === 'queued') onPause?.(j.id);
-                }}
+                className="card-premium"
+                draggable={!!onReorderJob}
+                onDragStart={e => handleDragStart(e, j.id)}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => handleDropOnJob(e, j.id)}
+                onContextMenu={e => openContextMenu(e, j)}
                 style={{
-                  width: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 3,
-                  padding: '6px 4px',
-                  borderRadius: 8,
-                  background: 'var(--panel-2)',
-                  border: '1px solid var(--border)',
-                  cursor: 'pointer',
+                  borderRadius: 14,
+                  padding: 12,
+                  border: j.deletedFromDisk ? '1px solid rgba(239, 68, 68, 0.35)' : undefined,
+                  cursor: 'context-menu',
+                  transition: 'all 0.15s ease',
+                  opacity: dragId === j.id ? 0.5 : 1,
                 }}
               >
-                <span style={{ fontSize: 11 }}>
-                  {j.status === 'downloading'
-                    ? '⬇️'
-                    : j.status === 'paused'
-                      ? '⏸️'
-                      : j.status === 'queued'
-                        ? '⏳'
-                        : j.status === 'error'
-                          ? '⚠️'
-                          : '✓'}
-                </span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          color: j.deletedFromDisk ? 'var(--text-muted)' : 'var(--text)',
+                          textDecoration: j.deletedFromDisk ? 'line-through' : 'none',
+                        }}
+                      >
+                        {j.title}
+                      </div>
+                      {isMultiSegment(j) && (
+                        <span
+                          title={t('segmentsBadge')}
+                          style={{
+                            flexShrink: 0,
+                            fontSize: 9,
+                            padding: '1px 5px',
+                            borderRadius: 6,
+                            background: 'rgba(59, 130, 246, 0.15)',
+                            color: '#60a5fa',
+                            border: '1px solid rgba(59, 130, 246, 0.3)',
+                            fontWeight: 800,
+                          }}
+                        >
+                          ⚡ 8P
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className="text-muted"
+                      style={{
+                        fontSize: 11,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {j.url}
+                    </div>
+                    {(j.tags?.length || j.note) && !noteEditing[j.id] ? (
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+                        {(j.tags || []).map(tag => (
+                          <span
+                            key={tag}
+                            style={{
+                              fontSize: 9,
+                              fontWeight: 700,
+                              background:
+                                'color-mix(in srgb, var(--accent-solid) 16%, var(--panel-2))',
+                              color: 'var(--accent-solid)',
+                              padding: '1px 6px',
+                              borderRadius: 8,
+                              border: '1px solid var(--border)',
+                            }}
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                        {j.note && (
+                          <span className="text-muted" style={{ fontSize: 10 }} title={j.note}>
+                            📝 {j.note.length > 40 ? j.note.slice(0, 40) + '…' : j.note}
+                          </span>
+                        )}
+                      </div>
+                    ) : null}
+                    {noteEditing[j.id] ? (
+                      <div
+                        style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}
+                      >
+                        <input
+                          value={noteDraft[j.id] ?? j.note ?? ''}
+                          onChange={e => setNoteDraft(s => ({ ...s, [j.id]: e.target.value }))}
+                          onBlur={() => saveNoteTags(j)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') saveNoteTags(j);
+                            if (e.key === 'Escape') setNoteEditing(s => ({ ...s, [j.id]: false }));
+                          }}
+                          placeholder={t('jobNotePlaceholder')}
+                          autoFocus
+                          style={{
+                            width: '100%',
+                            padding: '5px 8px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            background: 'var(--bg)',
+                            color: 'var(--text)',
+                            border: '1px solid var(--border)',
+                            outline: 'none',
+                          }}
+                        />
+                        <input
+                          value={tagsDraft[j.id] ?? (j.tags || []).join(', ')}
+                          onChange={e => setTagsDraft(s => ({ ...s, [j.id]: e.target.value }))}
+                          onBlur={() => saveNoteTags(j)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') saveNoteTags(j);
+                            if (e.key === 'Escape') setNoteEditing(s => ({ ...s, [j.id]: false }));
+                          }}
+                          placeholder={t('jobTagsPlaceholder')}
+                          style={{
+                            width: '100%',
+                            padding: '5px 8px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            background: 'var(--bg)',
+                            color: 'var(--text)',
+                            border: '1px solid var(--border)',
+                            outline: 'none',
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setNoteDraft(s => ({ ...s, [j.id]: j.note ?? '' }));
+                          setTagsDraft(s => ({ ...s, [j.id]: (j.tags || []).join(', ') }));
+                          setNoteEditing(s => ({ ...s, [j.id]: true }));
+                        }}
+                        title={t('jobNoteEdit')}
+                        style={{
+                          marginTop: 4,
+                          alignSelf: 'flex-start',
+                          background: 'transparent',
+                          border: 0,
+                          color: 'var(--text-muted)',
+                          fontSize: 10,
+                          cursor: 'pointer',
+                          padding: '2px 0',
+                        }}
+                      >
+                        📝 {j.note || j.tags?.length ? t('jobNoteEdit') : t('jobNoteAdd')}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Durum Rozeti */}
+                  <JobStatusBadge
+                    status={j.status}
+                    label={label(j)}
+                    deletedFromDisk={j.deletedFromDisk}
+                  />
+                </div>
+
+                {/* İlerleme Çubuğu */}
                 <div
                   style={{
-                    width: '100%',
-                    height: 4,
+                    height: 8,
                     background: 'var(--bg)',
-                    borderRadius: 2,
+                    borderRadius: 10,
+                    marginTop: 10,
                     overflow: 'hidden',
+                    border: '1px solid var(--border)',
+                    position: 'relative',
                   }}
                 >
                   <div
                     style={{
-                      width: `${Math.min(j.percent, 100)}%`,
+                      width: `${j.percent}%`,
                       height: '100%',
                       background:
                         j.status === 'done'
-                          ? '#22c55e'
+                          ? j.deletedFromDisk
+                            ? 'linear-gradient(90deg,#991b1b,#ef4444)'
+                            : 'linear-gradient(90deg,#16a34a,#22c55e)'
                           : j.status === 'error'
-                            ? '#dc2626'
-                            : 'var(--accent-solid)',
-                      transition: 'width 0.3s ease',
+                            ? 'linear-gradient(90deg,#7f1d1d,#dc2626)'
+                            : 'linear-gradient(90deg,var(--accent-from),var(--accent-to))',
+                      transition: 'width 0.4s ease',
                     }}
                   />
-                </div>
-                <span style={{ fontSize: 8, color: 'var(--muted)' }}>{Math.round(j.percent)}%</span>
-              </div>
-            ))
-          )
-        ) : (
-          <>
-        {filteredJobs.length === 0 && (
-          <div className="text-muted" style={{ textAlign: 'center', padding: 28, fontSize: 12 }}>
-            <div style={{ fontSize: 24, marginBottom: 8 }}>⬇️</div>
-            {jobs.length === 0 ? (
-              <>
-                {t('noDownloadsYet')}
-                <br />
-                <span style={{ fontSize: 11 }}>{t('pasteOrCapture')}</span>
-              </>
-            ) : (
-              <span>{t('noFilteredResults')}</span>
-            )}
-          </div>
-        )}
-
-        {viewMode === 'table' ? (
-          <div
-            style={{
-              background: 'var(--panel)',
-              borderRadius: 12,
-              border: '1px solid var(--border)',
-              overflow: 'hidden',
-            }}
-          >
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-              <thead>
-                <tr
-                  style={{
-                    background: 'var(--panel-2)',
-                    borderBottom: '1px solid var(--border)',
-                    textAlign: 'left',
-                    color: 'var(--muted)',
-                  }}
-                >
-                  <th style={{ padding: '8px 10px' }}>Dosya</th>
-                  <th style={{ padding: '8px 6px', width: 70 }}>Boyut</th>
-                  <th style={{ padding: '8px 6px', width: 90 }}>Durum</th>
-                  <th style={{ padding: '8px 10px', width: 110 }}>İlerleme</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredJobs.map(j => (
-                  <tr
-                    key={j.id}
-                    onContextMenu={e => {
-                      e.preventDefault();
-                      setContextMenu({ x: e.clientX, y: e.clientY, job: j });
-                    }}
-                    style={{ borderBottom: '1px solid var(--border)', cursor: 'context-menu' }}
-                  >
-                    <td
+                  {j.status === 'downloading' && (
+                    <div
+                      className="shimmer-progress"
                       style={{
-                        padding: '8px 10px',
-                        maxWidth: 140,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        color: 'var(--text)',
+                        position: 'absolute',
+                        inset: 0,
+                        borderRadius: 10,
                       }}
-                      title={j.title}
-                    >
-                      {j.title}
-                    </td>
-                    <td style={{ padding: '8px 6px', color: 'var(--muted)' }}>{j.total || '-'}</td>
-                    <td style={{ padding: '8px 6px' }}>
-                      <JobStatusBadge
-                        status={j.status}
-                        label={label(j)}
-                        deletedFromDisk={j.deletedFromDisk}
-                      />
-                    </td>
-                    <td style={{ padding: '8px 10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div
-                          style={{
-                            flex: 1,
-                            height: 6,
-                            background: 'var(--bg)',
-                            borderRadius: 4,
-                            overflow: 'hidden',
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: `${j.percent}%`,
-                              height: '100%',
-                              background:
-                                j.status === 'done'
-                                  ? '#22c55e'
-                                  : j.status === 'error'
-                                    ? '#dc2626'
-                                    : 'var(--accent-solid)',
-                            }}
-                          />
-                        </div>
-                        <span style={{ fontSize: 10, fontWeight: 700 }}>
-                          {Math.round(j.percent)}%
-                        </span>
-                      </div>
-                      {j.status === 'downloading' && (
-                        <div className="text-muted" style={{ fontSize: 10, marginTop: 2 }}>
-                          {j.speed} {j.eta && j.eta !== '-' ? `• ${j.eta}` : ''}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          filteredJobs.map(j => (
-            <div
-              key={j.id}
-              className="card-premium"
-              onContextMenu={e => {
-                e.preventDefault();
-                setContextMenu({ x: e.clientX, y: e.clientY, job: j });
-              }}
-              style={{
-                borderRadius: 14,
-                padding: 12,
-                border: j.deletedFromDisk ? '1px solid rgba(239, 68, 68, 0.35)' : undefined,
-                cursor: 'context-menu',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    />
+                  )}
+                </div>
+
+                {/* Mini Hız Grafiği (Sparkline) */}
+                {j.status === 'downloading' &&
+                  speedHistory[j.id] &&
+                  speedHistory[j.id].length > 1 && (
                     <div
                       style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        whiteSpace: 'nowrap',
+                        height: 28,
+                        marginTop: 6,
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        gap: 1,
                         overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        color: j.deletedFromDisk ? 'var(--text-muted)' : 'var(--text)',
-                        textDecoration: j.deletedFromDisk ? 'line-through' : 'none',
+                        borderRadius: 6,
+                        background: 'rgba(0, 0, 0, 0.15)',
+                        padding: '2px 4px',
                       }}
                     >
-                      {j.title}
+                      {speedHistory[j.id].map((val, idx) => {
+                        const max = Math.max(...speedHistory[j.id], 1);
+                        const h = Math.max(2, (val / max) * 22);
+                        const intensity = val / max;
+                        return (
+                          <div
+                            key={idx}
+                            style={{
+                              flex: 1,
+                              height: h,
+                              minHeight: 2,
+                              borderRadius: 2,
+                              background: `rgba(${Math.round(34 + intensity * 0)}, ${Math.round(197 - intensity * 40)}, ${Math.round(94 + intensity * 100)}, ${0.3 + intensity * 0.7})`,
+                              transition: 'height 0.3s ease',
+                            }}
+                          />
+                        );
+                      })}
                     </div>
-                    {isMultiSegment(j) && (
-                      <span
-                        title={t('segmentsBadge')}
-                        style={{
-                          flexShrink: 0,
-                          fontSize: 9,
-                          padding: '1px 5px',
-                          borderRadius: 6,
-                          background: 'rgba(59, 130, 246, 0.15)',
-                          color: '#60a5fa',
-                          border: '1px solid rgba(59, 130, 246, 0.3)',
-                          fontWeight: 800,
-                        }}
-                      >
-                        ⚡ 8P
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    className="text-muted"
-                    style={{
-                      fontSize: 11,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {j.url}
-                  </div>
-                </div>
+                  )}
 
-                {/* Durum Rozeti */}
-                <JobStatusBadge
-                  status={j.status}
-                  label={label(j)}
-                  deletedFromDisk={j.deletedFromDisk}
-                />
-              </div>
-
-              {/* İlerleme Çubuğu */}
-              <div
-                style={{
-                  height: 8,
-                  background: 'var(--bg)',
-                  borderRadius: 10,
-                  marginTop: 10,
-                  overflow: 'hidden',
-                  border: '1px solid var(--border)',
-                  position: 'relative',
-                }}
-              >
-                <div
-                  style={{
-                    width: `${j.percent}%`,
-                    height: '100%',
-                    background:
-                      j.status === 'done'
-                        ? j.deletedFromDisk
-                          ? 'linear-gradient(90deg,#991b1b,#ef4444)'
-                          : 'linear-gradient(90deg,#16a34a,#22c55e)'
-                        : j.status === 'error'
-                          ? 'linear-gradient(90deg,#7f1d1d,#dc2626)'
-                          : 'linear-gradient(90deg,var(--accent-from),var(--accent-to))',
-                    transition: 'width 0.4s ease',
-                  }}
-                />
-                {j.status === 'downloading' && (
-                  <div
-                    className="shimmer-progress"
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      borderRadius: 10,
-                    }}
-                  />
-                )}
-              </div>
-
-              {/* Mini Hız Grafiği (Sparkline) */}
-              {j.status === 'downloading' &&
-                speedHistory[j.id] &&
-                speedHistory[j.id].length > 1 && (
-                  <div
-                    style={{
-                      height: 28,
-                      marginTop: 6,
-                      display: 'flex',
-                      alignItems: 'flex-end',
-                      gap: 1,
-                      overflow: 'hidden',
-                      borderRadius: 6,
-                      background: 'rgba(0, 0, 0, 0.15)',
-                      padding: '2px 4px',
-                    }}
-                  >
-                    {speedHistory[j.id].map((val, idx) => {
-                      const max = Math.max(...speedHistory[j.id], 1);
-                      const h = Math.max(2, (val / max) * 22);
-                      const intensity = val / max;
-                      return (
-                        <div
-                          key={idx}
-                          style={{
-                            flex: 1,
-                            height: h,
-                            minHeight: 2,
-                            borderRadius: 2,
-                            background: `rgba(${Math.round(34 + intensity * 0)}, ${Math.round(197 - intensity * 40)}, ${Math.round(94 + intensity * 100)}, ${0.3 + intensity * 0.7})`,
-                            transition: 'height 0.3s ease',
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-
-              {/* Hız & Süre & Boyut Bilgisi */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  fontSize: 11,
-                  marginTop: 6,
-                  flexWrap: 'wrap',
-                  gap: 6,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                  <span style={{ fontWeight: 700, color: 'var(--text-bright)' }}>
-                    {j.percent.toFixed(1)}%
-                  </span>
-                  {j.total ? <span className="text-muted">• {j.total}</span> : null}
-                </div>
+                {/* Hız & Süre & Boyut Bilgisi */}
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 8,
-                    flexShrink: 0,
-                    marginLeft: 'auto',
+                    justifyContent: 'space-between',
+                    fontSize: 11,
+                    marginTop: 6,
+                    flexWrap: 'wrap',
+                    gap: 6,
                   }}
                 >
-                  {j.speed && j.status === 'downloading' ? (
-                    <span
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        background: 'rgba(34, 197, 94, 0.15)',
-                        color: '#86efac',
-                        padding: '3px 8px',
-                        borderRadius: 8,
-                        fontWeight: 700,
-                      }}
-                    >
-                      🚀 {j.speed}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    <span style={{ fontWeight: 700, color: 'var(--text-bright)' }}>
+                      {j.percent.toFixed(1)}%
                     </span>
-                  ) : null}
-                  {j.eta && j.eta !== '-' && j.status === 'downloading' ? (
-                    <span
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        background: 'rgba(59, 130, 246, 0.15)',
-                        color: '#60a5fa',
-                        padding: '3px 8px',
-                        borderRadius: 8,
-                        fontWeight: 700,
-                      }}
-                    >
-                      ⏳ {j.eta}
-                    </span>
-                  ) : null}
+                    {j.total ? <span className="text-muted">• {j.total}</span> : null}
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      flexShrink: 0,
+                      marginLeft: 'auto',
+                    }}
+                  >
+                    {j.speed && j.status === 'downloading' ? (
+                      <span
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          background: 'rgba(34, 197, 94, 0.15)',
+                          color: '#86efac',
+                          padding: '3px 8px',
+                          borderRadius: 8,
+                          fontWeight: 700,
+                        }}
+                      >
+                        🚀 {j.speed}
+                      </span>
+                    ) : null}
+                    {j.eta && j.eta !== '-' && j.status === 'downloading' ? (
+                      <span
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          background: 'rgba(59, 130, 246, 0.15)',
+                          color: '#60a5fa',
+                          padding: '3px 8px',
+                          borderRadius: 8,
+                          fontWeight: 700,
+                        }}
+                      >
+                        ⏳ {j.eta}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-              <div
-                className="text-muted"
-                style={{
-                  fontSize: 10,
-                  marginTop: 4,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {j.deletedFromDisk ? `⚠️ ${t('deletedFromDiskMsg')}` : j.log}
-              </div>
+                <div
+                  className="text-muted"
+                  style={{
+                    fontSize: 10,
+                    marginTop: 4,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {j.deletedFromDisk ? `⚠️ ${t('deletedFromDiskMsg')}` : j.log}
+                </div>
 
-              {/* Eylem Butonları */}
-              <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
-                {(j.status === 'downloading' || j.status === 'queued') && (
-                  <button
-                    onClick={() => onPause?.(j.id)}
-                    style={{
-                      background: 'var(--badge-warning-bg)',
-                      color: 'var(--badge-warning-text)',
-                      border: '1px solid var(--badge-warning-border)',
-                      padding: '6px 8px',
-                      borderRadius: 8,
-                      fontSize: 11,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    ⏸ {t('pause')}
-                  </button>
-                )}
-                {(j.status === 'downloading' || j.status === 'queued' || j.status === 'paused') && (
-                  <button
-                    onClick={() => onCancel(j.id)}
-                    style={{
-                      background: 'var(--badge-danger-bg)',
-                      color: 'var(--badge-danger-text)',
-                      border: '1px solid var(--badge-danger-border)',
-                      padding: '6px 8px',
-                      borderRadius: 8,
-                      fontSize: 11,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {t('cancel')}
-                  </button>
-                )}
-                {j.status === 'paused' && (
-                  <button
-                    onClick={() => onResume?.(j)}
-                    className="brand-gradient"
-                    style={{
-                      color: '#fff',
-                      border: 0,
-                      padding: '6px 8px',
-                      borderRadius: 8,
-                      fontSize: 11,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    ▶ {t('resume')}
-                  </button>
-                )}
-
-                {/* Sıralama Taşıma Butonları (Kuyruk / İndirme Önceliği) */}
-                {(j.status === 'downloading' || j.status === 'queued' || j.status === 'paused') &&
-                  onMoveJob && (
-                    <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
-                      <button
-                        onClick={() => onMoveJob(j.id, 'up')}
-                        title={t('moveUp')}
-                        style={{
-                          background: 'var(--panel-2)',
-                          color: 'var(--text)',
-                          border: '1px solid var(--border)',
-                          padding: '4px 6px',
-                          borderRadius: 6,
-                          fontSize: 10,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        ⬆️
-                      </button>
-                      <button
-                        onClick={() => onMoveJob(j.id, 'down')}
-                        title={t('moveDown')}
-                        style={{
-                          background: 'var(--panel-2)',
-                          color: 'var(--text)',
-                          border: '1px solid var(--border)',
-                          padding: '4px 6px',
-                          borderRadius: 6,
-                          fontSize: 10,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        ⬇️
-                      </button>
-                    </div>
+                {/* Eylem Butonları */}
+                <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                  {(j.status === 'downloading' || j.status === 'queued') && (
+                    <button
+                      onClick={() => onPause?.(j.id)}
+                      style={{
+                        background: 'var(--badge-warning-bg)',
+                        color: 'var(--badge-warning-text)',
+                        border: '1px solid var(--badge-warning-border)',
+                        padding: '6px 8px',
+                        borderRadius: 8,
+                        fontSize: 11,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ⏸ {t('pause')}
+                    </button>
+                  )}
+                  {(j.status === 'downloading' ||
+                    j.status === 'queued' ||
+                    j.status === 'paused') && (
+                    <button
+                      onClick={() => onCancel(j.id)}
+                      style={{
+                        background: 'var(--badge-danger-bg)',
+                        color: 'var(--badge-danger-text)',
+                        border: '1px solid var(--badge-danger-border)',
+                        padding: '6px 8px',
+                        borderRadius: 8,
+                        fontSize: 11,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {t('cancel')}
+                    </button>
+                  )}
+                  {j.status === 'paused' && (
+                    <button
+                      onClick={() => onResume?.(j)}
+                      className="brand-gradient"
+                      style={{
+                        color: '#fff',
+                        border: 0,
+                        padding: '6px 8px',
+                        borderRadius: 8,
+                        fontSize: 11,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ▶ {t('resume')}
+                    </button>
                   )}
 
-                {/* Tamamlanmış İndirmeler */}
-                {j.status === 'done' && !j.deletedFromDisk && (
-                  <>
-                    <button
-                      onClick={() => {
-                        if (j.filePath) onOpenFile?.(j.filePath);
-                        else onOpenFolder();
-                      }}
-                      className="brand-gradient"
-                      style={{
-                        color: '#fff',
-                        border: 0,
-                        padding: '6px 10px',
-                        borderRadius: 8,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      ⚡ {t('openFile')}
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (j.filePath) onShowInFolder?.(j.filePath);
-                        else onOpenFolder();
-                      }}
-                      style={{
-                        background: 'var(--panel-2)',
-                        color: 'var(--text)',
-                        border: '1px solid var(--border)',
-                        padding: '6px 9px',
-                        borderRadius: 8,
-                        fontSize: 11,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        cursor: 'pointer',
-                      }}
-                      title={t('showInFolderTooltip')}
-                    >
-                      📁 {t('showInFolder')}
-                    </button>
-                    <button
-                      onClick={() => setConfirmDeleteJob(j)}
-                      style={{
-                        background: 'transparent',
-                        color: 'var(--text-muted)',
-                        border: '1px solid var(--border)',
-                        padding: '6px 8px',
-                        borderRadius: 8,
-                        fontSize: 11,
-                        marginLeft: 'auto',
-                        cursor: 'pointer',
-                      }}
-                      title={t('deleteOrRemoveTitle')}
-                    >
-                      🗑️
-                    </button>
-                  </>
-                )}
+                  {/* Sıralama Taşıma Butonları (Kuyruk / İndirme Önceliği) */}
+                  {(j.status === 'downloading' || j.status === 'queued' || j.status === 'paused') &&
+                    onMoveJob && (
+                      <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
+                        <button
+                          onClick={() => onMoveJob(j.id, 'up')}
+                          title={t('moveUp')}
+                          aria-label={t('moveUp')}
+                          style={{
+                            background: 'var(--panel-2)',
+                            color: 'var(--text)',
+                            border: '1px solid var(--border)',
+                            padding: '4px 6px',
+                            borderRadius: 6,
+                            fontSize: 10,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          ⬆️
+                        </button>
+                        <button
+                          onClick={() => onMoveJob(j.id, 'down')}
+                          title={t('moveDown')}
+                          aria-label={t('moveDown')}
+                          style={{
+                            background: 'var(--panel-2)',
+                            color: 'var(--text)',
+                            border: '1px solid var(--border)',
+                            padding: '4px 6px',
+                            borderRadius: 6,
+                            fontSize: 10,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          ⬇️
+                        </button>
+                      </div>
+                    )}
 
-                {/* Diskten Silinmiş İndirmeler */}
-                {j.status === 'done' && j.deletedFromDisk && (
-                  <>
-                    <button
-                      onClick={() => onRetry?.(j)}
-                      className="brand-gradient"
-                      style={{
-                        color: '#fff',
-                        border: 0,
-                        padding: '6px 10px',
-                        borderRadius: 8,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      🔄 {t('redownload')}
-                    </button>
-                    <button
-                      onClick={() => onRemoveJob?.(j.id)}
-                      style={{
-                        background: 'var(--panel-2)',
-                        color: 'var(--text)',
-                        border: '1px solid var(--border)',
-                        padding: '6px 9px',
-                        borderRadius: 8,
-                        fontSize: 11,
-                        marginLeft: 'auto',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      🗑️ {t('removeFromList')}
-                    </button>
-                  </>
-                )}
+                  {/* Tamamlanmış İndirmeler */}
+                  {j.status === 'done' && !j.deletedFromDisk && (
+                    <>
+                      <button
+                        onClick={() => {
+                          if (j.filePath) onOpenFile?.(j.filePath);
+                          else onOpenFolder();
+                        }}
+                        className="brand-gradient"
+                        style={{
+                          color: '#fff',
+                          border: 0,
+                          padding: '6px 10px',
+                          borderRadius: 8,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        ⚡ {t('openFile')}
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (j.filePath) onShowInFolder?.(j.filePath);
+                          else onOpenFolder();
+                        }}
+                        style={{
+                          background: 'var(--panel-2)',
+                          color: 'var(--text)',
+                          border: '1px solid var(--border)',
+                          padding: '6px 9px',
+                          borderRadius: 8,
+                          fontSize: 11,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          cursor: 'pointer',
+                        }}
+                        title={t('showInFolderTooltip')}
+                      >
+                        📁 {t('showInFolder')}
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteJob(j)}
+                        style={{
+                          background: 'transparent',
+                          color: 'var(--text-muted)',
+                          border: '1px solid var(--border)',
+                          padding: '6px 8px',
+                          borderRadius: 8,
+                          fontSize: 11,
+                          marginLeft: 'auto',
+                          cursor: 'pointer',
+                        }}
+                        title={t('deleteOrRemoveTitle')}
+                        aria-label={t('deleteOrRemoveTitle')}
+                      >
+                        🗑️
+                      </button>
+                    </>
+                  )}
 
-                {j.status === 'error' && (
-                  <>
-                    <button
-                      onClick={() => onRetry?.(j)}
-                      className="brand-gradient"
-                      style={{
-                        color: '#fff',
-                        border: 0,
-                        padding: '6px 8px',
-                        borderRadius: 8,
-                        fontSize: 11,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      🔄 {t('retry')}
-                    </button>
-                    <button
-                      onClick={() => onRemoveJob?.(j.id)}
-                      style={{
-                        background: 'transparent',
-                        color: 'var(--text-muted)',
-                        border: '1px solid var(--border)',
-                        padding: '6px 8px',
-                        borderRadius: 8,
-                        fontSize: 11,
-                        marginLeft: 'auto',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </>
-                )}
+                  {/* Diskten Silinmiş İndirmeler */}
+                  {j.status === 'done' && j.deletedFromDisk && (
+                    <>
+                      <button
+                        onClick={() => onRetry?.(j)}
+                        className="brand-gradient"
+                        style={{
+                          color: '#fff',
+                          border: 0,
+                          padding: '6px 10px',
+                          borderRadius: 8,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        🔄 {t('redownload')}
+                      </button>
+                      <button
+                        onClick={() => onRemoveJob?.(j.id)}
+                        style={{
+                          background: 'var(--panel-2)',
+                          color: 'var(--text)',
+                          border: '1px solid var(--border)',
+                          padding: '6px 9px',
+                          borderRadius: 8,
+                          fontSize: 11,
+                          marginLeft: 'auto',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        🗑️ {t('removeFromList')}
+                      </button>
+                    </>
+                  )}
+
+                  {j.status === 'error' && (
+                    <>
+                      <button
+                        onClick={() => onRetry?.(j)}
+                        className="brand-gradient"
+                        style={{
+                          color: '#fff',
+                          border: 0,
+                          padding: '6px 8px',
+                          borderRadius: 8,
+                          fontSize: 11,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        🔄 {t('retry')}
+                      </button>
+                      <button
+                        onClick={() => onRemoveJob?.(j.id)}
+                        style={{
+                          background: 'transparent',
+                          color: 'var(--text-muted)',
+                          border: '1px solid var(--border)',
+                          padding: '6px 8px',
+                          borderRadius: 8,
+                          fontSize: 11,
+                          marginLeft: 'auto',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
-        )}
+            ))
+          )}
         </>
-        )}
       </div>
 
       {/* Alt Eylem Barı: İndirme Bittiğinde Yapılacak Eylem (Post-download action) */}
-      {!compact && (
       <div
         style={{
           padding: '8px 12px',
@@ -1321,7 +1308,6 @@ export default function QueuePanel({
           <option value="quit">🚪 {t('actionQuit')}</option>
         </select>
       </div>
-      )}
 
       {/* Sağ Tık Bağlam Menüsü */}
       {contextMenu && (
@@ -1332,6 +1318,7 @@ export default function QueuePanel({
           />
           <div
             className="context-menu"
+            role="menu"
             style={{
               position: 'fixed',
               left: contextMenu.x,
@@ -1480,7 +1467,7 @@ export default function QueuePanel({
               onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
-              <span>📋</span> <span>URL'yi Kopyala</span>
+              <span>📋</span> <span>{t('ctxCopyUrl')}</span>
             </button>
             {contextMenu.job.status === 'done' && contextMenu.job.filePath && (
               <>
@@ -1507,7 +1494,7 @@ export default function QueuePanel({
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
-                  <span>⚡</span> <span>Dosyayı Aç</span>
+                  <span>⚡</span> <span>{t('ctxOpenFile')}</span>
                 </button>
                 <button
                   onClick={() => {
@@ -1532,7 +1519,7 @@ export default function QueuePanel({
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--panel-2)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
-                  <span>📁</span> <span>Klasörde Göster</span>
+                  <span>📁</span> <span>{t('ctxShowInFolder')}</span>
                 </button>
               </>
             )}
@@ -1563,7 +1550,7 @@ export default function QueuePanel({
                       cursor: 'pointer',
                     }}
                   >
-                    ⬆️ Yukarı Taşı
+                    ⬆️ {t('ctxMoveUp')}
                   </button>
                   <button
                     onClick={() => {
@@ -1586,7 +1573,7 @@ export default function QueuePanel({
                       cursor: 'pointer',
                     }}
                   >
-                    ⬇️ Aşağı Taşı
+                    ⬇️ {t('ctxMoveDown')}
                   </button>
                 </div>
               )}
@@ -1615,7 +1602,7 @@ export default function QueuePanel({
                 onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
-                <span>🗑️</span> <span>Sil / Kaldır</span>
+                <span>🗑️</span> <span>{t('ctxDeleteRemove')}</span>
               </button>
             ) : (
               <button
@@ -1641,7 +1628,7 @@ export default function QueuePanel({
                 onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
-                <span>🗑️</span> <span>Listeden Kaldır</span>
+                <span>🗑️</span> <span>{t('ctxRemoveFromList')}</span>
               </button>
             )}
           </div>
@@ -1652,14 +1639,14 @@ export default function QueuePanel({
       {confirmDeleteJob && (
         <div
           style={{
-            position: 'absolute',
+            position: 'fixed',
             inset: 0,
             background: 'rgba(0,0,0,0.75)',
             backdropFilter: 'blur(3px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 9999,
+            zIndex: 99999,
             padding: 16,
           }}
         >

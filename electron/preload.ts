@@ -74,5 +74,10 @@ const api: DesktopApi = {
   resumeAllDownloads: () => ipcRenderer.invoke('resume-all-downloads'),
   setPostDownloadAction: action => ipcRenderer.invoke('set-post-download-action', action),
   onSwitchToSettingsTab: cb => subscribe('switch-to-settings-tab', cb),
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  quitAndInstall: () => ipcRenderer.invoke('quit-and-install'),
+  onUpdateAvailable: cb => subscribe('update-available', cb),
+  onUpdateDownloaded: cb => subscribe('update-downloaded', cb),
+  onConfigChanged: cb => subscribe('config-changed', cb),
 };
 contextBridge.exposeInMainWorld('api', api);

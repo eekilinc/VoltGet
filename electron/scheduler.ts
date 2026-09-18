@@ -3,6 +3,7 @@ export interface SchedulerConfig {
   startTime: string; // HH:MM
   stopTime: string; // HH:MM
   days: number[]; // 0=Sunday
+  runOnceAt?: string; // ISO datetime, tek seferlik kuyruk başlatma
 }
 
 export interface SchedulerActions {
@@ -34,11 +35,13 @@ function nextOccurrence(time: string, days: number[], from: Date): number | null
 export function createScheduler(actions: SchedulerActions) {
   let startTimer: NodeJS.Timeout | null = null;
   let stopTimer: NodeJS.Timeout | null = null;
+  let onceTimer: NodeJS.Timeout | null = null;
 
   function clear() {
     if (startTimer) clearTimeout(startTimer);
     if (stopTimer) clearTimeout(stopTimer);
-    startTimer = stopTimer = null;
+    if (onceTimer) clearTimeout(onceTimer);
+    startTimer = stopTimer = onceTimer = null;
   }
 
   function arm(
@@ -62,22 +65,32 @@ export function createScheduler(actions: SchedulerActions) {
 
   function reschedule(cfg: SchedulerConfig) {
     clear();
-    if (!cfg?.enabled) return;
     const now = new Date();
-    startTimer = arm(startTimer, nextOccurrence(cfg.startTime, cfg.days, now), () => {
-      actions.log?.(`⏰ Zamanlayıcı: kuyruk başlatıldı (${cfg.startTime})`);
-      try {
-        actions.startQueue();
-      } catch {}
-      reschedule(cfg);
-    });
-    stopTimer = arm(stopTimer, nextOccurrence(cfg.stopTime, cfg.days, now), () => {
-      actions.log?.(`⏰ Zamanlayıcı: kuyruk durduruldu (${cfg.stopTime})`);
-      try {
-        actions.stopQueue();
-      } catch {}
-      reschedule(cfg);
-    });
+    if (cfg?.enabled) {
+      startTimer = arm(startTimer, nextOccurrence(cfg.startTime, cfg.days, now), () => {
+        actions.log?.(`⏰ Zamanlayıcı: kuyruk başlatıldı (${cfg.startTime})`);
+        try {
+          actions.startQueue();
+        } catch {}
+        reschedule(cfg);
+      });
+      stopTimer = arm(stopTimer, nextOccurrence(cfg.stopTime, cfg.days, now), () => {
+        actions.log?.(`⏰ Zamanlayıcı: kuyruk durduruldu (${cfg.stopTime})`);
+        try {
+          actions.stopQueue();
+        } catch {}
+        reschedule(cfg);
+      });
+    }
+    const onceAt = cfg?.runOnceAt ? new Date(cfg.runOnceAt).getTime() : NaN;
+    if (Number.isFinite(onceAt) && onceAt > now.getTime()) {
+      onceTimer = arm(onceTimer, onceAt, () => {
+        actions.log?.('⏰ Zamanlayıcı: tek seferlik kuyruk başlatıldı');
+        try {
+          actions.startQueue();
+        } catch {}
+      });
+    }
   }
 
   function dispose() {

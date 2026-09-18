@@ -58,7 +58,8 @@ jobs:
       - name: Generate Checksums
         shell: pwsh
         run: |
-          Get-ChildItem -Path "release/*.exe" | ForEach-Object {
+          Remove-Item -Path "release/checksums.sha256.txt" -ErrorAction SilentlyContinue
+          Get-ChildItem -Path "release/*" -Include *.exe,*.blockmap,*.yml | ForEach-Object {
             $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash
             "$hash  $($_.Name)" | Out-File -FilePath "release/checksums.sha256.txt" -Append -Encoding utf8
           }
@@ -74,12 +75,13 @@ jobs:
             release/checksums.sha256.txt
           generate_release_notes: true
           body: |
-            ## VoltGet 1.1.7
-            ### IDM Benzeri 3-Kolon Layout
-            - **Sağ Sidebar Genişletildi**: 280px → 400px - QueuePanel tam görünüm (progress bar, hız/ETA, aksiyon butonları)
-            - **DownloadPanel Temizlendi**: Sadece URL girişi/analiz; inline job kartları kaldırıldı
-            - **3-Kolon Düzen**: Sol nav (224px) + Ana içerik + Sağ sidebar (400px) - IDM benzeri tek ekran deneyimi
-            - **Duplicate Kaldırıldı**: Alt kısımdaki ikinci QueuePanel silindi
+            ## VoltGet ${{ github.ref_name }}
+            ### Dayanıklılık + IDM İşlevleri
+            - **Kritik düzeltmeler**: bozuk config/kuyruk dosyasında açılış çökmesi yok (yedekleme + varsayılan), dosya adı path-traversal koruması, retry-cancel tutarlılığı
+            - **3-Kolon layout**: sol nav + ana içerik + sağ kuyruk (400px, responsive)
+            - **Kuyruk**: sürükle-sırala, not/etiket + arama, günlük indirilen sayacı, içe aktarma özeti
+            - **Ayarlar**: site girişleri, bağlantı, yeniden deneme, çakışma politikası, özel kategoriler, uygulama güncellemesi, tek seferlik zamanlayıcı
+            - **i18n**: 6 dilde 412 anahtar eşitlendi; test kapsamı 114 teste çıktı
           draft: false
           prerelease: false
           fail_on_unmatched_files: false

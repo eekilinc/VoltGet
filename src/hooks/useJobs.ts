@@ -120,6 +120,13 @@ export function useJobs(hasApi: boolean) {
             })
             .catch(() => playDownloadCompleteChime());
         }
+        if (d.code === 0 && typeof d.size === 'number' && d.size > 0) {
+          try {
+            const key = 'voltget-daily-' + new Date().toISOString().slice(0, 10);
+            const cur = parseInt(localStorage.getItem(key) || '0', 10) || 0;
+            localStorage.setItem(key, String(cur + d.size));
+          } catch {}
+        }
         const n = j.map(x =>
           x.id === d.id
             ? {
@@ -130,6 +137,7 @@ export function useJobs(hasApi: boolean) {
                 filePath: d.filePath || x.filePath || x.opts?.outPath,
                 fileName: d.fileName || x.fileName || x.opts?.filename,
                 deletedFromDisk: false,
+                size: typeof d.size === 'number' ? d.size : (x as any).size,
               }
             : x
         );

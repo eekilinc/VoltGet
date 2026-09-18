@@ -28,8 +28,17 @@ export function historyPath(): string {
 
 export function loadConfig(): AppConfig {
   if (!fs.existsSync(configPath())) return { ...defaultConfig };
-  const raw = JSON.parse(fs.readFileSync(configPath(), 'utf-8'));
-  return mergeWithDefaults(revealSecrets(raw));
+  try {
+    const raw = JSON.parse(fs.readFileSync(configPath(), 'utf-8'));
+    return mergeWithDefaults(revealSecrets(raw));
+  } catch (e) {
+    try {
+      const backup = configPath() + '.corrupt-' + Date.now();
+      fs.copyFileSync(configPath(), backup);
+      console.error('[VoltGet] Bozuk config yedeklendi:', backup, e);
+    } catch {}
+    return { ...defaultConfig };
+  }
 }
 
 export function saveConfig(c: AppConfig): void {

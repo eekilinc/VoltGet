@@ -35,8 +35,8 @@ export function maybeVirusScan(
       onLog?.('🛡️ Defender bulunamadı, virüs taraması atlandı');
       return;
     }
-    const proc = spawn(`"${mp}"`, ['-Scan', '-ScanType', '3', '-File', filePath], {
-      shell: true,
+    const proc = spawn(mp, ['-Scan', '-ScanType', '3', '-File', filePath], {
+      shell: false,
       detached: true,
       stdio: 'ignore',
       windowsHide: true,

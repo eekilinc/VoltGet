@@ -160,6 +160,9 @@ const scheduler = createScheduler({
         if (sopts) pausedDownloads.set(sid, sopts);
         pausingIds.add(sid);
         try {
+          cancelScheduledRetry(sid);
+        } catch {}
+        try {
           if (typeof proc.pause === 'function') proc.pause();
           else proc.kill();
         } catch {}
@@ -429,6 +432,11 @@ if (!gotTheLock) {
     ensureDir(getDefaultDownloadDir());
     try {
       const recovered = recoverInterruptedQueue();
+      for (const job of recovered) {
+        if (job?.status === 'paused' && job?.id && job?.opts && !pausedDownloads.has(job.id)) {
+          pausedDownloads.set(job.id, job.opts);
+        }
+      }
       if (recovered.length)
         log.info(`[VoltGet] Queue recovered: ${recovered.length} jobs (interrupted -> paused)`);
     } catch (e) {

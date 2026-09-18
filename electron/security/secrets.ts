@@ -15,10 +15,20 @@ export function omitSecrets(value: unknown): unknown {
   return value;
 }
 
+let warnedNoEncryption = false;
+function warnNoEncryptionOnce() {
+  if (!warnedNoEncryption) {
+    warnedNoEncryption = true;
+    console.warn('[VoltGet] OS şifreleme kullanılamıyor, gizli alanlar düz metin saklanacak');
+  }
+}
+
 export function protectSecrets(value: unknown, key = ''): unknown {
   if (typeof value === 'string' && value && secretKey.test(key)) {
-    if (!safeStorage.isEncryptionAvailable())
-      throw new Error('Güvenli parola saklama kullanılamıyor');
+    if (!safeStorage.isEncryptionAvailable()) {
+      warnNoEncryptionOnce();
+      return value;
+    }
     if (!cache.has(value)) {
       if (cache.size >= 256) cache.clear();
       cache.set(value, { $voltgetSecret: safeStorage.encryptString(value).toString('base64') });
@@ -35,9 +45,18 @@ export function protectSecrets(value: unknown, key = ''): unknown {
 
 export function revealSecrets(value: unknown): unknown {
   if (value && typeof value === 'object' && '$voltgetSecret' in value) {
-    if (!safeStorage.isEncryptionAvailable())
-      throw new Error('Güvenli parola saklama kullanılamıyor');
-    return safeStorage.decryptString(Buffer.from(String(value.$voltgetSecret), 'base64'));
+    if (!safeStorage.isEncryptionAvailable()) {
+      warnNoEncryptionOnce();
+      return '';
+    }
+    try {
+      return safeStorage.decryptString(
+        Buffer.from(String((value as Envelope).$voltgetSecret), 'base64')
+      );
+    } catch (e) {
+      console.error('[VoltGet] Gizli alan çözülemedi, boş döndürülüyor', e);
+      return '';
+    }
   }
   if (Array.isArray(value)) return value.map(revealSecrets);
   if (value && typeof value === 'object')

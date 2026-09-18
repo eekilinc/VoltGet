@@ -21,6 +21,7 @@
   --text: #f1f5f9;
   --text-bright: #ffffff;
   --muted: #94a3b8;
+  --text-muted: #94a3b8;
   --border: rgba(255, 255, 255, 0.08);
   --border-2: rgba(255, 255, 255, 0.14);
   --shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
@@ -56,6 +57,7 @@
   --text: #0f172a;
   --text-bright: #020617;
   --muted: #64748b;
+  --text-muted: #64748b;
   --border: rgba(0, 0, 0, 0.08);
   --border-2: rgba(0, 0, 0, 0.14);
   --shadow: 0 14px 34px -10px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.05);
@@ -203,6 +205,18 @@ textarea:focus {
 
 .text-muted {
   color: var(--muted);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .brand-gradient {

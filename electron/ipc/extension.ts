@@ -35,7 +35,8 @@ export function registerExtensionIpc(deps: {
     const zipPath = path.join(outDir, zipFileName);
 
     return new Promise((resolve, reject) => {
-      const psCmd = `Compress-Archive -Path "${extDir}\\*" -DestinationPath "${zipPath}" -Force`;
+      const psQuote = (s: string) => `"${s.replace(/"/g, '""')}"`;
+      const psCmd = `Compress-Archive -Path ${psQuote(extDir + '\\*')} -DestinationPath ${psQuote(zipPath)} -Force`;
       const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCmd]);
       proc.on('close', code => {
         if (code === 0 && fs.existsSync(zipPath)) {

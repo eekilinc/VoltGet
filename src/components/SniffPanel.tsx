@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAppSettings } from '../context/AppSettingsContext';
 import { useToast } from '../context/ToastContext';
 import { useEventCallback } from '../hooks/useEventCallback';
+import { isGenericFileUrl } from '../utils/fileTypes';
 import ExtensionInstallModal from './ExtensionInstallModal';
 
 type Sniff = {
@@ -25,26 +26,7 @@ function isHlsMaster(url: string) {
   );
 }
 function isGenericFile(url: string, type?: string) {
-  return (
-    /\.(zip|rar|7z|gz|tar|iso|exe|msi|apk|dmg|pdf|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)($|\?)/i.test(
-      url
-    ) ||
-    [
-      'zip',
-      'rar',
-      '7z',
-      'pdf',
-      'exe',
-      'msi',
-      'apk',
-      'dmg',
-      'doc',
-      'xls',
-      'ppt',
-      'torrent',
-      'file',
-    ].includes((type || '').toLowerCase())
-  );
+  return isGenericFileUrl(url, type);
 }
 function short(u: string) {
   try {
@@ -78,6 +60,15 @@ export default function SniffPanel({
   const [extConnected, setExtConnected] = useState(false);
   const [extModalOpen, setExtModalOpen] = useState(false);
   const itemRefs = useRef<Record<string, HTMLDivElement>>({});
+  const itemsRef = useRef<Sniff[]>([]);
+  itemsRef.current = items;
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+  const tRef = useRef(t);
+  tRef.current = t;
+  const sniffNotifyRef = useRef({ enabled: true, debounceMs: 8000 });
+  const lastSniffToastRef = useRef(0);
+  const seenSniffUrlsRef = useRef<Set<string>>(new Set());
   const quickDownloadEvent = useEventCallback(quickDownload);
   const analyzeEvent = useEventCallback(analyze);
 
@@ -88,6 +79,15 @@ export default function SniffPanel({
     const onExt = (res: any) => {
       if (res) setExtConnected(!!res.connected);
     };
+    window.api
+      ?.getConfig?.()
+      .then((c: any) => {
+        sniffNotifyRef.current = {
+          enabled: c?.sniffNotifications !== false,
+          debounceMs: Math.max(1000, c?.sniffDebounceMs ?? 8000),
+        };
+      })
+      .catch(() => {});
     return window.api?.onExtensionStatus?.(onExt);
   }, []);
 
@@ -123,6 +123,25 @@ export default function SniffPanel({
 
   useEffect(() => {
     const handler = (d: any) => {
+      // Arka-plan yakalamalarda (dialog açmayanlar) debounced bildirim
+      try {
+        const cfg = sniffNotifyRef.current;
+        const opensDialog = !!(d?.userInitiated || d?.isGenericDownload);
+        if (cfg.enabled && !opensDialog && d?.url && !seenSniffUrlsRef.current.has(d.url)) {
+          const now = Date.now();
+          if (now - lastSniffToastRef.current >= cfg.debounceMs) {
+            lastSniffToastRef.current = now;
+            toastRef.current.info(
+              tRef.current('sniffToastNew') + `: ${short(d.pageUrl || d.url)}`,
+              tRef.current('autoSniffer')
+            );
+          }
+        }
+        if (d?.url) {
+          seenSniffUrlsRef.current.add(d.url);
+          if (seenSniffUrlsRef.current.size > 500) seenSniffUrlsRef.current.clear();
+        }
+      } catch {}
       setItems(s => {
         if (s.some(x => x.pageUrl === d.pageUrl && isDirectChunk(d.url) && isDirectChunk(x.url)))
           return s;
@@ -145,12 +164,13 @@ export default function SniffPanel({
         setScrollToSniffId(d.sniffId);
         setTimeout(() => setScrollToSniffId(null), 3000);
         // IDM tarzı: Bildirime tıklandığında otomatik analiz tetikle ve en üstte göster
-        const found = items.find(x => x.sniffId === d.sniffId) || {
+        const current = itemsRef.current;
+        const found = current.find(x => x.sniffId === d.sniffId) || {
           url: d.url,
           pageUrl: d.pageUrl,
           type: 'media',
         };
-        const idx = items.indexOf(found as any);
+        const idx = current.indexOf(found as any);
         if (idx !== -1) {
           if (isGenericFile(found.url, found.type)) {
             quickDownloadEvent(idx, found as any);
@@ -166,7 +186,7 @@ export default function SniffPanel({
       removeSniffed?.();
       removeOpen?.();
     };
-  }, [items, quickDownloadEvent, analyzeEvent]);
+  }, [quickDownloadEvent, analyzeEvent]);
 
   async function quickDownload(idx: number, it: Sniff) {
     const generic = isGenericFile(it.url, it.type);
@@ -375,6 +395,7 @@ export default function SniffPanel({
             {domains.slice(0, 5).map(d => (
               <button
                 key={d}
+                title={d}
                 onClick={() => setFilterDomain(d)}
                 style={{
                   padding: '5px 9px',
@@ -392,6 +413,11 @@ export default function SniffPanel({
                 {d}
               </button>
             ))}
+            {domains.length > 5 && (
+              <span className="text-muted" style={{ fontSize: 11, alignSelf: 'center' }}>
+                {t('moreFormats').replace('{count}', String(domains.length - 5))}
+              </span>
+            )}
           </div>
         )}
         {items.length === 0 ? (

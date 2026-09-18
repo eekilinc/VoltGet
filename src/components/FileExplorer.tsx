@@ -53,8 +53,8 @@ export default function FileExplorer() {
     setVerifyHashInput('');
     setChecksumModal({
       file,
-      md5: 'Hesaplanıyor...',
-      sha256: 'Hesaplanıyor...',
+      md5: t('checksumCalculating'),
+      sha256: t('checksumCalculating'),
       loading: true,
     });
     try {
@@ -71,8 +71,8 @@ export default function FileExplorer() {
     } catch {
       setChecksumModal({
         file,
-        md5: 'Hesaplanamadı',
-        sha256: 'Hesaplanamadı',
+        md5: t('checksumFailed'),
+        sha256: t('checksumFailed'),
         loading: false,
       });
     }
@@ -117,28 +117,28 @@ export default function FileExplorer() {
 
   const handleOpenFile = async (file: DownloadedFile) => {
     if (file.deletedFromDisk) {
-      toast.warning('Bu dosya yerel diskten silinmiş veya taşınmış');
+      toast.warning(t('deletedFromDiskMsg'));
       return;
     }
     try {
       await window.api.openFile(file.path);
-      toast.info(`"${file.name}" açılıyor...`);
+      toast.info(t('fileOpening').replace('{name}', file.name));
     } catch (e: any) {
-      toast.error('Dosya açılamadı: ' + e.message);
+      toast.error(t('fileOpenFailed') + ': ' + e.message);
     }
   };
 
   const handleShowInFolder = async (file: DownloadedFile) => {
     if (file.deletedFromDisk) {
-      toast.warning('Dosya diskte bulunamadı');
+      toast.warning(t('fileNotOnDisk'));
       return;
     }
     try {
       const ok = await window.api.showInFolder(file.path);
       if (ok) {
-        toast.info('Klasörde gösterildi ve seçildi');
+        toast.info(t('shownInFolder'));
       } else {
-        toast.warning('Dosya bulunamadı');
+        toast.warning(t('fileNotFound'));
       }
     } catch (e: any) {
       toast.error(e.message);
@@ -154,12 +154,12 @@ export default function FileExplorer() {
       });
       if (res?.success) {
         setFiles(prev => prev.filter(f => f.path !== file.path && f.id !== file.id));
-        toast.success(`"${file.name}" diskten silindi (Geri Dönüşüm Kutusuna taşındı)`);
+        toast.success(t('fileDeletedToTrash').replace('{name}', file.name));
       } else {
-        toast.error('Silinemedi: ' + (res?.error || 'Bilinmeyen hata'));
+        toast.error(t('deleteFailed') + ': ' + (res?.error || t('error')));
       }
     } catch (e: any) {
-      toast.error('Hata: ' + e.message);
+      toast.error(t('error') + ': ' + e.message);
     } finally {
       setDeleteConfirm(null);
     }
@@ -174,10 +174,10 @@ export default function FileExplorer() {
       });
       if (res?.success) {
         setFiles(prev => prev.filter(f => f.path !== file.path && f.id !== file.id));
-        toast.info(`"${file.name}" listeden kaldırıldı (dosya diskte kaldı)`);
+        toast.info(t('fileRemovedFromList').replace('{name}', file.name));
       }
     } catch (e: any) {
-      toast.error('Hata: ' + e.message);
+      toast.error(t('error') + ': ' + e.message);
     } finally {
       setDeleteConfirm(null);
     }
@@ -407,10 +407,15 @@ export default function FileExplorer() {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           {/* Arama Input */}
           <div style={{ flex: 1, minWidth: 220, position: 'relative' }}>
+            <label htmlFor="voltget-file-search" className="sr-only">
+              {t('searchPlaceholder')}
+            </label>
             <input
+              id="voltget-file-search"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder={t('searchPlaceholder')}
+              aria-label={t('searchPlaceholder')}
               style={{ width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 12 }}
             />
             {search && (
@@ -435,8 +440,11 @@ export default function FileExplorer() {
 
           {/* Sıralama */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>{t('sortBy')}</span>
+            <label htmlFor="voltget-file-sort" style={{ fontSize: 12, color: 'var(--muted)' }}>
+              {t('sortBy')}
+            </label>
             <select
+              id="voltget-file-sort"
               value={sort}
               onChange={e => setSort(e.target.value as SortType)}
               style={{
@@ -705,7 +713,7 @@ export default function FileExplorer() {
                     </button>
                     <button
                       onClick={() => handleShowInFolder(file)}
-                      title="Klasörde Göster (Dosya Seçili Açılır)"
+                      title={t('showInFolderTooltipLong')}
                       style={{
                         background: 'var(--panel-2)',
                         border: '1px solid var(--border)',
@@ -720,7 +728,7 @@ export default function FileExplorer() {
                     </button>
                     <button
                       onClick={() => handleCalculateChecksum(file)}
-                      title="MD5 & SHA-256 Hash Doğrulama"
+                      title={t('checksumTitle')}
                       style={{
                         background: 'var(--panel-2)',
                         border: '1px solid var(--border)',
@@ -750,7 +758,7 @@ export default function FileExplorer() {
                 )}
                 <button
                   onClick={() => setDeleteConfirm(file)}
-                  title="Listeden kaldır veya diskten sil"
+                  title={t('deleteOrRemoveTitle')}
                   style={{
                     background: 'var(--badge-danger-bg)',
                     border: '1px solid var(--badge-danger-border)',
@@ -857,7 +865,7 @@ export default function FileExplorer() {
                                 cursor: 'pointer',
                               }}
                             >
-                              Aç
+                              {t('actionOpen')}
                             </button>
                             <button
                               onClick={() => handleShowInFolder(file)}
@@ -876,7 +884,7 @@ export default function FileExplorer() {
                             </button>
                             <button
                               onClick={() => handleCalculateChecksum(file)}
-                              title="MD5 & SHA-256 Hash Doğrulama"
+                              title={t('checksumTitle')}
                               style={{
                                 background: 'var(--panel-2)',
                                 border: '1px solid var(--border)',
@@ -893,7 +901,7 @@ export default function FileExplorer() {
                         )}
                         <button
                           onClick={() => setDeleteConfirm(file)}
-                          title="Listeden kaldır veya diskten sil"
+                          title={t('deleteOrRemoveTitle')}
                           style={{
                             background: 'var(--badge-danger-bg)',
                             border: '1px solid var(--badge-danger-border)',
@@ -904,7 +912,7 @@ export default function FileExplorer() {
                             cursor: 'pointer',
                           }}
                         >
-                          Sil
+                          {t('actionDelete')}
                         </button>
                       </div>
                     </td>
@@ -1036,7 +1044,7 @@ export default function FileExplorer() {
                   marginTop: 2,
                 }}
               >
-                Vazgeç
+                {t('cancelAction')}
               </button>
             </div>
           </div>
@@ -1133,7 +1141,7 @@ export default function FileExplorer() {
                   disabled={checksumModal.loading}
                   onClick={() => {
                     navigator.clipboard.writeText(checksumModal.sha256);
-                    toast.success('SHA-256 panoya kopyalandı');
+                    toast.success(t('hashCopiedSha256'));
                   }}
                   style={{
                     background: 'var(--panel-2)',
@@ -1145,7 +1153,7 @@ export default function FileExplorer() {
                     color: 'var(--text)',
                   }}
                 >
-                  📋 Kopyala
+                  📋 {t('copy')}
                 </button>
               </div>
               <div
@@ -1181,7 +1189,7 @@ export default function FileExplorer() {
                   disabled={checksumModal.loading}
                   onClick={() => {
                     navigator.clipboard.writeText(checksumModal.md5);
-                    toast.success('MD5 panoya kopyalandı');
+                    toast.success(t('hashCopiedMd5'));
                   }}
                   style={{
                     background: 'var(--panel-2)',
@@ -1193,7 +1201,7 @@ export default function FileExplorer() {
                     color: 'var(--text)',
                   }}
                 >
-                  📋 Kopyala
+                  📋 {t('copy')}
                 </button>
               </div>
               <div

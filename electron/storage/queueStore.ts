@@ -17,9 +17,26 @@ export function createQueueStore(file: string, onError: (error: unknown) => void
   let writing: Promise<void> | undefined;
   function load(): StoredJob[] {
     if (!snapshot) {
-      const raw = fs.existsSync(file)
-        ? revealSecrets(JSON.parse(fs.readFileSync(file, 'utf8')))
-        : [];
+      let raw: unknown = [];
+      if (fs.existsSync(file)) {
+        try {
+          raw = revealSecrets(JSON.parse(fs.readFileSync(file, 'utf8')));
+        } catch (err) {
+          try {
+            const backup = file + '.corrupt-' + Date.now();
+            fs.copyFileSync(file, backup);
+            onError(
+              new Error(
+                '[VoltGet] Bozuk kuyruk yedeklendi: ' +
+                  backup +
+                  ' :: ' +
+                  String((err as Error)?.message || err)
+              )
+            );
+          } catch {}
+          raw = [];
+        }
+      }
       snapshot = Array.isArray(raw) ? raw : [];
     }
     return structuredClone(snapshot);

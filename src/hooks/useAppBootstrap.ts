@@ -49,7 +49,25 @@ export function useAppBootstrap(hasApi: boolean) {
     const onExt = (res: any) => {
       if (res) setExtConnected(!!res.connected);
     };
-    const cleanups = [window.api.onClipboardUrl(onClipboard), window.api.onExtensionStatus(onExt)];
+    const reloadConfig = () => {
+      window.api
+        .getConfig?.()
+        .then((c: any) => {
+          if (c && typeof c.clipboardWatcher === 'boolean')
+            setClipboardWatcherActive(c.clipboardWatcher);
+          if (c && typeof c.speedLimitKB === 'number') setSpeedLimitKB(c.speedLimitKB);
+        })
+        .catch(() => {});
+      window.api
+        .getDefaultDir()
+        .then(setOutDir)
+        .catch(() => {});
+    };
+    const cleanups = [
+      window.api.onClipboardUrl(onClipboard),
+      window.api.onExtensionStatus(onExt),
+      window.api.onConfigChanged?.(() => reloadConfig()),
+    ].filter(Boolean) as (() => void)[];
     return () => cleanups.forEach(unsubscribe => unsubscribe());
   }, [hasApi]);
 

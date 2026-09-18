@@ -1,6 +1,24 @@
 import { app, clipboard, dialog, ipcMain, shell } from 'electron';
 import path from 'path';
 import { AppConfigSchema } from '../config/schema.js';
+import { sanitizeFilename } from '../utils/files.js';
+
+/** Join altına düşmeyen dosya adlarını etkisizleştirir (path traversal koruması). */
+export function resolveSafeOutPath(
+  outDir: string,
+  filename: string
+): { filename: string; outPath: string } {
+  const safe = sanitizeFilename(
+    (filename || '').split('/').pop()?.split('?')[0] || `file_${Date.now()}`
+  );
+  const base = path.normalize(outDir + path.sep);
+  const outPath = path.normalize(path.join(outDir, safe));
+  if (!outPath.startsWith(base)) {
+    const fb = `file_${Date.now()}`;
+    return { filename: fb, outPath: path.join(outDir, fb) };
+  }
+  return { filename: safe, outPath };
+}
 
 export function registerMiscIpc(deps: {
   loadConfig: () => any;
@@ -110,9 +128,10 @@ export function registerMiscIpc(deps: {
   ipcMain.handle('http-download', async (_e, opts: any) => {
     const outDir = deps.getSiteFolder(opts.outDir || deps.getDefaultDir(), opts.url);
     deps.ensureDir(outDir);
-    const filename =
-      opts.filename || opts.url.split('/').pop()?.split('?')[0] || `file_${Date.now()}`;
-    const outPath = path.join(outDir, filename);
+    const { filename, outPath } = resolveSafeOutPath(
+      outDir,
+      opts.filename || opts.url.split('/').pop()?.split('?')[0] || `file_${Date.now()}`
+    );
     const id = Date.now().toString(36);
     const enrichedOpts = { ...opts, isHttp: true, outDir, outPath, filename, title: filename };
     if (!deps.canStart()) {

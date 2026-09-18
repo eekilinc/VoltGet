@@ -26,6 +26,7 @@ export function getDict(lang: Lang): Record<string, string> {
   return dict[lang] ?? dict.tr;
 }
 
-export function hasKey(key: string): boolean {
-  return key in dict.en;
+export function hasKey(key: string, lang?: Lang): boolean {
+  if (lang) return key in (dict[lang] ?? {});
+  return (Object.keys(dict) as Lang[]).every(l => key in dict[l]);
 }

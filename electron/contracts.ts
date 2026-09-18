@@ -29,6 +29,9 @@ export interface Job {
   filePath?: string;
   fileName?: string;
   deletedFromDisk?: boolean;
+  note?: string;
+  tags?: string[];
+  size?: number;
 }
 export interface StartResult {
   id: string;
@@ -193,6 +196,11 @@ export interface DesktopApi {
   onSwitchToSettingsTab: Listen<unknown>;
   onExtensionStatus: Listen<ExtensionStatus>;
   onClipboardUrl: Listen<{ url: string }>;
+  checkForUpdates(): Promise<unknown>;
+  quitAndInstall(): Promise<boolean>;
+  onUpdateAvailable: Listen<{ version: string }>;
+  onUpdateDownloaded: Listen<{ version: string }>;
+  onConfigChanged: Listen<unknown>;
   onFileConflict: Listen<{
     conflictId: string;
     fileName: string;

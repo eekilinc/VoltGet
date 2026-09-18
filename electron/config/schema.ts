@@ -47,12 +47,14 @@ export const AppConfigSchema = z.object({
         .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
         .default('07:00'),
       days: z.array(z.number().int().min(0).max(6)).default([0, 1, 2, 3, 4, 5, 6]),
+      runOnceAt: z.string().default(''),
     })
     .default({
       enabled: false,
       startTime: '02:00',
       stopTime: '07:00',
       days: [0, 1, 2, 3, 4, 5, 6],
+      runOnceAt: '',
     }),
   // 7. Proxy
   proxy: z

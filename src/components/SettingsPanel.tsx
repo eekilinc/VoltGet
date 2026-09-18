@@ -28,6 +28,15 @@ export default function SettingsPanel() {
   const [extConnected, setExtConnected] = useState(false);
   const [extModalOpen, setExtModalOpen] = useState(false);
   const [zipping, setZipping] = useState(false);
+  const [appUpdateState, setAppUpdateState] = useState<
+    'idle' | 'checking' | 'available' | 'downloaded' | 'uptodate'
+  >('idle');
+  const [appUpdateVersion, setAppUpdateVersion] = useState('');
+  const [siteHost, setSiteHost] = useState('');
+  const [siteUser, setSiteUser] = useState('');
+  const [sitePass, setSitePass] = useState('');
+  const [catName, setCatName] = useState('');
+  const [catExts, setCatExts] = useState('');
 
   useEffect(() => {
     window.api?.getDefaultDir().then(setOutDir);
@@ -38,13 +47,32 @@ export default function SettingsPanel() {
       .then(setUpdateInfo)
       .catch(() => {});
 
+    const offUpd1 = window.api?.onUpdateAvailable?.((info: any) => {
+      setAppUpdateState('available');
+      if (info?.version) setAppUpdateVersion(info.version);
+    });
+    const offUpd2 = window.api?.onUpdateDownloaded?.((info: any) => {
+      setAppUpdateState('downloaded');
+      if (info?.version) setAppUpdateVersion(info.version);
+    });
     window.api?.getExtensionStatus?.().then((res: any) => {
       if (res) setExtConnected(!!res.connected);
     });
     const onExt = (res: any) => {
       if (res) setExtConnected(!!res.connected);
     };
-    window.api?.onExtensionStatus?.(onExt);
+    const offExt = window.api?.onExtensionStatus?.(onExt);
+    return () => {
+      try {
+        offUpd1?.();
+      } catch {}
+      try {
+        offUpd2?.();
+      } catch {}
+      try {
+        offExt?.();
+      } catch {}
+    };
   }, []);
 
   async function pickFolder() {
@@ -79,6 +107,79 @@ export default function SettingsPanel() {
     toast.info(t('configSaved'));
   }
 
+  async function checkAppUpdate() {
+    setAppUpdateState('checking');
+    try {
+      await window.api?.checkForUpdates?.();
+      setTimeout(() => {
+        setAppUpdateState(s => (s === 'checking' ? 'uptodate' : s));
+      }, 15000);
+    } catch (e: any) {
+      setAppUpdateState('idle');
+      toast.error(t('error') + ': ' + String(e?.message || e));
+    }
+  }
+
+  async function addSiteLogin() {
+    const host = siteHost
+      .trim()
+      .toLowerCase()
+      .replace(/^www\./, '');
+    if (!host || !siteUser.trim()) {
+      toast.warning(t('siteLoginIncomplete'));
+      return;
+    }
+    const entry = {
+      id: Date.now().toString(36),
+      host,
+      username: siteUser.trim(),
+      password: sitePass,
+    };
+    const next = [...(cfg.siteLogins || []), entry];
+    await saveCfg({ siteLogins: next });
+    setSiteHost('');
+    setSiteUser('');
+    setSitePass('');
+  }
+
+  async function removeSiteLogin(id: string) {
+    await saveCfg({ siteLogins: (cfg.siteLogins || []).filter((l: any) => l.id !== id) });
+  }
+
+  async function addCustomCat() {
+    const name = catName.trim();
+    const exts = catExts
+      .split(',')
+      .map(e => e.trim().replace(/^\./, '').toLowerCase())
+      .filter(Boolean);
+    if (!name || !exts.length) {
+      toast.warning(t('customCatIncomplete'));
+      return;
+    }
+    const next = [...(cfg.customCategories || []), { name, extensions: exts }];
+    await saveCfg({ customCategories: next });
+    setCatName('');
+    setCatExts('');
+  }
+
+  async function removeCustomCat(idx: number) {
+    await saveCfg({
+      customCategories: (cfg.customCategories || []).filter((_: any, i: number) => i !== idx),
+    });
+  }
+
+  const inputStyle = {
+    width: '100%',
+    marginTop: 4,
+    padding: 6,
+    borderRadius: 8,
+    background: 'var(--panel-2)',
+    color: 'var(--text)',
+    border: '1px solid var(--border)',
+    outline: 'none',
+    fontSize: 12,
+  } as const;
+
   async function openExtFolder() {
     const res = await window.api?.openExtensionFolder();
     if (res?.success) toast.success(t('extFolderOpened'));
@@ -92,7 +193,7 @@ export default function SettingsPanel() {
       if (res?.success) toast.success(`${res.fileName || 'voltget-eklenti.zip'} ${t('done')}`);
       else toast.error(t('error'));
     } catch (e: any) {
-      toast.error('Hata: ' + (e?.message || e));
+      toast.error(t('error') + ': ' + (e?.message || e));
     }
     setZipping(false);
   }
@@ -547,6 +648,47 @@ export default function SettingsPanel() {
           />{' '}
           🗂️ {t('categorySubfolders')}
         </label>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+            📄 {t('conflictPolicyLabel')}
+          </div>
+          <select
+            value={cfg.fileConflictAction || 'rename'}
+            onChange={e => saveCfg({ fileConflictAction: e.target.value })}
+            style={{
+              width: '100%',
+              padding: '8px 10px',
+              borderRadius: 10,
+              background: 'var(--panel-2)',
+              color: 'var(--text)',
+              border: '1px solid var(--border)',
+              fontSize: 12,
+            }}
+          >
+            <option value="ask">{t('conflictAsk')}</option>
+            <option value="resume">{t('conflictResume')}</option>
+            <option value="overwrite">{t('conflictOverwrite')}</option>
+            <option value="rename">{t('conflictRename')}</option>
+            <option value="skip">{t('conflictSkip')}</option>
+          </select>
+        </div>
+        <label
+          style={{
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            marginTop: 10,
+            fontSize: 12,
+            cursor: 'pointer',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={cfg.completionDialog !== false}
+            onChange={e => saveCfg({ completionDialog: e.target.checked })}
+          />{' '}
+          {t('completionDialogShow')}
+        </label>
       </div>
 
       <div className="card-premium" style={{ borderRadius: 18, padding: 18 }}>
@@ -628,6 +770,76 @@ export default function SettingsPanel() {
             <option value="quit">{t('actionQuit')}</option>
           </select>
         </div>
+
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+            🔄 {t('retrySettingsTitle')}
+          </div>
+          <label
+            style={{
+              display: 'flex',
+              gap: 8,
+              alignItems: 'center',
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={cfg.autoRetryEnabled !== false}
+              onChange={e => saveCfg({ autoRetryEnabled: e.target.checked })}
+            />{' '}
+            {t('autoRetryEnabled')}
+          </label>
+          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+            <label style={{ flex: 1, fontSize: 12 }}>
+              {t('maxAutoRetries')}
+              <select
+                value={cfg.maxAutoRetries ?? 3}
+                onChange={e => saveCfg({ maxAutoRetries: parseInt(e.target.value) || 0 })}
+                style={{ marginTop: 4, width: '100%', padding: '8px', borderRadius: 10 }}
+              >
+                {[0, 1, 2, 3, 5, 10].map(n => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ flex: 1, fontSize: 12 }}>
+              {t('retryBaseDelay')}
+              <select
+                value={cfg.retryBaseDelaySec ?? 5}
+                onChange={e => saveCfg({ retryBaseDelaySec: parseInt(e.target.value) || 5 })}
+                style={{ marginTop: 4, width: '100%', padding: '8px', borderRadius: 10 }}
+              >
+                {[1, 2, 5, 10, 30, 60, 300].map(n => (
+                  <option key={n} value={n}>
+                    {n} sn
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <label
+          style={{
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            marginTop: 14,
+            fontSize: 12,
+            cursor: 'pointer',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={!!cfg.virusScanEnabled}
+            onChange={e => saveCfg({ virusScanEnabled: e.target.checked })}
+          />{' '}
+          🛡️ {t('virusScanEnabled')}
+        </label>
       </div>
 
       <div className="card-premium" style={{ borderRadius: 18, padding: 18 }}>
@@ -648,6 +860,40 @@ export default function SettingsPanel() {
             onChange={e => saveCfg({ sniffNotifications: e.target.checked })}
           />{' '}
           {t('sniffNotificationShow')}
+        </label>
+        <label
+          style={{
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            marginTop: 10,
+            fontSize: 12,
+            cursor: 'pointer',
+          }}
+        >
+          <span style={{ flex: 1 }}>{t('sniffDebounce')}</span>
+          <select
+            value={cfg.sniffDebounceMs ?? 8000}
+            onChange={e =>
+              saveCfg({ sniffDebounceMs: Math.max(1000, parseInt(e.target.value) || 8000) })
+            }
+            style={{
+              padding: '6px 8px',
+              borderRadius: 8,
+              fontSize: 12,
+              background: 'var(--panel-2)',
+              color: 'var(--text)',
+              border: '1px solid var(--border)',
+              outline: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            <option value={3000}>{t('sniffDebounce3s')}</option>
+            <option value={5000}>{t('sniffDebounce5s')}</option>
+            <option value={8000}>{t('sniffDebounce8s')}</option>
+            <option value={15000}>{t('sniffDebounce15s')}</option>
+            <option value={30000}>{t('sniffDebounce30s')}</option>
+          </select>
         </label>
         <label
           style={{
@@ -832,7 +1078,303 @@ export default function SettingsPanel() {
               })}
             </div>
           </div>
+          <div>
+            <div style={{ fontWeight: 700 }}>{t('schedulerOnce')}</div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              <input
+                type="datetime-local"
+                value={cfg.scheduler?.runOnceAt || ''}
+                onChange={e =>
+                  saveCfg({ scheduler: { ...cfg.scheduler, runOnceAt: e.target.value } })
+                }
+                style={{
+                  flex: 1,
+                  padding: 6,
+                  borderRadius: 8,
+                  background: 'var(--panel-2)',
+                  color: 'var(--text)',
+                  border: '1px solid var(--border)',
+                  outline: 'none',
+                }}
+              />
+              {cfg.scheduler?.runOnceAt && (
+                <button
+                  onClick={() => saveCfg({ scheduler: { ...cfg.scheduler, runOnceAt: '' } })}
+                  style={{
+                    background: 'var(--panel-2)',
+                    color: 'var(--text)',
+                    border: '1px solid var(--border)',
+                    padding: '6px 10px',
+                    borderRadius: 8,
+                    fontSize: 11,
+                    cursor: 'pointer',
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
+              {t('schedulerOnceDesc')}
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Site Girişleri */}
+      <div className="card-premium" style={{ borderRadius: 18, padding: 18 }}>
+        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>
+          🔑 {t('siteLoginsTitle')}
+        </div>
+        <div className="text-muted" style={{ fontSize: 11, marginBottom: 10 }}>
+          {t('siteLoginsDesc')}
+        </div>
+        {(cfg.siteLogins || []).length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+            {(cfg.siteLogins || []).map((l: any) => (
+              <div
+                key={l.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'var(--panel-2)',
+                  border: '1px solid var(--border)',
+                  padding: '6px 10px',
+                  borderRadius: 10,
+                  fontSize: 12,
+                }}
+              >
+                <span
+                  style={{
+                    flex: 1,
+                    fontWeight: 700,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {l.host} • {l.username}
+                </span>
+                <button
+                  onClick={() => removeSiteLogin(l.id)}
+                  style={{
+                    background: 'transparent',
+                    border: 0,
+                    color: 'var(--text-muted)',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                  title={t('remove')}
+                >
+                  🗑️
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <label style={{ flex: 2, minWidth: 140, fontSize: 12 }}>
+            {t('siteHost')}
+            <input
+              type="text"
+              value={siteHost}
+              onChange={e => setSiteHost(e.target.value)}
+              placeholder="example.com"
+              style={inputStyle}
+            />
+          </label>
+          <label style={{ flex: 1, minWidth: 110, fontSize: 12 }}>
+            {t('siteUser')}
+            <input
+              type="text"
+              value={siteUser}
+              onChange={e => setSiteUser(e.target.value)}
+              style={inputStyle}
+            />
+          </label>
+          <label style={{ flex: 1, minWidth: 110, fontSize: 12 }}>
+            {t('sitePass')}
+            <input
+              type="password"
+              value={sitePass}
+              onChange={e => setSitePass(e.target.value)}
+              style={inputStyle}
+            />
+          </label>
+        </div>
+        <button
+          onClick={addSiteLogin}
+          className="brand-gradient"
+          style={{
+            marginTop: 10,
+            color: '#fff',
+            border: 0,
+            padding: '8px 12px',
+            borderRadius: 10,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}
+        >
+          ＋ {t('siteAdd')}
+        </button>
+        <label style={{ display: 'block', marginTop: 12, fontSize: 12 }}>
+          {t('cookiesFromBrowser')}
+          <select
+            value={cfg.cookiesFromBrowser || 'none'}
+            onChange={e => saveCfg({ cookiesFromBrowser: e.target.value })}
+            style={{ ...inputStyle, cursor: 'pointer' }}
+          >
+            <option value="none">{t('cookiesNone')}</option>
+            <option value="chrome">Chrome</option>
+            <option value="edge">Edge</option>
+            <option value="firefox">Firefox</option>
+            <option value="brave">Brave</option>
+            <option value="opera">Opera</option>
+          </select>
+        </label>
+      </div>
+
+      {/* Bağlantı Ayarları */}
+      <div className="card-premium" style={{ borderRadius: 18, padding: 18 }}>
+        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 12 }}>
+          🔌 {t('connSettingsTitle')}
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12 }}>
+          <label style={{ flex: 1, minWidth: 140 }}>
+            {t('partsCount')}
+            <select
+              value={cfg.partsCount ?? 8}
+              onChange={e => saveCfg({ partsCount: parseInt(e.target.value) || 8 })}
+              style={{ ...inputStyle, cursor: 'pointer' }}
+            >
+              {[1, 2, 4, 8, 12, 16].map(n => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ flex: 1, minWidth: 140 }}>
+            {t('ytDlpFragments')}
+            <select
+              value={cfg.ytDlpFragments ?? 16}
+              onChange={e => saveCfg({ ytDlpFragments: parseInt(e.target.value) || 16 })}
+              style={{ ...inputStyle, cursor: 'pointer' }}
+            >
+              {[4, 8, 16, 24, 32].map(n => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ flex: 1, minWidth: 140 }}>
+            {t('requestTimeout')}
+            <select
+              value={cfg.requestTimeoutMs ?? 30000}
+              onChange={e => saveCfg({ requestTimeoutMs: parseInt(e.target.value) || 30000 })}
+              style={{ ...inputStyle, cursor: 'pointer' }}
+            >
+              {[
+                { v: 5000, l: '5 sn' },
+                { v: 15000, l: '15 sn' },
+                { v: 30000, l: '30 sn' },
+                { v: 60000, l: '60 sn' },
+                { v: 120000, l: '120 sn' },
+              ].map(o => (
+                <option key={o.v} value={o.v}>
+                  {o.l}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {/* Özel Kategoriler */}
+      <div className="card-premium" style={{ borderRadius: 18, padding: 18 }}>
+        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>
+          🏷️ {t('customCatsTitle')}
+        </div>
+        <div className="text-muted" style={{ fontSize: 11, marginBottom: 10 }}>
+          {t('customCatsDesc')}
+        </div>
+        {(cfg.customCategories || []).length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+            {(cfg.customCategories || []).map((c: any, i: number) => (
+              <div
+                key={i}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'var(--panel-2)',
+                  border: '1px solid var(--border)',
+                  padding: '6px 10px',
+                  borderRadius: 10,
+                  fontSize: 12,
+                }}
+              >
+                <span style={{ flex: 1, fontWeight: 700 }}>{c.name}</span>
+                <span className="text-muted" style={{ fontSize: 11 }}>
+                  {(c.extensions || []).join(', ')}
+                </span>
+                <button
+                  onClick={() => removeCustomCat(i)}
+                  style={{
+                    background: 'transparent',
+                    border: 0,
+                    color: 'var(--text-muted)',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                  title={t('remove')}
+                >
+                  🗑️
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <label style={{ flex: 1, minWidth: 140, fontSize: 12 }}>
+            {t('customCatName')}
+            <input
+              type="text"
+              value={catName}
+              onChange={e => setCatName(e.target.value)}
+              style={inputStyle}
+            />
+          </label>
+          <label style={{ flex: 2, minWidth: 180, fontSize: 12 }}>
+            {t('customCatExts')}
+            <input
+              type="text"
+              value={catExts}
+              onChange={e => setCatExts(e.target.value)}
+              placeholder="mp4, mkv"
+              style={inputStyle}
+            />
+          </label>
+        </div>
+        <button
+          onClick={addCustomCat}
+          className="brand-gradient"
+          style={{
+            marginTop: 10,
+            color: '#fff',
+            border: 0,
+            padding: '8px 12px',
+            borderRadius: 10,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}
+        >
+          ＋ {t('siteAdd')}
+        </button>
       </div>
 
       {/* Proxy Ayarları */}
@@ -1049,6 +1591,85 @@ export default function SettingsPanel() {
             >
               <span>ffmpeg</span>
               <span>{status.ffmpegOk ? t('ffmpegReady') : t('ffmpegMissing')}</span>
+            </div>
+            <div
+              style={{
+                background: 'var(--panel-2)',
+                padding: '8px 10px',
+                borderRadius: 10,
+                border: '1px solid var(--border)',
+              }}
+            >
+              <div
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <span>{t('appUpdateTitle')}</span>
+                <span className="text-muted" style={{ fontSize: 11 }}>
+                  {appUpdateState === 'checking'
+                    ? t('updating')
+                    : appUpdateState === 'available'
+                      ? `${t('updateAvailable')} ${appUpdateVersion}`
+                      : appUpdateState === 'downloaded'
+                        ? t('updateDownloaded')
+                        : appUpdateState === 'uptodate'
+                          ? t('updateNotAvailable')
+                          : ''}
+                </span>
+              </div>
+              <label
+                style={{
+                  display: 'flex',
+                  gap: 8,
+                  alignItems: 'center',
+                  marginTop: 8,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={cfg.appAutoUpdate !== false}
+                  onChange={e => saveCfg({ appAutoUpdate: e.target.checked })}
+                />{' '}
+                {t('appAutoUpdate')}
+              </label>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button
+                  onClick={checkAppUpdate}
+                  disabled={appUpdateState === 'checking'}
+                  style={{
+                    flex: 1,
+                    background: 'var(--panel)',
+                    color: 'var(--text)',
+                    border: '1px solid var(--border)',
+                    padding: '8px 12px',
+                    borderRadius: 10,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  🔄 {t('checkUpdates')}
+                </button>
+                {appUpdateState === 'downloaded' && (
+                  <button
+                    onClick={() => window.api?.quitAndInstall?.()}
+                    className="brand-gradient"
+                    style={{
+                      flex: 1,
+                      color: '#fff',
+                      border: 0,
+                      padding: '8px 12px',
+                      borderRadius: 10,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ↺ {t('updateRestart')}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ) : (

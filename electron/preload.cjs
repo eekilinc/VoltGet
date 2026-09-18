@@ -71,5 +71,10 @@ const api = {
     resumeAllDownloads: () => electron_1.ipcRenderer.invoke('resume-all-downloads'),
     setPostDownloadAction: action => electron_1.ipcRenderer.invoke('set-post-download-action', action),
     onSwitchToSettingsTab: cb => subscribe('switch-to-settings-tab', cb),
+    checkForUpdates: () => electron_1.ipcRenderer.invoke('check-for-updates'),
+    quitAndInstall: () => electron_1.ipcRenderer.invoke('quit-and-install'),
+    onUpdateAvailable: cb => subscribe('update-available', cb),
+    onUpdateDownloaded: cb => subscribe('update-downloaded', cb),
+    onConfigChanged: cb => subscribe('config-changed', cb),
 };
 electron_1.contextBridge.exposeInMainWorld('api', api);

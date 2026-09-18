@@ -36,6 +36,13 @@ describe('queue persistence', () => {
     expect(write).toHaveBeenCalledTimes(1);
     expect(store.load()).toEqual([{ id: 'job', percent: 99 }]);
   });
+  it('recovers from a corrupt queue file with a backup instead of throwing', async () => {
+    const { file, store } = await fixture();
+    await fs.promises.writeFile(file, '{broken json', 'utf8');
+    expect(store.load()).toEqual([]);
+    const dir = await fs.promises.readdir(path.dirname(file));
+    expect(dir.some(name => name.startsWith('queue.json.corrupt-'))).toBe(true);
+  });
   it('keeps the old file on write failure and supports a later retry', async () => {
     const { store, file } = await fixture();
     store.save([{ id: 'old' }]);

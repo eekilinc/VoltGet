@@ -35,7 +35,7 @@ app.whenReady().then(async () => {
     'save-queue': (_event, value) => {
       jobs = value;
     },
-    'get-app-version': () => '1.1.0',
+    'get-app-version': () => require('../package.json').version,
     'get-default-dir': () => process.env.VOLTGET_TEST_PROFILE,
     'get-yt-dlp-status': () => ({ binExists: true, ffmpegOk: true, config }),
     'get-extension-status': () => ({ connected: false, count: 0 }),

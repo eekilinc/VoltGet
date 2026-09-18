@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Job } from '../components/QueuePanel';
 
 export type JobFilterTab = 'all' | 'downloading' | 'done' | 'paused' | 'error';
-export type JobCategory = 'all' | 'video' | 'audio' | 'document' | 'archive' | 'program';
+export type JobCategory = 'all' | 'video' | 'audio' | 'document' | 'archive' | 'program' | 'other';
 
 export function getJobCategory(j: Job): JobCategory {
   if (j.opts?.asAudio) return 'audio';
@@ -21,7 +21,7 @@ export function getJobCategory(j: Job): JobCategory {
 
   if (j.opts?.formatId || (!j.opts?.isHttp && !j.opts?.asAudio)) return 'video';
 
-  return 'video';
+  return 'other';
 }
 
 export function useJobFilter(jobs: Job[]) {
@@ -53,7 +53,11 @@ export function useJobFilter(jobs: Job[]) {
         const matchTitle = j.title?.toLowerCase().includes(q);
         const matchUrl = j.url?.toLowerCase().includes(q);
         const matchFile = j.fileName?.toLowerCase().includes(q);
-        if (!matchTitle && !matchUrl && !matchFile) return false;
+        const matchNote = (j as any).note?.toLowerCase().includes(q);
+        const matchTags = ((j as any).tags || []).some((tag: string) =>
+          String(tag).toLowerCase().includes(q)
+        );
+        if (!matchTitle && !matchUrl && !matchFile && !matchNote && !matchTags) return false;
       }
       return true;
     });

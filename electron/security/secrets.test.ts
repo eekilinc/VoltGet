@@ -20,9 +20,15 @@ describe('credential protection', () => {
     expect(revealSecrets(saved)).toEqual(raw);
     expect(revealSecrets(raw)).toEqual(raw);
   });
-  it('never falls back to plaintext when OS encryption is unavailable', () => {
-    vi.mocked(safeStorage.isEncryptionAvailable).mockReturnValueOnce(false);
-    expect(() => protectSecrets({ password: 'private' })).toThrow();
+  it('falls back to plaintext without throwing when OS encryption is unavailable', () => {
+    vi.mocked(safeStorage.isEncryptionAvailable).mockReturnValue(false);
+    try {
+      const saved = protectSecrets({ password: 'private' });
+      expect(saved).toEqual({ password: 'private' });
+      expect(revealSecrets({ $voltgetSecret: 'undecodable' })).toBe('');
+    } finally {
+      vi.mocked(safeStorage.isEncryptionAvailable).mockReturnValue(true);
+    }
   });
   it('removes credentials, raw arguments, signed query strings and URL passwords from logs', () => {
     const text = JSON.stringify(

@@ -9,7 +9,9 @@ export function isTemporaryOrPartialFile(name: string): boolean {
 
 export function formatDate(ms: number): string {
   try {
-    return new Date(ms).toLocaleString();
+    const d = new Date(ms);
+    if (Number.isNaN(d.getTime())) return '-';
+    return d.toLocaleString();
   } catch {
     return '-';
   }

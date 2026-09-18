@@ -50,7 +50,7 @@ export default function DownloadPanel({
     const u = (targetUrl || url).trim();
     if (!u) return;
     if (!window.api) {
-      setError('window.api yok');
+      setError(t('apiMissing'));
       return;
     }
     setError('');
@@ -784,6 +784,22 @@ export default function DownloadPanel({
                     );
                   })}
               </div>
+              {info.formats.filter(f => (formatTab === 'video' ? !f.isAudioOnly : f.isAudioOnly))
+                .length > 16 && (
+                <div
+                  className="text-muted"
+                  style={{ fontSize: 11, marginTop: 8, textAlign: 'center' }}
+                >
+                  {t('moreFormats').replace(
+                    '{count}',
+                    String(
+                      info.formats.filter(f =>
+                        formatTab === 'video' ? !f.isAudioOnly : f.isAudioOnly
+                      ).length - 16
+                    )
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

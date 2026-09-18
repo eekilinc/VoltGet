@@ -13,7 +13,9 @@ import { getRetryPolicyFrom, resetRetryAttempts, scheduleRetry } from '../downlo
 import log from '../log/logger.js';
 import type { SniffDeduper } from '../sniff.js';
 import { shouldIgnoreSniffUrl } from '../sniff.js';
+import { sanitizeFilename } from '../utils/files.js';
 import { isPlayerOrEmbedUrl, isStreamUrl, normalizeToMasterPlaylist } from '../utils/playlist.js';
+import { redactSecrets } from '../security/secrets.js';
 import { killProcessTree } from '../utils/process.js';
 import { maybeVirusScan } from '../virusscan.js';
 import { buildFfmpegFallbackArgs, buildYtDlpArgs } from './args.js';
@@ -101,7 +103,9 @@ export function createDownloadOrchestrator(deps: OrchestratorDeps) {
         deps.recentStreamsByPage.get(opts.url) ||
         deps.recentStreamsByPage.get('latest');
       if (matched && isStreamUrl(matched)) {
-        log.info('[VoltGet] doStartDownload resolved embed URL to real stream:', { matched });
+        log.info('[VoltGet] doStartDownload resolved embed URL to real stream:', {
+          matched: redactSecrets(matched),
+        });
         finalUrl = matched;
         opts.url = matched;
       }
@@ -112,18 +116,21 @@ export function createDownloadOrchestrator(deps: OrchestratorDeps) {
 
     // 2. Web scripti (.js) veya stil indirme girişimlerini engelle
     if (shouldIgnoreSniffUrl(finalUrl, opts.filename)) {
-      log.info('[VoltGet] Rejected script download attempt:', { finalUrl });
+      log.info('[VoltGet] Rejected script download attempt:', {
+        finalUrl: redactSecrets(finalUrl),
+      });
       return;
     }
 
     const isGeneric = opts.isHttp || isGenericFileUrl(finalUrl, opts.filename, opts.isHttp);
     if (isGeneric) {
-      const filename =
-        opts.filename || finalUrl.split('/').pop()?.split('?')[0] || `file_${Date.now()}`;
+      const filename = sanitizeFilename(
+        opts.filename || finalUrl.split('/').pop()?.split('?')[0] || `file_${Date.now()}`
+      );
       const baseOut = opts.outDir || deps.getDefaultDir();
       const outDir = deps.getSiteFolder(baseOut, finalUrl, filename);
       deps.ensureDir(outDir);
-      const outPath = path.join(outDir, filename);
+      const outPath = path.join(outDir, path.basename(filename));
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('download-started', {
           id,
@@ -386,13 +393,11 @@ export function createDownloadOrchestrator(deps: OrchestratorDeps) {
         log.info('[VoltGet] yt-dlp exited with code', {
           code,
           action: 'triggering ffmpeg fallback for HLS',
-          finalUrl,
+          finalUrl: redactSecrets(finalUrl),
         });
-        const rawFileName =
-          opts.filename ||
-          (opts.title
-            ? `${opts.title.replace(/[\\/:*?"<>|]/g, '_')}.mp4`
-            : `video_${Date.now()}.mp4`);
+        const rawFileName = sanitizeFilename(
+          opts.filename || (opts.title ? `${opts.title}.mp4` : `video_${Date.now()}.mp4`)
+        );
         const actualOut = path.join(outDir, rawFileName);
         const tempOut = path.join(tempDir, `ff_${id}_${rawFileName}`);
         const ffArgs = buildFfmpegFallbackArgs(

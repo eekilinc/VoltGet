@@ -47,6 +47,21 @@ describe('getJobCategory', () => {
     expect(getJobCategory(job2)).toBe('audio');
   });
 
+  it('falls back to other instead of video for unknown jobs', () => {
+    const job: Job = {
+      id: '7',
+      url: 'https://example.com/stream',
+      title: 'Unknown',
+      percent: 0,
+      speed: '',
+      eta: '',
+      total: '',
+      status: 'queued',
+      log: '',
+      opts: { isHttp: true },
+    };
+    expect(getJobCategory(job)).toBe('other');
+  });
   it('correctly classifies archives, documents and programs', () => {
     const zipJob: Job = {
       id: '4',

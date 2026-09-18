@@ -189,6 +189,9 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
     let count = 0;
     // Remove waiting jobs first so finishing an active pause cannot start them.
     for (const job of deps.pendingQueue.splice(0)) {
+      try {
+        deps.cancelScheduledRetry?.(job.id);
+      } catch {}
       deps.pausedDownloads.set(job.id, job.opts);
       deps.send('download-paused', { id: job.id });
       count++;
@@ -197,6 +200,9 @@ export function registerQueueIpc(deps: QueueIpcDeps) {
       const opts = deps.activeOpts.get(id);
       if (opts) deps.pausedDownloads.set(id, opts);
       deps.pausingIds.add(id);
+      try {
+        deps.cancelScheduledRetry?.(id);
+      } catch {}
       if (typeof proc.pause === 'function') await proc.pause();
       else if (typeof proc.kill === 'function') await proc.kill();
       deps.activeDownloads.delete(id);
