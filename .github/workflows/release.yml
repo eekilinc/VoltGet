@@ -74,11 +74,12 @@ jobs:
             release/checksums.sha256.txt
           generate_release_notes: true
           body: |
-            ## VoltGet 1.1.3
-            ### Eksik UI Tamamlamaları
-            - **Tablo Görünümü Tamamlandı**: Kuyruk panelinde kart/tablo geçişi artık çalışıyor (Dosya, Boyut, Durum, İlerleme + hız/ETA).
-            - **Proxy Tam Kapsama**: system / none / manual / pac modları, PAC URL, kullanıcı adı/şifre ve bypass alanları eklendi.
-            - **Zamanlayıcı Gün Seçimi**: Pzt-Paz gün butonları ile scheduler.days artık UI'dan yönetiliyor.
+            ## VoltGet 1.1.5
+            ### IDM Benzeri 3-Kolon Layout
+            - **Sağ Sidebar Kuyruk**: İndirme kuyruğu artık kalıcı sağ panelde (280px) - progress bar, hız/ETA, hızlı aksiyonlar
+            - **DownloadPanel Temizlendi**: Sadece URL girişi/analiz; inline job kartları kaldırıldı
+            - **3-Kolon Düzen**: Sol nav (224px) + Ana içerik + Sağ sidebar - IDM benzeri tek ekran deneyimi
+            - **Duplicate Kaldırıldı**: Alt kısımdaki ikinci QueuePanel silindi
           draft: false
           prerelease: false
           fail_on_unmatched_files: false
