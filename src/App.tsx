@@ -705,7 +705,7 @@ export default function App() {
       </div>
 
       {/* Sağ Sidebar - Kuyruk */}
-      <div style={{ width: 280, minWidth: 280, borderLeft: '1px solid var(--border)', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ width: 400, minWidth: 400, maxWidth: 400, borderLeft: '1px solid var(--border)', flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--panel)' }}>
         <QueuePanel
           jobs={jobs}
           onCancel={handleCancelJob}
