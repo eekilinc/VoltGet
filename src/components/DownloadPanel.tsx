@@ -22,35 +22,12 @@ type Info = {
   formats: Format[];
 };
 
-export interface DownloadCardJob {
-  id: string;
-  url: string;
-  title: string;
-  percent: number;
-  speed: string;
-  eta: string;
-  total: string;
-  status: 'downloading' | 'done' | 'error' | 'queued' | 'paused';
-  log: string;
-  opts?: any;
-  filePath?: string;
-  fileName?: string;
-}
-
 export default function DownloadPanel({
   outDir,
   onStartDownload,
-  jobs,
-  onCancelJob,
-  _onMoveJob,
-  onPauseJob,
 }: {
   outDir: string;
   onStartDownload: (opts: any) => Promise<any>;
-  jobs: DownloadCardJob[];
-  onCancelJob?: (id: string) => void;
-  onMoveJob?: (id: string, direction: 'up' | 'down') => void;
-  onPauseJob?: (id: string) => void;
 }) {
   const { t } = useAppSettings();
   const toast = useToast();
@@ -219,163 +196,6 @@ export default function DownloadPanel({
           <span style={{ fontSize: 48, animation: 'bounce 0.8s infinite' }}>🎯</span>
           <div style={{ fontSize: 18, fontWeight: 900, color: '#60a5fa' }}>{t('dropLinkHere')}</div>
           <div style={{ fontSize: 12, color: '#cbd5e1' }}>{t('dropLinkDesc')}</div>
-        </div>
-      )}
-
-      {/* actively downloading jobs cards */}
-      {jobs.length > 0 && (
-        <div
-          style={{
-            marginTop: 18,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-            overflow: 'auto',
-            maxHeight: 'calc(100vh - 300px)',
-          }}
-        >
-          {jobs.map((job, _jIdx) => (
-            <div
-              key={job.id}
-              style={{
-                background: 'var(--panel-2)',
-                border: '1px solid var(--border)',
-                borderRadius: 12,
-                padding: 12,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-                transition: 'all 0.15s ease',
-                marginBottom: 8,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 10,
-                    background: job.status === 'downloading' ? 'var(--accent-solid)' : 'var(--panel-2)',
-                    border: '1px solid var(--border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 18,
-                    color: '#fff',
-                    flexShrink: 0,
-                  }}
-                >
-                  {job.status === 'downloading' ? '⬇️' : job.status === 'paused' ? '⏸️' : job.status === 'queued' ? '⏳' : '✓'}
-                </span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontWeight: 800,
-                      fontSize: 13,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      color: job.status === 'done' ? 'var(--text-muted)' : 'var(--text)',
-                    }}
-                  >
-                    {job.title.slice(0, 50)}
-                  </div>
-                  <div className="text-muted" style={{ fontSize: 11, marginTop: 2, wordBreak: 'break-all' }}>
-                    {job.url.slice(0, 60)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Progress + Stats row */}
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      width: '100%',
-                      height: 6,
-                      background: 'var(--panel-3)',
-                      borderRadius: 3,
-                      overflow: 'hidden',
-                      marginTop: 2,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: job.percent ? Math.min(job.percent, 100) + '%' : '0%',
-                        height: '100%',
-                        background: job.status === 'downloading' ? 'var(--accent-solid)' : job.status === 'paused' ? '#f59e0b' : 'var(--accent-solid)',
-                        transition: 'width 0.3s ease',
-                      }}
-                    ></div>
-                  </div>
-                </div>
-                <div style={{ fontSize: 10, minWidth: 40, color: 'var(--muted)' }}>
-                  {job.percent}% {job.speed}
-                </div>
-                <div style={{ fontSize: 10, minWidth: 40, color: 'var(--muted)' }}>
-                  {job.eta}
-                </div>
-              </div>
-
-              {/* Quick actions */}
-              <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-                {job.status !== 'done' && (
-                  <button
-                    onClick={() => onPauseJob?.(job.id)}
-                    style={{
-                      flex: 1,
-                      padding: '4px 6px',
-                      borderRadius: 6,
-                      background: job.status === 'paused' ? 'var(--badge-info-bg)' : 'var(--panel-2)',
-                      color: job.status === 'paused' ? 'var(--badge-info-text)' : 'var(--text)',
-                      border: '1px solid ' + (job.status === 'paused' ? 'var(--badge-info-border)' : 'var(--border)'),
-                      fontSize: 9,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {job.status === 'paused' ? t('resume') : t('pause')}
-                  </button>
-                )}
-                {job.status !== 'done' && job.status !== 'error' && (
-                  <button
-                    onClick={() => onCancelJob?.(job.id)}
-                    style={{
-                      flex: 1,
-                      padding: '4px 6px',
-                      borderRadius: 6,
-                      background: 'var(--panel-2)',
-                      color: 'var(--muted)',
-                      border: '1px solid var(--border)',
-                      fontSize: 9,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    ❌
-                  </button>
-                )}
-                {job.status === 'done' && (
-                  <button
-                    onClick={() => window.api.openFolder(outDir)}
-                    style={{
-                      flex: 1,
-                      padding: '4px 6px',
-                      borderRadius: 6,
-                      background: 'var(--panel-2)',
-                      color: 'var(--text)',
-                      border: '1px solid var(--border)',
-                      fontSize: 9,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    📂
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
         </div>
       )}
 

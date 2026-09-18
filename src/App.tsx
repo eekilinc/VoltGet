@@ -683,15 +683,11 @@ export default function App() {
             📂 {t('folder')}
           </button>
         </div>
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', background: 'var(--bg-2)' }}>
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: 'var(--bg-2)' }}>
           {tab === 'download' && (
             <DownloadPanel
               outDir={outDir}
               onStartDownload={handleStartDownload}
-              jobs={jobs}
-              onCancelJob={handleCancelJob}
-              onMoveJob={handleMoveJob}
-              onPauseJob={() => {}}
             />
           )}
           {tab === 'sniff' && (
@@ -708,75 +704,77 @@ export default function App() {
         </div>
       </div>
 
-      <QueuePanel
-        jobs={jobs}
-        onCancel={handleCancelJob}
-        onMoveJob={handleMoveJob}
-        onPause={id => {
-          try {
-            window.api?.pauseDownload?.(id)?.catch?.(() => {});
-          } catch {}
-          setJobs(j =>
-            j.map(x => (x.id === id ? { ...x, status: 'paused', log: 'Duraklatıldı' } : x))
-          );
-          try {
-            window.api?.saveQueue?.(
-              jobs.map(x => (x.id === id ? { ...x, status: 'paused', log: 'Duraklatıldı' } : x))
-            );
-          } catch {}
-        }}
-        onResume={async job => {
-          let res: any = null;
-          try {
-            res = await window.api.resumeDownload({ id: job.id, opts: job.opts });
-          } catch {}
-          setJobs(j =>
-            j.map(x =>
-              x.id === job.id
-                ? {
-                    ...x,
-                    status: res?.queued ? 'queued' : 'downloading',
-                    log: res?.queued ? 'Sırada…' : 'Devam ediyor...',
-                  }
-                : x
-            )
-          );
-        }}
-        onPauseAll={async () => {
-          try {
-            await window.api.pauseAllDownloads?.();
-          } catch {}
-          setJobs(j => {
-            const n = j.map(x =>
-              x.status === 'downloading' || x.status === 'queued'
-                ? { ...x, status: 'paused' as const, log: 'Duraklatıldı' }
-                : x
+      {/* Sağ Sidebar - Kuyruk */}
+      <div style={{ width: 280, minWidth: 280, borderLeft: '1px solid var(--border)', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+        <QueuePanel
+          jobs={jobs}
+          onCancel={handleCancelJob}
+          onMoveJob={handleMoveJob}
+          onPause={id => {
+            try {
+              window.api?.pauseDownload?.(id)?.catch?.(() => {});
+            } catch {}
+            setJobs(j =>
+              j.map(x => (x.id === id ? { ...x, status: 'paused', log: 'Duraklatıldı' } : x))
             );
             try {
-              window.api?.saveQueue?.(n);
+              window.api?.saveQueue?.(
+                jobs.map(x => (x.id === id ? { ...x, status: 'paused', log: 'Duraklatıldı' } : x))
+              );
             } catch {}
-            return n;
-          });
-        }}
-        onResumeAll={async () => {
-          try {
-            await window.api.resumeAllDownloads?.();
-          } catch {}
-          setJobs(j => {
-            const n = j.map(x =>
-              x.status === 'paused'
-                ? { ...x, status: 'downloading' as const, log: 'Devam ediyor...' }
-                : x
-            );
+          }}
+          onResume={async job => {
+            let res: any = null;
             try {
-              window.api?.saveQueue?.(n);
+              res = await window.api.resumeDownload({ id: job.id, opts: job.opts });
             } catch {}
-            return n;
-          });
-        }}
-        onRetry={job => handleRetry(job as any)}
-        onOpenFolder={() => window.api.openFolder(outDir)}
-        onOpenFile={filePath => window.api.openFile(filePath)}
+            setJobs(j =>
+              j.map(x =>
+                x.id === job.id
+                  ? {
+                      ...x,
+                      status: res?.queued ? 'queued' : 'downloading',
+                      log: res?.queued ? 'Sırada…' : 'Devam ediyor...',
+                    }
+                  : x
+              )
+            );
+          }}
+          onPauseAll={async () => {
+            try {
+              await window.api.pauseAllDownloads?.();
+            } catch {}
+            setJobs(j => {
+              const n = j.map(x =>
+                x.status === 'downloading' || x.status === 'queued'
+                  ? { ...x, status: 'paused' as const, log: 'Duraklatıldı' }
+                  : x
+              );
+              try {
+                window.api?.saveQueue?.(n);
+              } catch {}
+              return n;
+            });
+          }}
+          onResumeAll={async () => {
+            try {
+              await window.api.resumeAllDownloads?.();
+            } catch {}
+            setJobs(j => {
+              const n = j.map(x =>
+                x.status === 'paused'
+                  ? { ...x, status: 'downloading' as const, log: 'Devam ediyor...' }
+                  : x
+              );
+              try {
+                window.api?.saveQueue?.(n);
+              } catch {}
+              return n;
+            });
+          }}
+          onRetry={job => handleRetry(job as any)}
+          onOpenFolder={() => window.api.openFolder(outDir)}
+          onOpenFile={filePath => window.api.openFile(filePath)}
         onShowInFolder={filePath => window.api.showInFolder(filePath)}
         onRemoveJob={handleRemoveJob}
         onDeleteJob={handleDeleteJob}
@@ -822,8 +820,8 @@ export default function App() {
             return n;
           })
         }
-        compact
       />
+      </div>
 
       {/* IDM Tarzı Gelişmiş Dosya Özellikleri ve İndirme Penceresi (Download Properties Dialog) */}
       {downloadModal && (
