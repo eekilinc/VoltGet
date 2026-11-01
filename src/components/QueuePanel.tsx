@@ -275,7 +275,7 @@ export default function QueuePanel({
             <button
               type="button"
               onClick={() => setViewMode('table')}
-              title="Tablo Görünümü (Hydra Grid)"
+              title="Tablo Görünümü"
               style={{
                 display: 'flex',
                 alignItems: 'center',

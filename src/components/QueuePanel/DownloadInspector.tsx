@@ -185,7 +185,7 @@ export default function DownloadInspector({
               }}
             >
               <Layers size={13} />
-              <span>Hydra Parçaları</span>
+              <span>Bağlantı Parçaları</span>
             </button>
 
             <button

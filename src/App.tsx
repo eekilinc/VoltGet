@@ -268,7 +268,7 @@ export default function App() {
             Bağlantıyı Buraya Bırakın
           </div>
           <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-            Hydra çok parçalı indirici otomatik olarak başlatılacak
+            Çok parçalı hızlı indirme otomatik olarak başlatılacak
           </div>
         </div>
       )}
@@ -308,20 +308,8 @@ export default function App() {
               >
                 VoltGet
               </span>
-              <span
-                style={{
-                  fontSize: 9,
-                  fontWeight: 800,
-                  padding: '1px 5px',
-                  borderRadius: 4,
-                  background: 'var(--accent-solid)',
-                  color: '#fff',
-                }}
-              >
-                HYDRA
-              </span>
             </div>
-            <div style={{ fontSize: 10, color: 'var(--muted)' }}>Modern İndirme Hızlandırıcı</div>
+            <div style={{ fontSize: 10, color: 'var(--muted)' }}>Modern İndirme Yöneticisi</div>
           </div>
         </div>
 
@@ -599,6 +587,21 @@ export default function App() {
             gap: 8,
           }}
         >
+          {status && (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontSize: 10,
+                color: 'var(--muted)',
+                padding: '0 2px',
+              }}
+            >
+              <span>yt-dlp: {status.binExists || status.pathExists ? '✓' : '✗'}</span>
+              <span>ffmpeg: {status.ffmpegOk ? '✓' : '✗'}</span>
+              <span>v{appVersion}</span>
+            </div>
+          )}
           {status && (
             <div
               style={{

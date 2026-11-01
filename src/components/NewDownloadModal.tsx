@@ -249,7 +249,7 @@ export default function NewDownloadModal({
                 {t('singleLinkDownload') || 'Yeni İndirme Ekle'}
               </div>
               <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                Hydra çok parçalı hızlandırma ve yt-dlp medya desteği
+                Çok parçalı hızlı indirme ve yt-dlp medya desteği
               </div>
             </div>
           </div>
@@ -723,7 +723,7 @@ export default function NewDownloadModal({
                   >
                     <option value={1}>1 Bağlantı (Tek Parça)</option>
                     <option value={4}>4 Bağlantı (Standart)</option>
-                    <option value={8}>8 Bağlantı (Hydra Turbo - Önerilen)</option>
+                    <option value={8}>8 Bağlantı (Turbo - Önerilen)</option>
                     <option value={16}>16 Bağlantı (Maksimum Hızlandırma)</option>
                     <option value={32}>32 Bağlantı (Ekstrem Hatlar)</option>
                   </select>
