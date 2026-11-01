@@ -1,13 +1,18 @@
 import { useMemo, useState } from 'react';
 import {
   Activity,
+  AlertCircle,
+  CheckCircle2,
   Copy,
   ExternalLink,
   FolderOpen,
+  Globe,
   Info,
   Layers,
+  Loader2,
   Pause,
   Play,
+  ShieldCheck,
   Terminal,
   Trash2,
   X,
@@ -42,22 +47,28 @@ export default function DownloadInspector({
 }: DownloadInspectorProps) {
   const { t: _t } = useAppSettings();
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<'segments' | 'graph' | 'logs' | 'details'>('segments');
+  const [activeTab, setActiveTab] = useState<
+    'segments' | 'graph' | 'logs' | 'details' | 'checksum'
+  >('segments');
 
-  // Simulated / detected multi-connection segments (Hydra style range chunks)
+  // Checksum / Bütünlük Kontrolü Durumları
+  const [hashAlgo, setHashAlgo] = useState<'sha256' | 'md5' | 'sha1'>('sha256');
+  const [computedHash, setComputedHash] = useState<string>('');
+  const [isComputingHash, setIsComputingHash] = useState(false);
+  const [verifyInput, setVerifyInput] = useState<string>(job?.opts?.expectedHash || '');
+
+  // Simulated / detected multi-connection segments (range chunks)
   const segments = useMemo(() => {
     if (!job) return [];
     const count = job.opts?.segments || 8;
     const progress = Math.min(100, Math.max(0, job.percent || 0));
 
-    // Create chunk states based on overall percentage
     const chunks = [];
     for (let i = 0; i < count; i++) {
       let chunkPct = 0;
       if (job.status === 'done') {
         chunkPct = 100;
       } else if (job.status === 'downloading') {
-        // Stagger chunk progress realistically
         const variance = ((i * 17) % 25) - 12;
         chunkPct = Math.min(100, Math.max(0, progress + variance));
       } else if (job.status === 'paused') {
@@ -79,6 +90,28 @@ export default function DownloadInspector({
     toast.info(`${label} kopyalandı`);
   };
 
+  const handleCalculateHash = async () => {
+    if (!job?.filePath) {
+      toast.warning('Dosya yolu bulunamadı veya indirme henüz tamamlanmamış');
+      return;
+    }
+    setIsComputingHash(true);
+    try {
+      const res: any = await window.api?.computeFileHash?.(job.filePath, hashAlgo);
+      if (res?.hash) {
+        setComputedHash(res.hash);
+        toast.success(`${hashAlgo.toUpperCase()} hash hesaplandı`);
+      } else if (typeof res === 'string') {
+        setComputedHash(res);
+        toast.success(`${hashAlgo.toUpperCase()} hash hesaplandı`);
+      }
+    } catch (e: any) {
+      toast.error(String(e?.message || e));
+    } finally {
+      setIsComputingHash(false);
+    }
+  };
+
   // Sparkline coordinates for speed graph
   const maxSpeed = Math.max(1, ...speedHistory);
   const sparklinePoints = speedHistory
@@ -89,6 +122,11 @@ export default function DownloadInspector({
     })
     .join(' ');
 
+  const hashMatches =
+    computedHash && verifyInput && computedHash.toLowerCase() === verifyInput.trim().toLowerCase();
+  const hashMismatch =
+    computedHash && verifyInput && computedHash.toLowerCase() !== verifyInput.trim().toLowerCase();
+
   return (
     <div
       style={{
@@ -96,7 +134,7 @@ export default function DownloadInspector({
         background: 'var(--panel)',
         display: 'flex',
         flexDirection: 'column',
-        height: 240,
+        height: 250,
         flexShrink: 0,
         animation: 'slideUp 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
         zIndex: 10,
@@ -230,6 +268,26 @@ export default function DownloadInspector({
 
             <button
               type="button"
+              onClick={() => setActiveTab('checksum')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '4px 9px',
+                borderRadius: 6,
+                border: 0,
+                fontSize: 11,
+                fontWeight: 600,
+                background: activeTab === 'checksum' ? 'var(--accent-solid)' : 'transparent',
+                color: activeTab === 'checksum' ? '#fff' : 'var(--muted)',
+              }}
+            >
+              <ShieldCheck size={13} />
+              <span>Bütünlük (Hash)</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab('logs')}
               style={{
                 display: 'flex',
@@ -269,7 +327,15 @@ export default function DownloadInspector({
       </div>
 
       {/* Gövde */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 18px', display: 'flex', gap: 20 }}>
+      <div
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '12px 18px',
+          display: 'flex',
+          gap: 20,
+        }}
+      >
         {/* Sol Ana Görünüm */}
         <div
           style={{
@@ -291,7 +357,7 @@ export default function DownloadInspector({
                 }}
               >
                 <span style={{ color: 'var(--muted)', fontWeight: 600 }}>
-                  Aktif Multi-Source Segment Akışı ({segments.length} Eşzamanlı Bağlantı)
+                  Aktif Segment Akışı ({segments.length} Eşzamanlı Bağlantı)
                 </span>
                 <span
                   style={{ color: 'var(--accent-solid)', fontWeight: 700 }}
@@ -301,7 +367,7 @@ export default function DownloadInspector({
                 </span>
               </div>
 
-              {/* Segment Parça Izgarası (Hydra Range View) */}
+              {/* Segment Parça Izgarası */}
               <div
                 style={{
                   display: 'grid',
@@ -357,6 +423,63 @@ export default function DownloadInspector({
                   </div>
                 ))}
               </div>
+
+              {/* Aktif Çoklu Ayna (Mirror) Kaynakları */}
+              {job.opts?.mirrors && job.opts.mirrors.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 3,
+                    background: 'var(--panel-2)',
+                    padding: '6px 10px',
+                    borderRadius: 6,
+                    border: '1px solid var(--border)',
+                    fontSize: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      color: 'var(--muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5,
+                    }}
+                  >
+                    <Globe size={12} color="var(--accent-solid)" />
+                    <span>
+                      Aktif Çoklu Ayna (Mirror) Kaynakları: {1 + job.opts.mirrors.length} Sunucu
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      color: 'var(--text-bright)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                    className="tech-mono"
+                  >
+                    Ana Kaynak: {job.url}
+                  </div>
+                  {job.opts.mirrors.map((m: string, i: number) => (
+                    <div
+                      key={i}
+                      style={{
+                        color: 'var(--muted)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      className="tech-mono"
+                    >
+                      Ayna #{i + 1}: {m}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -456,6 +579,172 @@ export default function DownloadInspector({
                   {job.opts?.isHttp ? 'Multi-Thread HTTP (Direct)' : 'yt-dlp Media Stream'}
                 </span>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'checksum' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 11 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <select
+                  value={hashAlgo}
+                  onChange={e => setHashAlgo(e.target.value as any)}
+                  style={{
+                    padding: '5px 8px',
+                    borderRadius: 6,
+                    background: 'var(--panel-2)',
+                    border: '1px solid var(--border)',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: 'var(--text)',
+                  }}
+                >
+                  <option value="sha256">SHA-256</option>
+                  <option value="md5">MD5</option>
+                  <option value="sha1">SHA-1</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={handleCalculateHash}
+                  disabled={isComputingHash || !job.filePath}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '5px 12px',
+                    borderRadius: 6,
+                    border: 0,
+                    background: 'var(--accent-solid)',
+                    color: '#fff',
+                    fontSize: 11,
+                    fontWeight: 700,
+                  }}
+                >
+                  {isComputingHash ? (
+                    <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                  ) : (
+                    <ShieldCheck size={13} />
+                  )}
+                  <span>{isComputingHash ? 'Hesaplanıyor...' : 'Hash Hesapla'}</span>
+                </button>
+
+                <div style={{ flex: 1 }}>
+                  <input
+                    type="text"
+                    value={verifyInput}
+                    onChange={e => setVerifyInput(e.target.value)}
+                    placeholder="Beklenen hash değerini buraya yapıştırıp doğrulayın..."
+                    style={{
+                      width: '100%',
+                      padding: '5px 8px',
+                      borderRadius: 6,
+                      background: 'var(--panel-2)',
+                      border: '1px solid var(--border)',
+                      fontSize: 11,
+                      color: 'var(--text)',
+                      fontFamily: 'monospace',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {computedHash && (
+                <div
+                  style={{
+                    background: 'var(--panel-2)',
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    border: '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <div
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}
+                  >
+                    <span
+                      style={{ fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' }}
+                    >
+                      {hashAlgo}:
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: 'monospace',
+                        color: 'var(--text-bright)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {computedHash}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(computedHash, 'Hash')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      border: '1px solid var(--border)',
+                      background: 'var(--panel-3)',
+                      color: 'var(--text)',
+                      fontSize: 10,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <Copy size={12} />
+                    <span>Kopyala</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Doğrulama Durum Rozeti */}
+              {hashMatches && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 10px',
+                    borderRadius: 6,
+                    background: 'var(--badge-success-bg)',
+                    border: '1px solid var(--badge-success-border)',
+                    color: 'var(--badge-success-text)',
+                    fontSize: 11,
+                    fontWeight: 700,
+                  }}
+                >
+                  <CheckCircle2 size={14} color="var(--badge-success-text)" />
+                  <span>Bütünlük Doğrulandı: İndirilen dosya orijinal ve bozulmamış!</span>
+                </div>
+              )}
+
+              {hashMismatch && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 10px',
+                    borderRadius: 6,
+                    background: 'var(--badge-danger-bg)',
+                    border: '1px solid var(--badge-danger-border)',
+                    color: 'var(--badge-danger-text)',
+                    fontSize: 11,
+                    fontWeight: 700,
+                  }}
+                >
+                  <AlertCircle size={14} color="var(--badge-danger-text)" />
+                  <span>
+                    DİKKAT: Hash uyuşmuyor! Dosya eksik, bozuk veya değiştirilmiş olabilir.
+                  </span>
+                </div>
+              )}
             </div>
           )}
 

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import http from 'http';
 import https from 'https';
@@ -22,6 +23,9 @@ export interface HttpDownloadController {
 
 export interface HttpDownloadOptions {
   url: string;
+  mirrors?: string[];
+  expectedHash?: string;
+  hashAlgorithm?: 'sha256' | 'md5' | 'sha1';
   cookie?: string;
   speedLimitKB?: number;
   title?: string;
@@ -311,29 +315,50 @@ async function runDownload(
             if (sizes[index] > required) throw new RangeResponseError('Geçersiz kısmi dosya');
             if (sizes[index] === required) return;
             const actualStart = start + sizes[index];
-            const res = await request(
-              opts.url,
-              'GET',
-              {
-                ...headers,
-                Range: `bytes=${actualStart}-${end}`,
-                ...(metadata.validator ? { 'If-Range': metadata.validator } : {}),
-              },
-              deps,
-              partAbort.signal
-            );
-            try {
-              validateRange(
-                res.statusCode,
-                res.headers['content-range'],
-                actualStart,
-                end,
-                metadata.size
-              );
-            } catch (error) {
-              res.destroy();
-              throw error;
+
+            const sources = [opts.url, ...(opts.mirrors || [])].filter(Boolean);
+            const primaryUrl = sources[index % sources.length];
+            const candidateUrls = [primaryUrl, ...sources.filter(s => s !== primaryUrl)];
+
+            let res: http.IncomingMessage | null = null;
+            let lastError: unknown;
+
+            for (const targetUrl of candidateUrls) {
+              try {
+                res = await request(
+                  targetUrl,
+                  'GET',
+                  {
+                    ...headers,
+                    Range: `bytes=${actualStart}-${end}`,
+                    ...(metadata.validator ? { 'If-Range': metadata.validator } : {}),
+                  },
+                  deps,
+                  partAbort.signal
+                );
+                validateRange(
+                  res.statusCode,
+                  res.headers['content-range'],
+                  actualStart,
+                  end,
+                  metadata.size
+                );
+                break;
+              } catch (err) {
+                if (res) res.destroy();
+                res = null;
+                lastError = err;
+                if (candidateUrls.length > 1) {
+                  deps.send('download-log', {
+                    id,
+                    text: `[Ayna/Mirror] Parça #${index + 1} için alternatif kaynağa geçildi: ${targetUrl}`,
+                  });
+                }
+              }
             }
+
+            if (!res) throw lastError || new Error('Tüm ayna kaynaklar başarısız');
+
             await pipeline(
               res,
               meter(initial, end - actualStart + 1, metadata.size, partAbort.signal),
@@ -441,6 +466,29 @@ async function runDownload(
       fileSize: size,
       date: Date.now(),
     });
+
+    if (opts.expectedHash) {
+      try {
+        const hashStream = crypto.createHash(opts.hashAlgorithm || 'sha256');
+        const fileStream = fs.createReadStream(outPath);
+        for await (const chunk of fileStream) {
+          hashStream.update(chunk);
+        }
+        const calculated = hashStream.digest('hex');
+        const matches = calculated.toLowerCase() === opts.expectedHash.trim().toLowerCase();
+        deps.send('download-log', {
+          id,
+          text: matches
+            ? `✓ Bütünlük doğrulandı (${(opts.hashAlgorithm || 'sha256').toUpperCase()}): ${calculated}`
+            : `⚠️ DİKKAT: Hash uyuşmuyor! Beklenen: ${opts.expectedHash}, Hesaplanan: ${calculated}`,
+        });
+      } catch (hErr) {
+        deps.send('download-log', {
+          id,
+          text: `Hash doğrulama hatası: ${String(hErr)}`,
+        });
+      }
+    }
     deps.send('download-done', {
       id,
       code: 0,

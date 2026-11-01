@@ -398,3 +398,34 @@ export const Activity = createIcon(
     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
   </>
 );
+
+export const ShieldCheck = createIcon(
+  'ShieldCheck',
+  <>
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
+    <path d="m9 12 2 2 4-4" />
+  </>
+);
+
+export const Globe = createIcon(
+  'Globe',
+  <>
+    <circle cx="12" cy="12" r="10" />
+    <line x1="2" y1="12" x2="22" y2="12" />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </>
+);
+
+export const ChevronDown = createIcon(
+  'ChevronDown',
+  <>
+    <polyline points="6 9 12 15 18 9" />
+  </>
+);
+
+export const ChevronUp = createIcon(
+  'ChevronUp',
+  <>
+    <polyline points="18 15 12 9 6 15" />
+  </>
+);

@@ -2,6 +2,9 @@ import type { AppConfig } from './config/schema.js';
 
 export interface DownloadOptions {
   url: string;
+  mirrors?: string[];
+  expectedHash?: string;
+  hashAlgorithm?: 'sha256' | 'md5' | 'sha1';
   title?: string;
   filename?: string;
   outDir?: string;
@@ -18,6 +21,10 @@ export interface DownloadOptions {
 export interface Job {
   id: string;
   url: string;
+  mirrors?: string[];
+  expectedHash?: string;
+  computedHash?: string;
+  hashVerified?: boolean;
   title: string;
   percent: number;
   speed: string;

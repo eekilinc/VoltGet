@@ -14,6 +14,10 @@ import {
   AlertCircle,
   Loader2,
   ClipboardPaste,
+  ChevronDown,
+  ChevronUp,
+  Globe,
+  ShieldCheck,
 } from './icons';
 import { useAppSettings } from '../context/AppSettingsContext';
 import { useToast } from '../context/ToastContext';
@@ -70,6 +74,10 @@ export default function NewDownloadModal({
   const [starting, setStarting] = useState(false);
   const [batchAdding, setBatchAdding] = useState(false);
   const [segments, setSegments] = useState<number>(8);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [mirrorUrlsText, setMirrorUrlsText] = useState('');
+  const [expectedHash, setExpectedHash] = useState('');
+  const [hashAlgorithm, setHashAlgorithm] = useState<'sha256' | 'md5' | 'sha1'>('sha256');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -128,8 +136,16 @@ export default function NewDownloadModal({
     setStarting(true);
     try {
       const chosenFormat = info?.formats?.find(f => f.id === selectedFormat);
+      const mirrors = mirrorUrlsText
+        .split(/\r?\n/)
+        .map(s => s.trim())
+        .filter(s => s.startsWith('http://') || s.startsWith('https://'));
+
       await onStartDownload({
         url: url.trim(),
+        mirrors: mirrors.length ? mirrors : undefined,
+        expectedHash: expectedHash.trim() ? expectedHash.trim() : undefined,
+        hashAlgorithm: expectedHash.trim() ? hashAlgorithm : undefined,
         formatId: asAudio ? undefined : selectedFormat,
         outDir,
         asAudio,
@@ -806,6 +822,143 @@ export default function NewDownloadModal({
                 >
                   Klasörü Aç
                 </button>
+              </div>
+
+              {/* Gelişmiş Seçenekler: Çoklu Ayna Linkler & Bütünlük Kontrolü (Checksum) */}
+              <div
+                style={{
+                  background: 'var(--panel-2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 10,
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  style={{
+                    padding: '9px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: 'var(--text)',
+                    userSelect: 'none',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <ShieldCheck size={14} color="var(--accent-solid)" />
+                    <span>Gelişmiş: Çoklu Ayna Kaynakları (Mirrors) & Bütünlük Kontrolü</span>
+                  </div>
+                  {showAdvanced ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </div>
+
+                {showAdvanced && (
+                  <div
+                    style={{
+                      padding: '12px',
+                      borderTop: '1px solid var(--border)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 12,
+                      background: 'var(--panel-3)',
+                    }}
+                  >
+                    {/* Ayna Linkler */}
+                    <div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: 'var(--muted)',
+                          marginBottom: 4,
+                        }}
+                      >
+                        <Globe size={13} />
+                        <span>Alternatif Ayna Linkler (Mirror URLs)</span>
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 6 }}>
+                        İndirmeyi hızlandırmak veya kesintilere karşı korumak için aynı dosyanın
+                        alternatif linklerini ekleyin (her satıra bir link).
+                      </div>
+                      <textarea
+                        value={mirrorUrlsText}
+                        onChange={e => setMirrorUrlsText(e.target.value)}
+                        placeholder={
+                          'https://mirror1.example.com/file.iso\nhttps://mirror2.example.com/file.iso'
+                        }
+                        rows={2}
+                        style={{
+                          width: '100%',
+                          padding: '6px 10px',
+                          borderRadius: 8,
+                          background: 'var(--panel-2)',
+                          border: '1px solid var(--border)',
+                          fontSize: 11,
+                          color: 'var(--text)',
+                          fontFamily: 'monospace',
+                        }}
+                      />
+                    </div>
+
+                    {/* Checksum / Hash */}
+                    <div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: 'var(--muted)',
+                          marginBottom: 4,
+                        }}
+                      >
+                        <ShieldCheck size={13} />
+                        <span>Otomatik Dosya Bütünlük Doğrulama (Checksum)</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <select
+                          value={hashAlgorithm}
+                          onChange={e => setHashAlgorithm(e.target.value as any)}
+                          style={{
+                            padding: '6px 8px',
+                            borderRadius: 8,
+                            background: 'var(--panel-2)',
+                            border: '1px solid var(--border)',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: 'var(--text)',
+                          }}
+                        >
+                          <option value="sha256">SHA-256</option>
+                          <option value="md5">MD5</option>
+                          <option value="sha1">SHA-1</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={expectedHash}
+                          onChange={e => setExpectedHash(e.target.value)}
+                          placeholder="İsteğe bağlı beklenen hash değeri (ör: e3b0c44298fc1c149afb...)"
+                          style={{
+                            flex: 1,
+                            padding: '6px 10px',
+                            borderRadius: 8,
+                            background: 'var(--panel-2)',
+                            border: '1px solid var(--border)',
+                            fontSize: 11,
+                            color: 'var(--text)',
+                            fontFamily: 'monospace',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           ) : (
