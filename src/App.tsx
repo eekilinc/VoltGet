@@ -277,12 +277,13 @@ export default function App() {
       <aside
         style={{
           width: 240,
+          height: '100%',
           background: 'var(--panel)',
           borderRight: '1px solid var(--border)',
           display: 'flex',
           flexDirection: 'column',
           flexShrink: 0,
-          overflowY: 'auto',
+          overflow: 'hidden',
         }}
       >
         {/* Üst Logo ve Başlık */}
@@ -293,10 +294,11 @@ export default function App() {
             gap: 10,
             padding: '16px 18px',
             borderBottom: '1px solid var(--border)',
+            flexShrink: 0,
           }}
         >
           <VoltLogo size={32} />
-          <div>
+          <div style={{ minWidth: 0, overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span
                 style={{
@@ -304,17 +306,20 @@ export default function App() {
                   fontSize: 15,
                   letterSpacing: '-0.02em',
                   color: 'var(--text-bright)',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 VoltGet
               </span>
             </div>
-            <div style={{ fontSize: 10, color: 'var(--muted)' }}>Modern İndirme Yöneticisi</div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+              Modern İndirme Yöneticisi
+            </div>
           </div>
         </div>
 
         {/* Birincil Eylem Butonu: + Yeni İndirme */}
-        <div style={{ padding: '14px 14px 8px 14px' }}>
+        <div style={{ padding: '14px 14px 8px 14px', flexShrink: 0 }}>
           <button
             type="button"
             onClick={() => {
@@ -335,6 +340,7 @@ export default function App() {
               fontSize: 12.5,
               fontWeight: 800,
               boxShadow: '0 4px 14px color-mix(in srgb, var(--accent-solid) 35%, transparent)',
+              cursor: 'pointer',
             }}
           >
             <Plus size={16} strokeWidth={2.5} />
@@ -342,8 +348,18 @@ export default function App() {
           </button>
         </div>
 
-        {/* Navigasyon Grupları */}
-        <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Navigasyon Grupları (Kaydırılabilir Alan) */}
+        <div
+          style={{
+            padding: '8px 10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 16,
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+          }}
+        >
           {/* GRUP 1: DURUMLAR */}
           <div>
             <div
@@ -575,8 +591,6 @@ export default function App() {
           </div>
         </div>
 
-        <div style={{ flex: 1 }} />
-
         {/* SIDEBAR ALT BÖLÜM: Eklenti & Motor Durumu, Ayarlar, Hakkında */}
         <div
           style={{
@@ -585,36 +599,54 @@ export default function App() {
             display: 'flex',
             flexDirection: 'column',
             gap: 8,
+            flexShrink: 0,
           }}
         >
           {status && (
             <div
               style={{
                 display: 'flex',
+                alignItems: 'center',
                 justifyContent: 'space-between',
+                padding: '5px 8px',
+                borderRadius: 6,
+                background: 'var(--panel-2)',
+                border: '1px solid var(--border)',
                 fontSize: 10,
                 color: 'var(--muted)',
-                padding: '0 2px',
               }}
+              className="tech-mono"
             >
-              <span>yt-dlp: {status.binExists || status.pathExists ? '✓' : '✗'}</span>
-              <span>ffmpeg: {status.ffmpegOk ? '✓' : '✗'}</span>
-              <span>v{appVersion}</span>
-            </div>
-          )}
-          {status && (
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                fontSize: 10,
-                color: 'var(--muted)',
-                padding: '0 2px',
-              }}
-            >
-              <span>yt-dlp: {status.binExists || status.pathExists ? '✓' : '✗'}</span>
-              <span>ffmpeg: {status.ffmpegOk ? '✓' : '✗'}</span>
-              <span>v{appVersion}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span
+                  title={status.binExists || status.pathExists ? 'yt-dlp aktif' : 'yt-dlp eksik'}
+                >
+                  yt-dlp:{' '}
+                  <strong
+                    style={{ color: status.binExists || status.pathExists ? '#4ade80' : '#f87171' }}
+                  >
+                    {status.binExists || status.pathExists ? '✓' : '✗'}
+                  </strong>
+                </span>
+                <span>•</span>
+                <span title={status.ffmpegOk ? 'ffmpeg aktif' : 'ffmpeg eksik'}>
+                  ffmpeg:{' '}
+                  <strong style={{ color: status.ffmpegOk ? '#4ade80' : '#f87171' }}>
+                    {status.ffmpegOk ? '✓' : '✗'}
+                  </strong>
+                </span>
+              </div>
+              <span
+                style={{
+                  fontWeight: 700,
+                  color: 'var(--accent-solid)',
+                  background: 'color-mix(in srgb, var(--accent-solid) 12%, transparent)',
+                  padding: '1px 6px',
+                  borderRadius: 4,
+                }}
+              >
+                v{appVersion}
+              </span>
             </div>
           )}
           {/* Eklenti Durumu */}
@@ -699,7 +731,7 @@ export default function App() {
           overflow: 'hidden',
         }}
       >
-        {/* ÜST TOOLBAR (Modern Hydra Header) */}
+        {/* ÜST TOOLBAR (Modern Header) */}
         <header
           style={{
             height: 52,
@@ -1023,7 +1055,7 @@ export default function App() {
         </div>
       </main>
 
-      {/* YENİ İNDİRME MODALI (Hydra New Download Dialog) */}
+      {/* YENİ İNDİRME MODALI (VoltGet New Download Dialog) */}
       <NewDownloadModal
         isOpen={isNewDownloadOpen}
         onClose={() => setIsNewDownloadOpen(false)}

@@ -371,7 +371,7 @@ export default function QueuePanel({
             )}
           </div>
         ) : viewMode === 'table' ? (
-          /* Hydra Tarzı Modern Veri Tablosu */
+          /* Modern Veri Tablosu */
           <table
             style={{
               width: '100%',
@@ -818,7 +818,7 @@ export default function QueuePanel({
         )}
       </div>
 
-      {/* Hydra Tarzı Alt Detay Çekmecesi (Download Inspector) */}
+      {/* Alt Detay Çekmecesi (Download Inspector) */}
       {selectedJob && (
         <DownloadInspector
           job={selectedJob}

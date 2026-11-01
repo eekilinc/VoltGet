@@ -19,6 +19,10 @@ export default function VoltLogo({
       style={{
         width: size,
         height: size,
+        minWidth: size,
+        minHeight: size,
+        maxWidth: size,
+        maxHeight: size,
         position: 'relative',
         display: 'inline-flex',
         alignItems: 'center',
@@ -32,19 +36,20 @@ export default function VoltLogo({
         width={size}
         height={size}
         style={{
-          width: '100%',
-          height: '100%',
+          width: size,
+          height: size,
+          minWidth: size,
+          minHeight: size,
           display: 'block',
-          filter: showGlow
-            ? 'drop-shadow(0 4px 14px color-mix(in srgb, var(--accent-solid, #2563eb) 35%, transparent))'
-            : 'none',
+          flexShrink: 0,
+          filter: showGlow ? 'drop-shadow(0 2px 8px rgba(37, 99, 235, 0.4))' : 'none',
           transition: 'all 0.2s ease',
         }}
       >
         <defs>
           <linearGradient id="voltLogoBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="var(--accent-solid, #2563eb)" />
-            <stop offset="100%" stopColor="var(--accent-to, #0284c7)" />
+            <stop offset="0%" stopColor="#2563eb" />
+            <stop offset="100%" stopColor="#0284c7" />
           </linearGradient>
           <linearGradient id="voltLogoGlow" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#ffffff" />

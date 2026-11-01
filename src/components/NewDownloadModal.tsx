@@ -697,7 +697,7 @@ export default function NewDownloadModal({
                 </div>
               )}
 
-              {/* İleri Seviye Seçenekler (Hydra Multi-Connection Chunks & Hız Limiti) */}
+              {/* İleri Seviye Seçenekler (Çoklu Bağlantı Parçaları & Hız Limiti) */}
               <div
                 style={{
                   display: 'grid',
