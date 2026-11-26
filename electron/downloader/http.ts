@@ -54,7 +54,7 @@ export interface HttpDownloadDeps {
   }) => void;
   ensureDir: (dir: string) => void;
   send: (channel: string, data: unknown) => void;
-  notify: (title: string, body: string) => void;
+  notify: (title: string, body: string, jobId?: string) => void;
   getPartsCount?: () => number;
   getRetryPolicy?: () => RetryPolicy;
   getProxyAgent?: () => http.Agent | https.Agent | undefined;
@@ -499,7 +499,7 @@ async function runDownload(
     });
     try {
       deps.onFileCompleted?.(id, outPath);
-      deps.notify('VoltGet: İndirme bitti', filename.slice(0, 50));
+      deps.notify('VoltGet: İndirme bitti', filename.slice(0, 50), id);
     } catch {}
   } catch (error) {
     if (!abort.signal.aborted && !deps.cancelledIds?.has(id) && !deps.pausingIds.has(id)) {

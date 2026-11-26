@@ -5,6 +5,7 @@ import { useFileList } from '../hooks/useFileList';
 import { formatDate, isTemporaryOrPartialFile } from '../utils/files-client';
 import { formatBytes } from '../utils/speed';
 import { CATEGORY_ICONS } from './FileExplorer/FileIcon';
+import { FolderOpen, RefreshCw } from './icons';
 
 export interface DownloadedFile {
   id?: string;
@@ -231,10 +232,9 @@ export default function FileExplorer({
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#fff',
-                fontSize: 20,
               }}
             >
-              📁
+              <FolderOpen size={20} />
             </span>
             <div>
               <div style={{ fontWeight: 900, fontSize: 16 }}>
@@ -309,7 +309,8 @@ export default function FileExplorer({
                 cursor: 'pointer',
               }}
             >
-              🔄 {t('refreshBtn')}
+              <RefreshCw size={14} />
+              <span>{t('refreshBtn')}</span>
             </button>
             <button
               onClick={() => window.api.openFolder(dir)}
@@ -327,7 +328,8 @@ export default function FileExplorer({
                 cursor: 'pointer',
               }}
             >
-              📂 {t('openFolderBtn')}
+              <FolderOpen size={14} />
+              <span>{t('openFolderBtn')}</span>
             </button>
           </div>
         </div>

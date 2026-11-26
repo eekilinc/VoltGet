@@ -13,6 +13,7 @@ import {
   Music,
   Pause,
   Play,
+  RotateCcw,
   Trash2,
   Video,
   Zap,
@@ -49,11 +50,43 @@ export type Job = {
   size?: number;
 };
 
+function parseSizeBytes(job: Job): number {
+  if (typeof job.size === 'number' && Number.isFinite(job.size) && job.size > 0) return job.size;
+  const raw = (job.total || '').trim();
+  if (!raw) return 0;
+  const m = raw.match(/([\d.,]+)\s*(b|kb|kib|mb|mib|gb|gib|tb|tib)?/i);
+  if (!m) return 0;
+  const val = parseFloat(m[1].replace(',', '.'));
+  if (!Number.isFinite(val)) return 0;
+  const unit = (m[2] || 'b').toLowerCase();
+  if (unit.startsWith('t')) return val * 1024 ** 4;
+  if (unit.startsWith('g')) return val * 1024 ** 3;
+  if (unit.startsWith('m')) return val * 1024 ** 2;
+  if (unit.startsWith('k')) return val * 1024;
+  return val;
+}
+
+function parseSpeedKBs(speedStr?: string): number {
+  const raw = (speedStr || '').trim();
+  if (!raw) return 0;
+  const m = raw.match(/([\d.,]+)\s*(b|kb|kib|mb|mib|gb|gib)?/i);
+  if (!m) return 0;
+  const val = parseFloat(m[1].replace(',', '.'));
+  if (!Number.isFinite(val)) return 0;
+  const unit = (m[2] || 'kb').toLowerCase();
+  if (unit.startsWith('g')) return val * 1024 * 1024;
+  if (unit.startsWith('m')) return val * 1024;
+  if (unit === 'b') return val / 1024;
+  return val;
+}
+
 export default function QueuePanel({
   jobs,
   filterTab: parentFilterTab,
   categoryFilter: parentCategoryFilter,
   searchQuery: parentSearchQuery,
+  focusedJobId,
+  onClearFocusedJob,
   onOpenNewDownload,
   onCancel: _onCancel,
   onRetry,
@@ -75,6 +108,8 @@ export default function QueuePanel({
   filterTab?: JobFilterTab;
   categoryFilter?: JobCategory;
   searchQuery?: string;
+  focusedJobId?: string | null;
+  onClearFocusedJob?: () => void;
   onOpenNewDownload?: () => void;
   onCancel?: (id: string) => void;
   onRetry?: (job: Job) => void;
@@ -93,7 +128,7 @@ export default function QueuePanel({
   onReorderJob?: (dragId: string, targetId: string) => void;
   onUpdateJob?: (id: string, patch: Partial<Job>) => void;
 }) {
-  const { t: _t } = useAppSettings();
+  const { t } = useAppSettings();
   const toast = useToast();
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -104,6 +139,30 @@ export default function QueuePanel({
     'percent'
   );
   const [sortAsc, setSortAsc] = useState<boolean>(false);
+
+  // Auto-select download when focused from system notification click
+  useEffect(() => {
+    if (focusedJobId) {
+      setSelectedJobId(focusedJobId);
+      onClearFocusedJob?.();
+    }
+  }, [focusedJobId, onClearFocusedJob]);
+
+  // Escape closes context menu, delete modal, or inspector drawer
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (contextMenu) {
+        setContextMenu(null);
+      } else if (confirmDeleteJob) {
+        setConfirmDeleteJob(null);
+      } else if (selectedJobId) {
+        setSelectedJobId(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [contextMenu, confirmDeleteJob, selectedJobId]);
 
   // Speed recording for sparklines
   useEffect(() => {
@@ -164,12 +223,14 @@ export default function QueuePanel({
       let cmp = 0;
       if (sortField === 'title') {
         cmp = (a.title || a.fileName || '').localeCompare(b.title || b.fileName || '');
+      } else if (sortField === 'size') {
+        cmp = parseSizeBytes(a) - parseSizeBytes(b);
       } else if (sortField === 'percent') {
         cmp = (a.percent || 0) - (b.percent || 0);
       } else if (sortField === 'status') {
         cmp = a.status.localeCompare(b.status);
       } else if (sortField === 'speed') {
-        cmp = (parseFloat(a.speed || '0') || 0) - (parseFloat(b.speed || '0') || 0);
+        cmp = parseSpeedKBs(a.speed) - parseSpeedKBs(b.speed);
       }
       return sortAsc ? cmp : -cmp;
     });
@@ -609,15 +670,15 @@ export default function QueuePanel({
                         label={
                           isDone
                             ? job.deletedFromDisk
-                              ? 'Silinmiş'
-                              : 'Tamamlandı'
+                              ? t('statusDeletedFromDisk')
+                              : t('statusDone')
                             : isDownloading
-                              ? 'İndiriliyor'
+                              ? t('statusDownloading')
                               : isPaused
-                                ? 'Duraklatıldı'
+                                ? t('statusPaused')
                                 : isError
-                                  ? 'Hata'
-                                  : 'Sırada'
+                                  ? t('statusError')
+                                  : t('statusQueued')
                         }
                       />
                     </td>
@@ -637,7 +698,7 @@ export default function QueuePanel({
                           <button
                             type="button"
                             onClick={() => onPause(job.id)}
-                            title="Duraklat"
+                            title={t('pause')}
                             style={{
                               background: 'transparent',
                               border: 0,
@@ -651,11 +712,11 @@ export default function QueuePanel({
                           </button>
                         )}
 
-                        {(isPaused || isError) && onResume && (
+                        {isPaused && onResume && (
                           <button
                             type="button"
                             onClick={() => onResume(job)}
-                            title="Devam Et"
+                            title={t('resume')}
                             style={{
                               background: 'transparent',
                               border: 0,
@@ -669,11 +730,29 @@ export default function QueuePanel({
                           </button>
                         )}
 
+                        {isError && (onRetry || onResume) && (
+                          <button
+                            type="button"
+                            onClick={() => (onRetry ? onRetry(job) : onResume?.(job))}
+                            title={t('retry')}
+                            style={{
+                              background: 'transparent',
+                              border: 0,
+                              color: 'var(--accent-solid)',
+                              padding: 6,
+                              borderRadius: 6,
+                              display: 'flex',
+                            }}
+                          >
+                            <RotateCcw size={14} />
+                          </button>
+                        )}
+
                         {isDone && job.filePath && onOpenFile && (
                           <button
                             type="button"
                             onClick={() => onOpenFile(job.filePath!)}
-                            title="Dosyayı Aç"
+                            title={t('openFile')}
                             style={{
                               background: 'transparent',
                               border: 0,
@@ -691,7 +770,7 @@ export default function QueuePanel({
                           <button
                             type="button"
                             onClick={() => onShowInFolder(job.filePath!)}
-                            title="Klasörde Göster"
+                            title={t('showInFolder')}
                             style={{
                               background: 'transparent',
                               border: 0,
@@ -708,7 +787,7 @@ export default function QueuePanel({
                         <button
                           type="button"
                           onClick={() => setConfirmDeleteJob(job)}
-                          title="Listeden Kaldır"
+                          title={t('removeFromList')}
                           style={{
                             background: 'transparent',
                             border: 0,
@@ -733,87 +812,301 @@ export default function QueuePanel({
             style={{
               padding: 16,
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
               gap: 12,
             }}
           >
-            {filteredJobs.map(job => (
-              <div
-                key={job.id}
-                onClick={() => setSelectedJobId(selectedJobId === job.id ? null : job.id)}
-                style={{
-                  background: selectedJobId === job.id ? 'var(--panel-2)' : 'var(--panel)',
-                  border:
-                    selectedJobId === job.id
+            {filteredJobs.map(job => {
+              const isSelected = selectedJobId === job.id;
+              const isDownloading = job.status === 'downloading';
+              const isDone = job.status === 'done';
+              const isPaused = job.status === 'paused';
+              const isError = job.status === 'error';
+              const statusLabel = isDone
+                ? job.deletedFromDisk
+                  ? t('statusDeletedFromDisk')
+                  : t('statusDone')
+                : isDownloading
+                  ? t('statusDownloading')
+                  : isPaused
+                    ? t('statusPaused')
+                    : isError
+                      ? t('statusError')
+                      : t('statusQueued');
+
+              return (
+                <div
+                  key={job.id}
+                  onClick={() => setSelectedJobId(isSelected ? null : job.id)}
+                  onContextMenu={e => openContextMenu(e, job)}
+                  style={{
+                    background: isSelected
+                      ? 'color-mix(in srgb, var(--accent-solid) 10%, var(--panel))'
+                      : 'var(--panel)',
+                    border: isSelected
                       ? '1px solid var(--accent-solid)'
                       : '1px solid var(--border)',
-                  borderRadius: 12,
-                  padding: 14,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 10,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {job.thumbnail ? (
-                    <img
-                      src={job.thumbnail}
-                      alt=""
-                      style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6 }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 6,
-                        background: 'var(--panel-3)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      {getCategoryIcon(job)}
-                    </div>
-                  )}
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div
-                      style={{
-                        fontWeight: 700,
-                        fontSize: 12.5,
-                        color: 'var(--text-bright)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {job.title || job.fileName}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--muted)' }} className="tech-mono">
-                      {job.total || '--'} • {job.status}
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    height: 5,
-                    borderRadius: 99,
-                    background: 'var(--panel-3)',
-                    overflow: 'hidden',
+                    borderRadius: 12,
+                    padding: 14,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                    transition: 'border-color 0.15s ease, background 0.15s ease',
                   }}
                 >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {job.thumbnail ? (
+                      <img
+                        src={job.thumbnail}
+                        alt=""
+                        style={{
+                          width: 40,
+                          height: 40,
+                          objectFit: 'cover',
+                          borderRadius: 6,
+                          flexShrink: 0,
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 6,
+                          background: 'var(--panel-3)',
+                          border: '1px solid var(--border)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {getCategoryIcon(job)}
+                      </div>
+                    )}
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 12.5,
+                          color: isSelected ? 'var(--accent-solid)' : 'var(--text-bright)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={job.title || job.fileName}
+                      >
+                        {job.title || job.fileName || 'İsimsiz İndirme'}
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          marginTop: 3,
+                          fontSize: 11,
+                          color: 'var(--muted)',
+                        }}
+                        className="tech-mono"
+                      >
+                        <span>{job.total || (job.size ? formatBytes(job.size) : '--')}</span>
+                        {isDownloading && job.speed && (
+                          <span style={{ color: '#4ade80', fontWeight: 700 }}>• {job.speed}</span>
+                        )}
+                        {isDownloading && job.eta && job.eta !== '-' && <span>• {job.eta}</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* İlerleme Çubuğu */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        fontSize: 10.5,
+                      }}
+                    >
+                      <JobStatusBadge
+                        status={job.status}
+                        deletedFromDisk={job.deletedFromDisk}
+                        label={statusLabel}
+                      />
+                      <span
+                        style={{ fontWeight: 700, color: 'var(--text-bright)' }}
+                        className="tech-mono"
+                      >
+                        {(job.percent || 0).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        height: 5,
+                        borderRadius: 99,
+                        background: 'var(--panel-3)',
+                        overflow: 'hidden',
+                        border: '1px solid var(--border)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: '100%',
+                          width: `${Math.min(100, Math.max(0, job.percent || 0))}%`,
+                          background: isDone
+                            ? '#22c55e'
+                            : isPaused
+                              ? '#eab308'
+                              : isError
+                                ? '#ef4444'
+                                : 'linear-gradient(90deg, var(--accent-solid), var(--accent-to))',
+                          transition: 'width 0.25s ease',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Kart Hızlı Eylemleri */}
                   <div
                     style={{
-                      height: '100%',
-                      width: `${job.percent || 0}%`,
-                      background: 'var(--accent-solid)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'flex-end',
+                      gap: 4,
+                      paddingTop: 4,
+                      borderTop: '1px solid var(--border)',
                     }}
-                  />
+                    onClick={e => e.stopPropagation()}
+                  >
+                    {isDownloading && onPause && (
+                      <button
+                        type="button"
+                        onClick={() => onPause(job.id)}
+                        title={t('pause')}
+                        style={{
+                          background: 'var(--panel-2)',
+                          border: '1px solid var(--border)',
+                          color: 'var(--text)',
+                          padding: '4px 8px',
+                          borderRadius: 6,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          fontSize: 10.5,
+                        }}
+                      >
+                        <Pause size={12} />
+                        <span>{t('pause')}</span>
+                      </button>
+                    )}
+
+                    {isPaused && onResume && (
+                      <button
+                        type="button"
+                        onClick={() => onResume(job)}
+                        title={t('resume')}
+                        style={{
+                          background: 'var(--accent-solid)',
+                          border: 0,
+                          color: '#fff',
+                          padding: '4px 8px',
+                          borderRadius: 6,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                        }}
+                      >
+                        <Play size={12} />
+                        <span>{t('resume')}</span>
+                      </button>
+                    )}
+
+                    {isError && (onRetry || onResume) && (
+                      <button
+                        type="button"
+                        onClick={() => (onRetry ? onRetry(job) : onResume?.(job))}
+                        title={t('retry')}
+                        style={{
+                          background: 'var(--accent-solid)',
+                          border: 0,
+                          color: '#fff',
+                          padding: '4px 8px',
+                          borderRadius: 6,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                        }}
+                      >
+                        <RotateCcw size={12} />
+                        <span>{t('retry')}</span>
+                      </button>
+                    )}
+
+                    {isDone && job.filePath && onOpenFile && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenFile(job.filePath!)}
+                        title={t('openFile')}
+                        style={{
+                          background: 'var(--accent-solid)',
+                          border: 0,
+                          color: '#fff',
+                          padding: '4px 8px',
+                          borderRadius: 6,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                        }}
+                      >
+                        <ExternalLink size={12} />
+                        <span>{t('openFile')}</span>
+                      </button>
+                    )}
+
+                    {job.filePath && onShowInFolder && (
+                      <button
+                        type="button"
+                        onClick={() => onShowInFolder(job.filePath!)}
+                        title={t('showInFolder')}
+                        style={{
+                          background: 'var(--panel-2)',
+                          border: '1px solid var(--border)',
+                          color: 'var(--muted)',
+                          padding: 5,
+                          borderRadius: 6,
+                          display: 'flex',
+                        }}
+                      >
+                        <FolderOpen size={13} />
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteJob(job)}
+                      title={t('removeFromList')}
+                      style={{
+                        background: 'var(--panel-2)',
+                        border: '1px solid var(--border)',
+                        color: 'var(--muted)',
+                        padding: 5,
+                        borderRadius: 6,
+                        display: 'flex',
+                      }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -973,32 +1266,58 @@ export default function QueuePanel({
             </button>
           )}
 
-          {(contextMenu.job.status === 'paused' || contextMenu.job.status === 'error') &&
-            onResume && (
-              <button
-                type="button"
-                onClick={() => {
-                  onResume(contextMenu.job);
-                  setContextMenu(null);
-                }}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '7px 10px',
-                  borderRadius: 6,
-                  border: 0,
-                  background: 'transparent',
-                  color: 'var(--text)',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                }}
-              >
-                <Play size={14} /> <span>Devam Et</span>
-              </button>
-            )}
+          {contextMenu.job.status === 'paused' && onResume && (
+            <button
+              type="button"
+              onClick={() => {
+                onResume(contextMenu.job);
+                setContextMenu(null);
+              }}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '7px 10px',
+                borderRadius: 6,
+                border: 0,
+                background: 'transparent',
+                color: 'var(--text)',
+                fontSize: 12,
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <Play size={14} /> <span>{t('resume')}</span>
+            </button>
+          )}
+
+          {contextMenu.job.status === 'error' && (onRetry || onResume) && (
+            <button
+              type="button"
+              onClick={() => {
+                if (onRetry) onRetry(contextMenu.job);
+                else onResume?.(contextMenu.job);
+                setContextMenu(null);
+              }}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '7px 10px',
+                borderRadius: 6,
+                border: 0,
+                background: 'transparent',
+                color: 'var(--text)',
+                fontSize: 12,
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <RotateCcw size={14} /> <span>{t('retry')}</span>
+            </button>
+          )}
 
           {contextMenu.job.filePath && onOpenFile && (
             <button

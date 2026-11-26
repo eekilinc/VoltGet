@@ -78,10 +78,25 @@ export default function NewDownloadModal({
   const [mirrorUrlsText, setMirrorUrlsText] = useState('');
   const [expectedHash, setExpectedHash] = useState('');
   const [hashAlgorithm, setHashAlgorithm] = useState<'sha256' | 'md5' | 'sha1'>('sha256');
+  const [targetDir, setTargetDir] = useState(outDir);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    setTargetDir(outDir);
+  }, [outDir]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
     if (isOpen) {
+      setTargetDir(outDir);
       if (initialUrl) {
         setUrl(initialUrl);
         analyze(initialUrl);
@@ -147,7 +162,7 @@ export default function NewDownloadModal({
         expectedHash: expectedHash.trim() ? expectedHash.trim() : undefined,
         hashAlgorithm: expectedHash.trim() ? hashAlgorithm : undefined,
         formatId: asAudio ? undefined : selectedFormat,
-        outDir,
+        outDir: targetDir || outDir,
         asAudio,
         isAudioOnly: chosenFormat?.isAudioOnly,
         title: info?.title,
@@ -175,7 +190,7 @@ export default function NewDownloadModal({
         await onStartDownload({
           url: itemUrl,
           asAudio,
-          outDir,
+          outDir: targetDir || outDir,
           speedLimitKB: speedLimitKB > 0 ? speedLimitKB : undefined,
           segments,
         });
@@ -325,7 +340,6 @@ export default function NewDownloadModal({
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
-              hover-style={{ color: 'var(--text)' }}
             >
               <X size={18} />
             </button>
@@ -806,21 +820,44 @@ export default function NewDownloadModal({
                     flex: 1,
                   }}
                   className="tech-mono"
+                  title={targetDir || outDir}
                 >
-                  {outDir}
+                  {targetDir || outDir}
                 </span>
                 <button
                   type="button"
-                  onClick={() => window.api?.openFolder?.(outDir)}
+                  onClick={async () => {
+                    try {
+                      const picked = await window.api?.selectFolder?.();
+                      if (picked) setTargetDir(picked);
+                    } catch {}
+                  }}
+                  style={{
+                    background: 'var(--panel-2)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 6,
+                    padding: '3px 8px',
+                    color: 'var(--text)',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    flexShrink: 0,
+                  }}
+                >
+                  {t('selectFolder') || 'Değiştir'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.api?.openFolder?.(targetDir || outDir)}
                   style={{
                     background: 'transparent',
                     border: 0,
                     color: 'var(--accent-solid)',
                     fontSize: 11,
                     fontWeight: 700,
+                    flexShrink: 0,
                   }}
                 >
-                  Klasörü Aç
+                  {t('open') || 'Aç'}
                 </button>
               </div>
 

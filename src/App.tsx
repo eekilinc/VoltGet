@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   Archive,
@@ -9,6 +9,7 @@ import {
   FileText,
   FolderOpen,
   Info,
+  Moon,
   Music,
   Pause,
   PauseCircle,
@@ -18,6 +19,7 @@ import {
   Radio,
   Search,
   Settings,
+  Sun,
   Trash2,
   Video,
   X,
@@ -42,7 +44,7 @@ import { formatBytes } from './utils/speed';
 export type { Job };
 
 export default function App() {
-  const { t: _t } = useAppSettings();
+  const { t, theme, setTheme } = useAppSettings();
   const toast = useToast();
 
   // Navigation: 'downloads' is our primary dashboard!
@@ -52,6 +54,8 @@ export default function App() {
   const [filterTab, setFilterTab] = useState<JobFilterTab>('all');
   const [categoryFilter, setCategoryFilter] = useState<JobCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Modals & Dialogs
   const [isNewDownloadOpen, setIsNewDownloadOpen] = useState(false);
@@ -100,7 +104,14 @@ export default function App() {
     const cleanups = [
       window.api.onOpenSniffItem(() => setTab('sniff')),
       window.api.onSwitchToSniffTab(() => setTab('sniff')),
-      window.api.onSwitchToDownloadTab(() => setTab('downloads')),
+      window.api.onSwitchToDownloadTab((data: any) => {
+        setTab('downloads');
+        if (data?.jobId) {
+          setFilterTab('all');
+          setCategoryFilter('all');
+          setFocusedJobId(data.jobId);
+        }
+      }),
       window.api.onSwitchToSettingsTab(() => setTab('settings')),
       window.api.onFileConflict((d: any) => {
         if (d?.conflictId) setConflictInfo(d);
@@ -119,23 +130,34 @@ export default function App() {
     return () => cleanups.forEach(unsubscribe => unsubscribe());
   }, [hasApi]);
 
-  // Keyboard shortcut Ctrl+N / Cmd+N to open New Download
+  // Global keyboard shortcuts: Ctrl+N (New Download), Ctrl+F (Search), Esc (Close overlays)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault();
         setIsNewDownloadOpen(true);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setTab('downloads');
+        setTimeout(() => {
+          searchInputRef.current?.focus();
+          searchInputRef.current?.select();
+        }, 20);
+      } else if (e.key === 'Escape') {
+        if (completedInfo) setCompletedInfo(null);
+        else if (isExtModalOpen) setIsExtModalOpen(false);
+        else if (clipboardDetectedUrl) setClipboardDetectedUrl(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [completedInfo, isExtModalOpen, clipboardDetectedUrl, setClipboardDetectedUrl]);
 
   const getPageTitle = () => {
-    if (tab === 'sniff') return 'Medya Yakalayıcı (Sniffer)';
-    if (tab === 'explorer') return 'İndirilen Dosyalar';
-    if (tab === 'settings') return 'Ayarlar';
-    if (tab === 'about') return 'Hakkında';
+    if (tab === 'sniff') return t('autoSniffer');
+    if (tab === 'explorer') return t('files');
+    if (tab === 'settings') return t('settings');
+    if (tab === 'about') return t('about');
     if (categoryFilter !== 'all') {
       const catNames: Record<string, string> = {
         video: 'Videolar',
@@ -147,13 +169,13 @@ export default function App() {
       return catNames[categoryFilter] || 'Kategori';
     }
     const filterNames: Record<string, string> = {
-      all: 'Tüm İndirmeler',
-      downloading: 'İndirilenler',
-      done: 'Tamamlananlar',
-      paused: 'Duraklatılanlar',
-      error: 'Hatalar',
+      all: t('filterAll'),
+      downloading: t('filterDownloading'),
+      done: t('filterDone'),
+      paused: t('filterPaused'),
+      error: t('filterError'),
     };
-    return filterNames[filterTab] || 'İndirmeler';
+    return filterNames[filterTab] || t('navDownload');
   };
 
   const handlePauseAll = async () => {
@@ -379,32 +401,32 @@ export default function App() {
               {[
                 {
                   id: 'all',
-                  label: 'Tüm İndirmeler',
+                  label: t('filterAll'),
                   icon: <Download size={14} />,
                   count: counts.all,
                 },
                 {
                   id: 'downloading',
-                  label: 'İndirilenler',
+                  label: t('filterDownloading'),
                   icon: <ArrowDownCircle size={14} color="#38bdf8" />,
                   count: counts.downloading,
                   pulse: counts.downloading > 0,
                 },
                 {
                   id: 'done',
-                  label: 'Tamamlananlar',
+                  label: t('filterDone'),
                   icon: <CheckCircle2 size={14} color="#4ade80" />,
                   count: counts.done,
                 },
                 {
                   id: 'paused',
-                  label: 'Duraklatılanlar',
+                  label: t('filterPaused'),
                   icon: <PauseCircle size={14} color="#facc15" />,
                   count: counts.paused,
                 },
                 {
                   id: 'error',
-                  label: 'Hatalar',
+                  label: t('filterError'),
                   icon: <AlertCircle size={14} color="#f87171" />,
                   count: counts.error,
                 },
@@ -674,17 +696,18 @@ export default function App() {
             <span style={{ fontSize: 9, opacity: 0.7 }}>{extConnected ? '✓' : '⚡'}</span>
           </div>
 
-          {/* Ayarlar ve Hakkında Butonları */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          {/* Ayarlar, Hakkında ve Hızlı Tema Butonları */}
+          <div style={{ display: 'flex', gap: 6 }}>
             <button
               type="button"
               onClick={() => setTab('settings')}
               style={{
+                flex: 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 6,
-                padding: '7px 8px',
+                gap: 5,
+                padding: '7px 6px',
                 borderRadius: 8,
                 border: '1px solid var(--border)',
                 background: tab === 'settings' ? 'var(--panel-2)' : 'transparent',
@@ -694,18 +717,19 @@ export default function App() {
               }}
             >
               <Settings size={13} />
-              <span>Ayarlar</span>
+              <span>{t('settings')}</span>
             </button>
 
             <button
               type="button"
               onClick={() => setTab('about')}
               style={{
+                flex: 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 6,
-                padding: '7px 8px',
+                gap: 5,
+                padding: '7px 6px',
                 borderRadius: 8,
                 border: '1px solid var(--border)',
                 background: tab === 'about' ? 'var(--panel-2)' : 'transparent',
@@ -715,7 +739,26 @@ export default function App() {
               }}
             >
               <Info size={13} />
-              <span>Hakkında</span>
+              <span>{t('about')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              title={theme === 'dark' ? t('themeLight') : t('themeDark')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '7px 8px',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'var(--panel-2)',
+                color: 'var(--text)',
+                flexShrink: 0,
+              }}
+            >
+              {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
             </button>
           </div>
         </div>
@@ -776,78 +819,85 @@ export default function App() {
             </div>
           )}
 
-          {/* Arama Kutusu */}
-          <div style={{ position: 'relative', width: 220, marginLeft: 'auto' }}>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="İndirmelerde ara..."
-              style={{
-                width: '100%',
-                padding: '6px 28px 6px 30px',
-                borderRadius: 8,
-                fontSize: 11,
-                background: 'var(--panel-2)',
-                border: '1px solid var(--border)',
-                color: 'var(--text)',
-              }}
-            />
-            <Search
-              size={14}
-              style={{
-                position: 'absolute',
-                left: 9,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--muted)',
-              }}
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
+          {/* Arama Kutusu (yalnızca İndirmeler sekmesinde) */}
+          {tab === 'downloads' ? (
+            <div style={{ position: 'relative', width: 220, marginLeft: 'auto' }}>
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder={`${t('searchDownloads')} (Ctrl+F)`}
+                style={{
+                  width: '100%',
+                  padding: '6px 28px 6px 30px',
+                  borderRadius: 8,
+                  fontSize: 11,
+                  background: 'var(--panel-2)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text)',
+                }}
+              />
+              <Search
+                size={14}
                 style={{
                   position: 'absolute',
-                  right: 6,
+                  left: 9,
                   top: '50%',
                   transform: 'translateY(-50%)',
-                  background: 'transparent',
-                  border: 0,
                   color: 'var(--muted)',
-                  padding: 2,
-                  display: 'flex',
                 }}
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  style={{
+                    position: 'absolute',
+                    right: 6,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'transparent',
+                    border: 0,
+                    color: 'var(--muted)',
+                    padding: 2,
+                    display: 'flex',
+                  }}
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          ) : (
+            <div style={{ marginLeft: 'auto' }} />
+          )}
 
-          {/* Hız Sınırlayıcı */}
-          <select
-            value={speedLimitKB}
-            onChange={async e => {
-              const val = parseInt(e.target.value) || 0;
-              setSpeedLimitKB(val);
-              await window.api?.setSpeedLimit?.(val);
-            }}
-            style={{
-              padding: '6px 8px',
-              borderRadius: 8,
-              border: '1px solid var(--border)',
-              background: 'var(--panel-2)',
-              color: 'var(--text)',
-              fontSize: 11,
-              fontWeight: 600,
-            }}
-          >
-            <option value={0}>⚡ Sınırsız Hız</option>
-            <option value={1024}>1 MB/s</option>
-            <option value={2048}>2 MB/s</option>
-            <option value={5120}>5 MB/s</option>
-            <option value={10240}>10 MB/s</option>
-          </select>
+          {/* Hız Sınırlayıcı (yalnızca İndirmeler sekmesinde) */}
+          {tab === 'downloads' && (
+            <select
+              value={speedLimitKB}
+              onChange={async e => {
+                const val = parseInt(e.target.value) || 0;
+                setSpeedLimitKB(val);
+                await window.api?.setSpeedLimit?.(val);
+              }}
+              style={{
+                padding: '6px 8px',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'var(--panel-2)',
+                color: 'var(--text)',
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              <option value={0}>⚡ {t('speedUnlimited')}</option>
+              <option value={1024}>1 MB/s</option>
+              <option value={2048}>2 MB/s</option>
+              <option value={5120}>5 MB/s</option>
+              <option value={10240}>10 MB/s</option>
+            </select>
+          )}
 
           {/* Pano İzleyici Toggle */}
           <button
@@ -882,67 +932,71 @@ export default function App() {
             <span>Pano İzleme</span>
           </button>
 
-          {/* Hızlı Eylemler: Başlat / Durdur / Temizle / Klasör */}
+          {/* Hızlı Eylemler: Başlat / Durdur / Temizle (İndirmeler) + Klasör */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button
-              type="button"
-              onClick={handleResumeAll}
-              title="Tüm İndirmeleri Başlat"
-              style={{
-                padding: '6px 8px',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                background: 'var(--panel-2)',
-                color: 'var(--text)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                fontSize: 11,
-              }}
-            >
-              <Play size={12} />
-              <span>Başlat</span>
-            </button>
+            {tab === 'downloads' && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleResumeAll}
+                  title={t('resumeAll')}
+                  style={{
+                    padding: '6px 8px',
+                    borderRadius: 8,
+                    border: '1px solid var(--border)',
+                    background: 'var(--panel-2)',
+                    color: 'var(--text)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    fontSize: 11,
+                  }}
+                >
+                  <Play size={12} />
+                  <span>{t('resume')}</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={handlePauseAll}
-              title="Tüm İndirmeleri Duraklat"
-              style={{
-                padding: '6px 8px',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                background: 'var(--panel-2)',
-                color: 'var(--text)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                fontSize: 11,
-              }}
-            >
-              <Pause size={12} />
-              <span>Durdur</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={handlePauseAll}
+                  title={t('pauseAll')}
+                  style={{
+                    padding: '6px 8px',
+                    borderRadius: 8,
+                    border: '1px solid var(--border)',
+                    background: 'var(--panel-2)',
+                    color: 'var(--text)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    fontSize: 11,
+                  }}
+                >
+                  <Pause size={12} />
+                  <span>{t('pause')}</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={handleClearFinished}
-              title="Tamamlananları Listeden Temizle"
-              style={{
-                padding: '6px 8px',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                background: 'var(--panel-2)',
-                color: 'var(--text)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                fontSize: 11,
-              }}
-            >
-              <Trash2 size={12} />
-              <span>Temizle</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={handleClearFinished}
+                  title={t('clearFinishedDesc')}
+                  style={{
+                    padding: '6px 8px',
+                    borderRadius: 8,
+                    border: '1px solid var(--border)',
+                    background: 'var(--panel-2)',
+                    color: 'var(--text)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    fontSize: 11,
+                  }}
+                >
+                  <Trash2 size={12} />
+                  <span>{t('clear')}</span>
+                </button>
+              </>
+            )}
 
             <button
               type="button"
@@ -962,7 +1016,7 @@ export default function App() {
               }}
             >
               <FolderOpen size={13} />
-              <span>Klasör</span>
+              <span>{t('folder')}</span>
             </button>
           </div>
         </header>
@@ -975,6 +1029,8 @@ export default function App() {
               filterTab={filterTab}
               categoryFilter={categoryFilter}
               searchQuery={searchQuery}
+              focusedJobId={focusedJobId}
+              onClearFocusedJob={() => setFocusedJobId(null)}
               onOpenNewDownload={() => setIsNewDownloadOpen(true)}
               onCancel={handleCancelJob}
               onMoveJob={handleMoveJob}
@@ -1175,6 +1231,7 @@ export default function App() {
       {/* İndirme Tamamlandı Bildirimi */}
       {completedInfo && (
         <div
+          onClick={() => setCompletedInfo(null)}
           style={{
             position: 'fixed',
             inset: 0,
@@ -1187,6 +1244,7 @@ export default function App() {
           }}
         >
           <div
+            onClick={e => e.stopPropagation()}
             style={{
               background: 'var(--panel)',
               border: '1px solid var(--border-2)',
@@ -1210,7 +1268,7 @@ export default function App() {
               }}
             >
               <CheckCircle2 size={16} color="#22c55e" />
-              <span>İndirme Tamamlandı</span>
+              <span>{t('downloadDoneTitle')}</span>
             </div>
             <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ fontSize: 13, fontWeight: 700, wordBreak: 'break-all' }}>
@@ -1239,7 +1297,7 @@ export default function App() {
                     color: '#fff',
                   }}
                 >
-                  Dosyayı Aç
+                  {t('openFile')}
                 </button>
                 <button
                   type="button"
@@ -1258,7 +1316,7 @@ export default function App() {
                     color: 'var(--text)',
                   }}
                 >
-                  Klasörde Göster
+                  {t('showInFolder')}
                 </button>
                 <button
                   type="button"
@@ -1272,9 +1330,30 @@ export default function App() {
                     fontSize: 12,
                   }}
                 >
-                  Kapat
+                  {t('close')}
                 </button>
               </div>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: 11.5,
+                  color: 'var(--muted)',
+                  cursor: 'pointer',
+                  marginTop: 2,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  onChange={e => {
+                    if (e.target.checked) {
+                      window.api?.setConfig?.({ completionDialog: false })?.catch?.(() => {});
+                    }
+                  }}
+                />
+                <span>{t('dontShowAgain')}</span>
+              </label>
             </div>
           </div>
         </div>

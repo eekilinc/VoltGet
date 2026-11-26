@@ -35,8 +35,13 @@ export function resetPostDownloadTrigger(): void {
 export function checkPostDownloadAction(
   activeCount: number,
   pendingCount: number,
-  action: PostDownloadAction
+  action: PostDownloadAction,
+  notify?: (title: string, body: string) => void
 ): void {
+  const sendNote = (title: string, body: string) => {
+    if (notify) notify(title, body);
+    else new Notification({ title, body }).show();
+  };
   if (activeCount === 0 && pendingCount === 0) {
     if (action === 'none' || postDownloadTriggered) return;
     postDownloadTriggered = true;
@@ -46,10 +51,10 @@ export function checkPostDownloadAction(
     } else if (action === 'shutdown' && process.platform === 'win32') {
       console.log('[VoltGet] Post-download action: Shutting down PC in 60s...');
       try {
-        new Notification({
-          title: 'VoltGet: Otomatik Kapanma',
-          body: 'Tüm indirmeler bitti. Bilgisayar 60 saniye içinde kapatılacak.',
-        }).show();
+        sendNote(
+          'VoltGet: Otomatik Kapanma',
+          'Tüm indirmeler bitti. Bilgisayar 60 saniye içinde kapatılacak.'
+        );
         execSync('shutdown /s /t 60');
       } catch (err) {
         console.error('[VoltGet] Shutdown error:', err);
@@ -57,10 +62,7 @@ export function checkPostDownloadAction(
     } else if (action === 'sleep' && process.platform === 'win32') {
       console.log('[VoltGet] Post-download action: Putting PC to sleep...');
       try {
-        new Notification({
-          title: 'VoltGet: Uyku Modu',
-          body: 'Tüm indirmeler bitti. Sistem uyku moduna alınıyor.',
-        }).show();
+        sendNote('VoltGet: Uyku Modu', 'Tüm indirmeler bitti. Sistem uyku moduna alınıyor.');
         setTimeout(() => {
           try {
             execSync('rundll32.exe powrprof.dll,SetSuspendState');

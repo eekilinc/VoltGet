@@ -1,5 +1,5 @@
 import { ChildProcess, execSync, spawn } from 'child_process';
-import { app, BrowserWindow, ipcMain, Notification, Tray } from 'electron';
+import { app, BrowserWindow, ipcMain, Tray } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -9,6 +9,7 @@ import {
   tryDirectFileEarlyReturn,
   tryHlsEarlyReturn,
 } from './analyze.js';
+import { createNotificationHelper } from './app/notifications.js';
 import { createTrayController } from './app/tray.js';
 import { createDialogWindowFactory, createMainWindowFactory } from './app/windows.js';
 import { categorizeFile } from './categories.js';
@@ -150,7 +151,7 @@ const scheduler = createScheduler({
         }
       }
       processPending();
-      new Notification({ title: 'VoltGet Zamanlayıcı', body: 'Kuyruk başlatıldı' }).show();
+      showAppNotification('VoltGet Zamanlayıcı', 'Kuyruk başlatıldı');
     } catch {}
   },
   stopQueue: () => {
@@ -174,7 +175,7 @@ const scheduler = createScheduler({
       }
       updatePowerSaveBlocker();
       processPending();
-      new Notification({ title: 'VoltGet Zamanlayıcı', body: 'Kuyruk durduruldu' }).show();
+      showAppNotification('VoltGet Zamanlayıcı', 'Kuyruk durduruldu');
     } catch {}
   },
   log: text => log.info(text),
@@ -274,7 +275,8 @@ function checkPostDownloadAction() {
   return checkPostActionUtil(
     activeDownloads.size,
     pendingQueue.length + pausedDownloads.size,
-    appConfig.postDownloadAction || 'none'
+    appConfig.postDownloadAction || 'none',
+    (title, body) => showAppNotification(title, body)
   );
 }
 function saveQueue(jobs: Array<{ id: string; opts: any }>) {
@@ -346,6 +348,16 @@ const createWindow = createMainWindowFactory({
   isDev,
   dirname: __dirname,
 });
+
+const notificationHelper = createNotificationHelper({
+  getMainWindow: () => mainWindow,
+  getAppIconPath,
+  createWindow,
+});
+
+function showAppNotification(title: string, body: string, opts?: { jobId?: string }) {
+  return notificationHelper.showNotification(title, body, opts);
+}
 
 const sniffController = createSniffServer({
   getToken: getExtensionToken,
@@ -547,10 +559,10 @@ if (!gotTheLock) {
         .catch(error => {
           isQuitting = false;
           log.error('[VoltGet] Queue could not be saved before quit', { error });
-          new Notification({
-            title: 'VoltGet',
-            body: 'Kuyruk kaydedilemedi. Disk erişimini kontrol edip yeniden deneyin.',
-          }).show();
+          showAppNotification(
+            'VoltGet',
+            'Kuyruk kaydedilemedi. Disk erişimini kontrol edip yeniden deneyin.'
+          );
         });
       return;
     }
@@ -674,6 +686,9 @@ const orchestrator = createDownloadOrchestrator({
   getFfmpegPath: () => ffmpegPath,
   isFfmpegOk,
   isTemporaryOrPartialFile,
+  notify: (title: string, body: string, opts?: { jobId?: string }) => {
+    showAppNotification(title, body, opts);
+  },
 });
 
 async function doStartDownload(id: string, opts: any) {
@@ -810,10 +825,8 @@ function httpDeps() {
     send: (channel: string, data: any) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, data);
     },
-    notify: (title: string, body: string) => {
-      try {
-        new Notification({ title, body }).show();
-      } catch {}
+    notify: (title: string, body: string, jobId?: string) => {
+      showAppNotification(title, body, jobId ? { jobId } : undefined);
     },
   };
 }

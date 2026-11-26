@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   AlertCircle,
@@ -12,6 +12,7 @@ import {
   Loader2,
   Pause,
   Play,
+  RotateCcw,
   ShieldCheck,
   Terminal,
   Trash2,
@@ -40,22 +41,31 @@ export default function DownloadInspector({
   speedHistory = [],
   onPause,
   onResume,
-  onRetry: _onRetry,
+  onRetry,
   onOpenFile,
   onShowInFolder,
   onDelete,
 }: DownloadInspectorProps) {
-  const { t: _t } = useAppSettings();
+  const { t } = useAppSettings();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<
     'segments' | 'graph' | 'logs' | 'details' | 'checksum'
   >('segments');
 
   // Checksum / Bütünlük Kontrolü Durumları
+  const initialComputedHash = (job as { computedHash?: string } | null)?.computedHash || '';
+  const initialExpectedHash = job?.opts?.expectedHash || '';
   const [hashAlgo, setHashAlgo] = useState<'sha256' | 'md5' | 'sha1'>('sha256');
-  const [computedHash, setComputedHash] = useState<string>('');
+  const [computedHash, setComputedHash] = useState<string>(initialComputedHash);
   const [isComputingHash, setIsComputingHash] = useState(false);
-  const [verifyInput, setVerifyInput] = useState<string>(job?.opts?.expectedHash || '');
+  const [verifyInput, setVerifyInput] = useState<string>(initialExpectedHash);
+
+  // Reset checksum state when switching between different downloads
+  useEffect(() => {
+    setComputedHash(initialComputedHash);
+    setVerifyInput(initialExpectedHash);
+    setIsComputingHash(false);
+  }, [job?.id, initialComputedHash, initialExpectedHash]);
 
   // Simulated / detected multi-connection segments (range chunks)
   const segments = useMemo(() => {
@@ -191,7 +201,13 @@ export default function DownloadInspector({
           >
             {job.status === 'downloading'
               ? `${job.percent}% • ${job.speed || '0 KB/s'}`
-              : job.status.toUpperCase()}
+              : job.status === 'done'
+                ? t('statusDone')
+                : job.status === 'paused'
+                  ? t('statusPaused')
+                  : job.status === 'error'
+                    ? t('statusError')
+                    : t('statusQueued')}
           </span>
         </div>
 
@@ -798,11 +814,11 @@ export default function DownloadInspector({
               }}
             >
               <Pause size={13} />
-              <span>Duraklat</span>
+              <span>{t('pause')}</span>
             </button>
           )}
 
-          {(job.status === 'paused' || job.status === 'error') && onResume && (
+          {job.status === 'paused' && onResume && (
             <button
               type="button"
               onClick={() => onResume(job)}
@@ -820,7 +836,29 @@ export default function DownloadInspector({
               }}
             >
               <Play size={13} />
-              <span>Devam Et</span>
+              <span>{t('resume')}</span>
+            </button>
+          )}
+
+          {job.status === 'error' && (onRetry || onResume) && (
+            <button
+              type="button"
+              onClick={() => (onRetry ? onRetry(job) : onResume?.(job))}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                borderRadius: 6,
+                border: 0,
+                background: 'var(--accent-solid)',
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+            >
+              <RotateCcw size={13} />
+              <span>{t('retry')}</span>
             </button>
           )}
 
@@ -842,7 +880,7 @@ export default function DownloadInspector({
               }}
             >
               <ExternalLink size={13} />
-              <span>Dosyayı Aç</span>
+              <span>{t('openFile')}</span>
             </button>
           )}
 
@@ -864,7 +902,7 @@ export default function DownloadInspector({
               }}
             >
               <FolderOpen size={13} />
-              <span>Klasörde Göster</span>
+              <span>{t('showInFolder')}</span>
             </button>
           )}
 
@@ -886,7 +924,7 @@ export default function DownloadInspector({
               }}
             >
               <Copy size={13} />
-              <span>Linki Kopyala</span>
+              <span>{t('copyUrl') || 'Linki Kopyala'}</span>
             </button>
           )}
 
@@ -908,7 +946,7 @@ export default function DownloadInspector({
               }}
             >
               <Trash2 size={13} />
-              <span>Listeden Sil</span>
+              <span>{t('removeFromList')}</span>
             </button>
           )}
         </div>

@@ -4,6 +4,7 @@ import { useToast } from '../context/ToastContext';
 import { useEventCallback } from '../hooks/useEventCallback';
 import { isGenericFileUrl } from '../utils/fileTypes';
 import ExtensionInstallModal from './ExtensionInstallModal';
+import { Puzzle, Radio } from './icons';
 
 type Sniff = {
   url: string;
@@ -272,7 +273,7 @@ export default function SniffPanel({
               color: '#fff',
             }}
           >
-            🎯
+            <Radio size={18} />
           </span>
           <div>
             <div style={{ fontWeight: 900, fontSize: 14 }}>{t('autoSniffer')}</div>
@@ -335,7 +336,21 @@ export default function SniffPanel({
             e.currentTarget.style.borderColor = 'rgba(234, 179, 8, 0.35)';
           }}
         >
-          <span style={{ fontSize: 24 }}>🧩</span>
+          <span
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 10,
+              background: 'rgba(234, 179, 8, 0.16)',
+              color: 'var(--badge-warning-text)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Puzzle size={20} />
+          </span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 12, color: 'var(--badge-warning-text)' }}>
               {t('installExtBannerTitle')}

@@ -57,6 +57,7 @@ export interface OrchestratorDeps {
   getFfmpegPath: () => string;
   isFfmpegOk: () => boolean;
   isTemporaryOrPartialFile: (name: string) => boolean;
+  notify?: (title: string, body: string, opts?: { jobId?: string }) => void;
 }
 
 export function createDownloadOrchestrator(deps: OrchestratorDeps) {
@@ -537,16 +538,16 @@ export function createDownloadOrchestrator(deps: OrchestratorDeps) {
             mainWindow.webContents.send('download-done', payload);
           }
           try {
+            const sendNote = (title: string, body: string) => {
+              if (deps.notify) {
+                deps.notify(title, body, { jobId: id });
+              } else {
+                new Notification({ title, body }).show();
+              }
+            };
             if (ffCode === 0)
-              new Notification({
-                title: 'İndirme tamamlandı (VoltGet)',
-                body: (opts.title || finalUrl).slice(0, 60),
-              }).show();
-            else
-              new Notification({
-                title: 'İndirme hatası',
-                body: `FFmpeg Hata Kodu ${ffCode}`,
-              }).show();
+              sendNote('İndirme tamamlandı (VoltGet)', (opts.title || finalUrl).slice(0, 60));
+            else sendNote('İndirme hatası', `FFmpeg Hata Kodu ${ffCode}`);
           } catch {}
           deps.processPending();
         });
@@ -611,16 +612,16 @@ export function createDownloadOrchestrator(deps: OrchestratorDeps) {
         mainWindow.webContents.send('download-done', payload);
       }
       try {
+        const sendNote = (title: string, body: string) => {
+          if (deps.notify) {
+            deps.notify(title, body, { jobId: id });
+          } else {
+            new Notification({ title, body }).show();
+          }
+        };
         if (code === 0)
-          new Notification({
-            title: 'İndirme tamamlandı (VoltGet)',
-            body: (opts.title || finalUrl).slice(0, 60),
-          }).show();
-        else
-          new Notification({
-            title: 'İndirme hatası',
-            body: `Kod ${code} • ${finalUrl.slice(0, 40)}`,
-          }).show();
+          sendNote('İndirme tamamlandı (VoltGet)', (opts.title || finalUrl).slice(0, 60));
+        else sendNote('İndirme hatası', `Kod ${code} • ${finalUrl.slice(0, 40)}`);
       } catch {}
       deps.updatePowerSaveBlocker();
       deps.processPending();
