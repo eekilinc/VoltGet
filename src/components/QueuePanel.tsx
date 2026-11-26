@@ -465,6 +465,7 @@ export default function QueuePanel({
                   </div>
                 </th>
                 <th
+                  className="queue-col-size"
                   style={{ padding: '10px 10px', width: 110, cursor: 'pointer' }}
                   onClick={() => handleSort('size')}
                 >
@@ -491,7 +492,9 @@ export default function QueuePanel({
                     <ArrowUpDown size={12} opacity={sortField === 'speed' ? 1 : 0.3} />
                   </div>
                 </th>
-                <th style={{ padding: '10px 10px', width: 90 }}>KALAN</th>
+                <th className="queue-col-eta" style={{ padding: '10px 10px', width: 90 }}>
+                  KALAN
+                </th>
                 <th
                   style={{ padding: '10px 10px', width: 110, cursor: 'pointer' }}
                   onClick={() => handleSort('status')}
@@ -597,7 +600,7 @@ export default function QueuePanel({
                     {/* Boyut */}
                     <td
                       style={{ padding: '10px 10px', color: 'var(--text)' }}
-                      className="tech-mono"
+                      className="tech-mono queue-col-size"
                     >
                       {job.total || (job.size ? formatBytes(job.size) : '--')}
                     </td>
@@ -657,7 +660,7 @@ export default function QueuePanel({
                     {/* Kalan Süre */}
                     <td
                       style={{ padding: '10px 10px', color: 'var(--muted)' }}
-                      className="tech-mono"
+                      className="tech-mono queue-col-eta"
                     >
                       {isDownloading && job.eta && job.eta !== '-' ? job.eta : '--'}
                     </td>
@@ -812,7 +815,7 @@ export default function QueuePanel({
             style={{
               padding: 16,
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))',
               gap: 12,
             }}
           >
@@ -1143,7 +1146,7 @@ export default function QueuePanel({
         >
           <div
             style={{
-              width: 380,
+              width: 'min(380px, calc(100vw - 32px))',
               background: 'var(--panel)',
               borderRadius: 14,
               border: '1px solid var(--border-2)',

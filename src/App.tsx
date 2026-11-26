@@ -9,6 +9,7 @@ import {
   FileText,
   FolderOpen,
   Info,
+  Menu,
   Moon,
   Music,
   Pause,
@@ -58,6 +59,7 @@ export default function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Modals & Dialogs
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isNewDownloadOpen, setIsNewDownloadOpen] = useState(false);
   const [newDownloadInitialUrl, setNewDownloadInitialUrl] = useState('');
   const [isExtModalOpen, setIsExtModalOpen] = useState(false);
@@ -147,11 +149,12 @@ export default function App() {
         if (completedInfo) setCompletedInfo(null);
         else if (isExtModalOpen) setIsExtModalOpen(false);
         else if (clipboardDetectedUrl) setClipboardDetectedUrl(null);
+        else if (sidebarOpen) setSidebarOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [completedInfo, isExtModalOpen, clipboardDetectedUrl, setClipboardDetectedUrl]);
+  }, [completedInfo, isExtModalOpen, clipboardDetectedUrl, setClipboardDetectedUrl, sidebarOpen]);
 
   const getPageTitle = () => {
     if (tab === 'sniff') return t('autoSniffer');
@@ -295,19 +298,14 @@ export default function App() {
         </div>
       )}
 
+      {/* Mobil / Dar Ekran Sidebar Arka Planı */}
+      <div
+        className={`app-sidebar-backdrop ${sidebarOpen ? 'is-open' : ''}`}
+        onClick={() => setSidebarOpen(false)}
+      />
+
       {/* SOL SIDEBAR: Marka, Yeni İndirme CTA, Durumlar, Kategoriler, Araçlar */}
-      <aside
-        style={{
-          width: 240,
-          height: '100%',
-          background: 'var(--panel)',
-          borderRight: '1px solid var(--border)',
-          display: 'flex',
-          flexDirection: 'column',
-          flexShrink: 0,
-          overflow: 'hidden',
-        }}
-      >
+      <aside className={`app-sidebar ${sidebarOpen ? 'is-open' : ''}`}>
         {/* Üst Logo ve Başlık */}
         <div
           style={{
@@ -347,6 +345,7 @@ export default function App() {
             onClick={() => {
               setNewDownloadInitialUrl('');
               setIsNewDownloadOpen(true);
+              setSidebarOpen(false);
             }}
             style={{
               width: '100%',
@@ -441,6 +440,7 @@ export default function App() {
                       setTab('downloads');
                       setCategoryFilter('all');
                       setFilterTab(item.id as any);
+                      setSidebarOpen(false);
                     }}
                     style={{
                       display: 'flex',
@@ -518,6 +518,7 @@ export default function App() {
                     onClick={() => {
                       setTab('downloads');
                       setCategoryFilter(item.id as any);
+                      setSidebarOpen(false);
                     }}
                     style={{
                       display: 'flex',
@@ -562,7 +563,10 @@ export default function App() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <button
                 type="button"
-                onClick={() => setTab('sniff')}
+                onClick={() => {
+                  setTab('sniff');
+                  setSidebarOpen(false);
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -587,7 +591,10 @@ export default function App() {
 
               <button
                 type="button"
-                onClick={() => setTab('explorer')}
+                onClick={() => {
+                  setTab('explorer');
+                  setSidebarOpen(false);
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -700,7 +707,10 @@ export default function App() {
           <div style={{ display: 'flex', gap: 6 }}>
             <button
               type="button"
-              onClick={() => setTab('settings')}
+              onClick={() => {
+                setTab('settings');
+                setSidebarOpen(false);
+              }}
               style={{
                 flex: 1,
                 display: 'flex',
@@ -722,7 +732,10 @@ export default function App() {
 
             <button
               type="button"
-              onClick={() => setTab('about')}
+              onClick={() => {
+                setTab('about');
+                setSidebarOpen(false);
+              }}
               style={{
                 flex: 1,
                 display: 'flex',
@@ -775,21 +788,29 @@ export default function App() {
         }}
       >
         {/* ÜST TOOLBAR (Modern Header) */}
-        <header
-          style={{
-            height: 52,
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--panel)',
-            display: 'flex',
-            alignItems: 'center',
-            padding: '0 16px',
-            gap: 12,
-            flexShrink: 0,
-          }}
-        >
+        <header className="app-topbar">
+          {/* Dar Ekran Menü Açma Butonu */}
+          <button
+            type="button"
+            className="app-sidebar-toggle"
+            onClick={() => setSidebarOpen(v => !v)}
+            title="Menü"
+            aria-label="Menüyü aç/kapat"
+          >
+            <Menu size={16} />
+          </button>
+
           {/* Başlık */}
           <div
-            style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-bright)', minWidth: 150 }}
+            style={{
+              fontWeight: 800,
+              fontSize: 14,
+              color: 'var(--text-bright)',
+              minWidth: 0,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
           >
             {getPageTitle()}
           </div>
@@ -808,12 +829,13 @@ export default function App() {
                 color: 'var(--badge-info-text)',
                 fontSize: 11,
                 fontWeight: 800,
+                flexShrink: 0,
               }}
               className="tech-mono"
             >
               <Zap size={13} color="var(--badge-info-text)" />
               <span>{totalSpeed}</span>
-              <span style={{ fontSize: 9.5, opacity: 0.7 }}>
+              <span style={{ fontSize: 9.5, opacity: 0.7 }} className="hide-md-label">
                 • {jobs.filter(j => j.status === 'downloading').length} aktif
               </span>
             </div>
@@ -821,7 +843,7 @@ export default function App() {
 
           {/* Arama Kutusu (yalnızca İndirmeler sekmesinde) */}
           {tab === 'downloads' ? (
-            <div style={{ position: 'relative', width: 220, marginLeft: 'auto' }}>
+            <div className="app-search-box">
               <input
                 ref={searchInputRef}
                 type="text"
@@ -889,6 +911,7 @@ export default function App() {
                 color: 'var(--text)',
                 fontSize: 11,
                 fontWeight: 600,
+                flexShrink: 0,
               }}
             >
               <option value={0}>⚡ {t('speedUnlimited')}</option>
@@ -919,6 +942,7 @@ export default function App() {
               color: clipboardWatcherActive ? 'var(--accent-solid)' : 'var(--muted)',
               fontSize: 11,
               fontWeight: 600,
+              flexShrink: 0,
             }}
           >
             <span
@@ -929,11 +953,11 @@ export default function App() {
                 background: clipboardWatcherActive ? 'var(--accent-solid)' : 'var(--muted)',
               }}
             />
-            <span>Pano İzleme</span>
+            <span className="hide-md-label">Pano İzleme</span>
           </button>
 
           {/* Hızlı Eylemler: Başlat / Durdur / Temizle (İndirmeler) + Klasör */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
             {tab === 'downloads' && (
               <>
                 <button
@@ -953,7 +977,7 @@ export default function App() {
                   }}
                 >
                   <Play size={12} />
-                  <span>{t('resume')}</span>
+                  <span className="hide-md-label">{t('resume')}</span>
                 </button>
 
                 <button
@@ -973,7 +997,7 @@ export default function App() {
                   }}
                 >
                   <Pause size={12} />
-                  <span>{t('pause')}</span>
+                  <span className="hide-md-label">{t('pause')}</span>
                 </button>
 
                 <button
@@ -993,7 +1017,7 @@ export default function App() {
                   }}
                 >
                   <Trash2 size={12} />
-                  <span>{t('clear')}</span>
+                  <span className="hide-md-label">{t('clear')}</span>
                 </button>
               </>
             )}
@@ -1016,7 +1040,7 @@ export default function App() {
               }}
             >
               <FolderOpen size={13} />
-              <span>{t('folder')}</span>
+              <span className="hide-md-label">{t('folder')}</span>
             </button>
           </div>
         </header>
@@ -1159,7 +1183,7 @@ export default function App() {
             borderRadius: 14,
             padding: '14px 18px',
             boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6)',
-            maxWidth: 420,
+            maxWidth: 'min(420px, calc(100vw - 32px))',
             display: 'flex',
             flexDirection: 'column',
             gap: 10,
@@ -1249,7 +1273,7 @@ export default function App() {
               background: 'var(--panel)',
               border: '1px solid var(--border-2)',
               borderRadius: 14,
-              width: 420,
+              width: 'min(420px, calc(100vw - 32px))',
               boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
               overflow: 'hidden',
             }}

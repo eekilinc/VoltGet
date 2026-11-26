@@ -22,8 +22,8 @@ export function createMainWindowFactory(deps: {
 
     const w = new BrowserWindow({
       ...buildMainWindowOptions(preloadPath, appIcon),
-      minWidth: 1020,
-      minHeight: 620,
+      minWidth: 680,
+      minHeight: 500,
       backgroundColor: '#0a0a0f',
       title: 'VoltGet - Ultra Hızlı İndirme Yöneticisi',
       show: !shouldStartHidden,

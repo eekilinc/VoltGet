@@ -200,16 +200,7 @@ export default function FileExplorer({
   };
 
   return (
-    <div
-      style={{
-        flex: 1,
-        padding: 18,
-        overflow: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 14,
-      }}
-    >
+    <div className="scroll-panel">
       {/* Üst Başlık & Kaynak Modu Seçici */}
       <div className="card-premium glow-accent" style={{ borderRadius: 18, padding: 18 }}>
         <div
@@ -602,7 +593,7 @@ export default function FileExplorer({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))',
             gap: 12,
           }}
         >

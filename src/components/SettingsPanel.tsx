@@ -199,16 +199,7 @@ export default function SettingsPanel() {
   }
 
   return (
-    <div
-      style={{
-        flex: 1,
-        padding: 18,
-        overflow: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 14,
-      }}
-    >
+    <div className="scroll-panel">
       {/* Tarayıcı Eklentisi Yönetim Kartı */}
       <div className="card-premium glow-accent" style={{ borderRadius: 18, padding: 18 }}>
         <div
@@ -323,7 +314,14 @@ export default function SettingsPanel() {
           {t('settingsTheme')} • {t('settingsLanguage')} • {t('accentColor')}
         </div>
 
-        <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div
+          style={{
+            marginTop: 14,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: 10,
+          }}
+        >
           {(['dark', 'light'] as ThemeMode[]).map(mode => (
             <button
               key={mode}
@@ -571,7 +569,7 @@ export default function SettingsPanel() {
         >
           {outDir}
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
           <button
             onClick={pickFolder}
             className="brand-gradient"

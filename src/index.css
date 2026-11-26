@@ -410,3 +410,171 @@ textarea:focus {
   background-size: 200% 100%;
   animation: shimmerBar 2s infinite linear;
 }
+
+/* =========================================================
+   Responsive Layout & Flex-Shrink Protection
+   ========================================================= */
+
+/* Scrollable vertical panels: never squish child cards when window height shrinks */
+.scroll-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: clamp(12px, 2vw, 20px);
+}
+
+.scroll-panel > * {
+  flex-shrink: 0;
+}
+
+/* Responsive App Shell */
+.app-sidebar {
+  width: 240px;
+  height: 100%;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+  transition:
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    width 0.2s ease;
+  z-index: 40;
+}
+
+.app-sidebar-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.app-sidebar-backdrop {
+  display: none;
+}
+
+.app-topbar {
+  min-height: 52px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 16px;
+  gap: 8px 10px;
+  flex-shrink: 0;
+}
+
+.app-search-box {
+  position: relative;
+  flex: 1 1 160px;
+  max-width: 240px;
+  min-width: 130px;
+  margin-left: auto;
+}
+
+.inspector-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 18px;
+  display: flex;
+  gap: 18px;
+}
+
+.inspector-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  border-left: 1px solid var(--border);
+  padding-left: 16px;
+  min-width: 148px;
+  flex-shrink: 0;
+}
+
+.inspector-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 16px;
+  font-size: 11px;
+}
+
+/* Medium windows: slightly tighter sidebar & toolbar */
+@media (max-width: 1080px) {
+  .app-sidebar {
+    width: 212px;
+  }
+  .hide-md-label {
+    display: none;
+  }
+  .queue-col-eta {
+    display: none;
+  }
+}
+
+/* Compact / split-screen windows: collapsible slide-over sidebar */
+@media (max-width: 820px) {
+  .app-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 244px;
+    transform: translateX(-100%);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+  }
+  .app-sidebar.is-open {
+    transform: translateX(0);
+  }
+  .app-sidebar-toggle {
+    display: inline-flex;
+  }
+  .app-sidebar-backdrop.is-open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.48);
+    backdrop-filter: blur(2px);
+    z-index: 35;
+  }
+  .app-topbar {
+    padding: 8px 12px;
+  }
+  .queue-col-size {
+    display: none;
+  }
+  .inspector-body {
+    flex-direction: column;
+    gap: 12px;
+    padding: 10px 14px;
+  }
+  .inspector-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    padding-left: 0;
+    padding-top: 10px;
+    min-width: 0;
+  }
+}
+
+/* Short viewport heights: keep hero & inspector compact */
+@media (max-height: 620px) {
+  .about-hero-card {
+    padding: 16px !important;
+  }
+}

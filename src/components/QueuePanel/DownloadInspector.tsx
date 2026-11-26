@@ -144,7 +144,7 @@ export default function DownloadInspector({
         background: 'var(--panel)',
         display: 'flex',
         flexDirection: 'column',
-        height: 250,
+        height: 'clamp(190px, 34vh, 265px)',
         flexShrink: 0,
         animation: 'slideUp 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
         zIndex: 10,
@@ -156,9 +156,12 @@ export default function DownloadInspector({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 8,
           padding: '8px 16px',
           borderBottom: '1px solid var(--border)',
           background: 'var(--panel-2)',
+          flexShrink: 0,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
@@ -170,7 +173,7 @@ export default function DownloadInspector({
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
-              maxWidth: 360,
+              maxWidth: 'min(360px, 45vw)',
             }}
           >
             {job.title || job.fileName || 'İndirme Detayları'}
@@ -343,15 +346,7 @@ export default function DownloadInspector({
       </div>
 
       {/* Gövde */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '12px 18px',
-          display: 'flex',
-          gap: 20,
-        }}
-      >
+      <div className="inspector-body">
         {/* Sol Ana Görünüm */}
         <div
           style={{
@@ -387,7 +382,7 @@ export default function DownloadInspector({
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: `repeat(${Math.min(8, segments.length)}, 1fr)`,
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(76px, 1fr))',
                   gap: 6,
                 }}
               >
@@ -554,14 +549,7 @@ export default function DownloadInspector({
           )}
 
           {activeTab === 'details' && (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '8px 16px',
-                fontSize: 11,
-              }}
-            >
+            <div className="inspector-details-grid">
               <div>
                 <span style={{ color: 'var(--muted)' }}>Kaynak URL: </span>
                 <span
@@ -785,17 +773,7 @@ export default function DownloadInspector({
         </div>
 
         {/* Sağ Hızlı Eylemler */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            gap: 6,
-            borderLeft: '1px solid var(--border)',
-            paddingLeft: 16,
-            minWidth: 150,
-          }}
-        >
+        <div className="inspector-actions">
           {job.status === 'downloading' && onPause && (
             <button
               type="button"

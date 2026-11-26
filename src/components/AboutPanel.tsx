@@ -6,7 +6,7 @@ export default function AboutPanel() {
   const { t } = useAppSettings();
   const [status, setStatus] = useState<any>(null);
   const [extConnected, setExtConnected] = useState<boolean>(false);
-  const [appVersion, setAppVersion] = useState<string>('1.2.3');
+  const [appVersion, setAppVersion] = useState<string>('1.2.4');
 
   useEffect(() => {
     window.api?.getYtDlpStatus?.().then(setStatus);
@@ -33,25 +33,17 @@ export default function AboutPanel() {
   };
 
   return (
-    <div
-      style={{
-        flex: 1,
-        padding: 18,
-        overflow: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 14,
-      }}
-    >
+    <div className="scroll-panel">
       {/* Hero Kartı */}
       <div
-        className="card-premium glow-accent"
+        className="card-premium glow-accent about-hero-card"
         style={{
           borderRadius: 20,
           padding: 24,
           textAlign: 'center',
           position: 'relative',
           overflow: 'hidden',
+          flexShrink: 0,
         }}
       >
         <div
@@ -265,6 +257,8 @@ export default function AboutPanel() {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 8,
             fontSize: 11,
             color: 'var(--text-muted)',
           }}
@@ -372,7 +366,13 @@ export default function AboutPanel() {
       </div>
 
       {/* Mimari & Desteklenen Formatlar */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))',
+          gap: 12,
+        }}
+      >
         <div className="card-premium" style={{ borderRadius: 16, padding: 16 }}>
           <div style={{ fontWeight: 800, fontSize: 13 }}>🧰 {t('techArchTitle')}</div>
           <div className="text-muted" style={{ fontSize: 11, marginTop: 8, lineHeight: 1.9 }}>

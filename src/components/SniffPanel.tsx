@@ -249,16 +249,7 @@ export default function SniffPanel({
   }
 
   return (
-    <div
-      style={{
-        flex: 1,
-        padding: 18,
-        overflow: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-      }}
-    >
+    <div className="scroll-panel">
       <div className="card-premium glow-accent" style={{ borderRadius: 18, padding: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span
