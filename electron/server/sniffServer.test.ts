@@ -77,4 +77,41 @@ describe('authenticated extension bridge', () => {
     await vi.waitFor(() => expect(f.handle).toHaveBeenCalledTimes(1));
     expect(f.controller.getExtensionConnectedCount()).toBe(1);
   });
+  it('invokes onFocusApp when authenticated POST /focus is called', async () => {
+    const onFocusApp = vi.fn();
+    const controller = createSniffServer({
+      getMainWindow: () => null,
+      handleIncomingSniff: vi.fn(async () => {}),
+      onFocusApp,
+      getToken: () => token,
+      port: 0,
+    });
+    controller.startSniffServer();
+    const server = controller.getServer()!;
+    cleanup.push(() => {
+      controller.getWss()?.close();
+      server.closeAllConnections();
+      server.close();
+    });
+    await once(server, 'listening');
+    const port = (server.address() as import('net').AddressInfo).port;
+    const status = await new Promise<number>(resolve => {
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port,
+          path: '/focus',
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + token, Origin: origin },
+        },
+        res => {
+          res.resume();
+          res.on('end', () => resolve(res.statusCode!));
+        }
+      );
+      req.end();
+    });
+    expect(status).toBe(200);
+    expect(onFocusApp).toHaveBeenCalledTimes(1);
+  });
 });

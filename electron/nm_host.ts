@@ -1,3 +1,4 @@
+import { spawn } from 'child_process';
 import * as fs from 'fs';
 
 function readMessage(): Promise<any> {
@@ -17,6 +18,9 @@ function readMessage(): Promise<any> {
     }
 
     const msgLen = headerBuf.readUInt32LE(0);
+    if (msgLen === 0 || msgLen > 1024 * 1024) {
+      return reject(new Error('Invalid message length'));
+    }
     const msgBuf = Buffer.alloc(msgLen);
     let totalRead = 0;
 
@@ -41,37 +45,81 @@ function readMessage(): Promise<any> {
 }
 
 function writeMessage(msg: any) {
-  const jsonStr = JSON.stringify(msg);
+  const payload = Buffer.from(JSON.stringify(msg), 'utf8');
   const headerBuf = Buffer.alloc(4);
-  headerBuf.writeUInt32LE(jsonStr.length, 0);
+  headerBuf.writeUInt32LE(payload.length, 0);
   try {
     fs.writeSync(process.stdout.fd, headerBuf);
-    fs.writeSync(process.stdout.fd, Buffer.from(jsonStr, 'utf8'));
+    fs.writeSync(process.stdout.fd, payload);
   } catch {
     // ignore
   }
 }
 
+function readPairingToken(): string {
+  const tokenFile = process.env.VOLTGET_TOKEN_FILE;
+  if (!tokenFile) return '';
+  try {
+    const raw = fs.readFileSync(tokenFile, 'utf8').trim();
+    return /^[a-f0-9]{64}$/.test(raw) ? raw : '';
+  } catch {
+    return '';
+  }
+}
+
+function launchDesktopApp(): boolean {
+  const exe = process.env.VOLTGET_APP_EXE;
+  if (!exe || !fs.existsSync(exe)) return false;
+  try {
+    const child = spawn(exe, [], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: false,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '' },
+    });
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 if (process.argv.includes('--native-msg')) {
-  // Sonsuz döngüde mesajları dinle
   async function listenLoop() {
     try {
       while (true) {
         const msg = await readMessage();
         if (!msg) break;
 
-        // Örnek işlem: Gelen mesajı işle ve yanıt dön
         if (msg.type === 'ping') {
           writeMessage({ type: 'pong', time: Date.now() });
+        } else if (msg.type === 'get-token') {
+          const token = readPairingToken();
+          writeMessage({ success: !!token, token });
+        } else if (msg.type === 'focus-app') {
+          const token = readPairingToken();
+          let focused = false;
+          if (token) {
+            try {
+              const r = await globalThis.fetch('http://127.0.0.1:8765/focus', {
+                method: 'POST',
+                headers: { Authorization: 'Bearer ' + token },
+              });
+              focused = r.ok;
+            } catch {}
+          }
+          if (!focused) {
+            focused = launchDesktopApp();
+          }
+          writeMessage({ success: focused });
         } else if (msg.type === 'download-request') {
-          // İndirme talebini yerel HTTP sunucusuna ilet veya dosyaya yaz
-          // Yerel HTTP sunucumuz 8765 portunda çalışıyor, oraya POST atabiliriz
+          const token = msg.token || readPairingToken();
           try {
             const response = await globalThis.fetch('http://127.0.0.1:8765/sniff', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                Authorization: 'Bearer ' + (msg.token || ''),
+                Authorization: 'Bearer ' + token,
               },
               body: JSON.stringify(msg.data),
             });
@@ -87,5 +135,5 @@ if (process.argv.includes('--native-msg')) {
       // Stream kapandıysa çık
     }
   }
-  listenLoop();
+  void listenLoop();
 }

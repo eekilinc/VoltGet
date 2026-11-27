@@ -1,9 +1,20 @@
 {
   "manifest_version": 3,
-  "name": "VoltGet Yakalayıcı",
-  "version": "1.2.0",
-  "description": "Sayfadaki video/müzik linklerini yakalar ve IDM tarzı video üstü indirme paneli sunar",
-  "permissions": ["webRequest", "storage", "tabs", "scripting", "cookies", "downloads", "contextMenus"],
+  "name": "VoltGet Download Manager",
+  "short_name": "VoltGet",
+  "version": "1.3.0",
+  "description": "Ultra hızlı çok parçalı indirme yöneticisi: video/medya yakalama, Shadow DOM indirme çubuğu ve akıllı tarayıcı entegrasyonu.",
+  "permissions": [
+    "webRequest",
+    "storage",
+    "tabs",
+    "scripting",
+    "cookies",
+    "downloads",
+    "contextMenus",
+    "nativeMessaging",
+    "alarms"
+  ],
   "host_permissions": ["<all_urls>"],
   "background": {
     "scripts": ["background.js"]
@@ -17,8 +28,14 @@
     }
   ],
   "action": {
-    "default_title": "VoltGet Yakalayıcı",
-    "default_popup": "popup.html"
+    "default_title": "VoltGet Download Manager",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon-16.png",
+      "32": "icon-32.png",
+      "48": "icon-48.png",
+      "128": "icon-128.png"
+    }
   },
   "icons": {
     "16": "icon-16.png",

@@ -73,6 +73,18 @@ export interface ExtensionStatus {
   connected: boolean;
   count: number;
 }
+export interface InstalledBrowserInfo {
+  id: 'chrome' | 'edge' | 'brave' | 'opera' | 'vivaldi' | 'firefox';
+  name: string;
+  engine: 'chromium' | 'firefox';
+  exePath: string;
+  extensionsUrl: string;
+}
+export interface NativeHostStatus {
+  installed: boolean;
+  manifestDir: string;
+  chromiumOriginsCount: number;
+}
 export interface DownloadDone {
   id: string;
   code: number;
@@ -167,6 +179,21 @@ export interface DesktopApi {
   openExtensionFolder(browser?: string): Promise<OperationResult>;
   exportExtensionZip(browser?: string): Promise<OperationResult>;
   copyExtensionToken(): Promise<boolean>;
+  getExtensionPath(browser?: string): Promise<{ path: string; exists: boolean }>;
+  detectInstalledBrowsers(): Promise<InstalledBrowserInfo[]>;
+  launchBrowserExtensions(browserId?: string): Promise<{
+    success: boolean;
+    error?: string;
+    browser?: InstalledBrowserInfo;
+    extDir?: string;
+  }>;
+  registerNativeHost(payload?: { chromiumExtensionIds?: string[] }): Promise<{
+    success: boolean;
+    registeredBrowsers: string[];
+    manifestDir: string;
+    error?: string;
+  }>;
+  getNativeHostStatus(): Promise<NativeHostStatus>;
   getExtensionStatus(): Promise<ExtensionStatus>;
   getDiskSpace(
     dirPath?: string

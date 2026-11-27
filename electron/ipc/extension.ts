@@ -1,7 +1,13 @@
 import { spawn } from 'child_process';
-import { clipboard, ipcMain, shell } from 'electron';
+import { app, clipboard, ipcMain, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
+import {
+  detectInstalledBrowsers,
+  getNativeHostStatus,
+  launchBrowserExtensionsPage,
+  registerNativeMessagingHost,
+} from '../app/extensionInstaller.js';
 import { getExtensionToken } from '../security/extensionAuth.js';
 
 export function registerExtensionIpc(deps: {
@@ -9,14 +15,62 @@ export function registerExtensionIpc(deps: {
   ensureDir: (d: string) => void;
   getDefaultDir: () => string;
   getExtensionConnectedCount: () => number;
+  getNmHostJsPath?: () => string;
 }) {
   ipcMain.handle('copy-extension-token', () => {
     clipboard.writeText(getExtensionToken());
     return true;
   });
+
+  ipcMain.handle('get-extension-path', (_e, browser?: string) => {
+    const extDir = deps.getExtensionDir(browser);
+    return { path: extDir, exists: fs.existsSync(extDir) };
+  });
+
+  ipcMain.handle('detect-installed-browsers', () => {
+    return detectInstalledBrowsers();
+  });
+
+  ipcMain.handle('launch-browser-extensions', async (_e, browserId?: string) => {
+    const browsers = detectInstalledBrowsers();
+    const target = browsers.find(b => b.id === browserId) || browsers[0];
+    if (!target) {
+      return { success: false, error: 'Kurulu desteklenen tarayıcı bulunamadı.' };
+    }
+    const extDir = deps.getExtensionDir(target.engine === 'firefox' ? 'firefox' : 'chrome');
+    if (fs.existsSync(extDir)) {
+      clipboard.writeText(extDir);
+    }
+    const launched = launchBrowserExtensionsPage(target);
+    return {
+      success: launched.success,
+      error: launched.error,
+      browser: target,
+      extDir,
+    };
+  });
+
+  ipcMain.handle('register-native-host', (_e, payload?: { chromiumExtensionIds?: string[] }) => {
+    const nmHostJsPath =
+      deps.getNmHostJsPath?.() ||
+      path.join(path.dirname(app.getAppPath()), 'dist', 'electron', 'nm_host.js');
+    return registerNativeMessagingHost({
+      userDataDir: app.getPath('userData'),
+      appExePath: process.execPath,
+      nmHostJsPath,
+      token: getExtensionToken(),
+      chromiumExtensionIds: payload?.chromiumExtensionIds,
+    });
+  });
+
+  ipcMain.handle('get-native-host-status', () => {
+    return getNativeHostStatus(app.getPath('userData'));
+  });
+
   ipcMain.handle('open-extension-folder', async (_e, browser?: string) => {
     const extDir = deps.getExtensionDir(browser);
     if (fs.existsSync(extDir)) {
+      clipboard.writeText(extDir);
       await shell.openPath(extDir);
       return { success: true, path: extDir, browser: browser || 'chrome' };
     }

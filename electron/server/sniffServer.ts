@@ -35,6 +35,7 @@ export interface SniffServerDeps {
     isDestroyed: () => boolean;
     webContents: { send: (channel: string, data: unknown) => void };
   } | null;
+  onFocusApp?: () => void;
   getToken: () => string;
   port?: number;
 }
@@ -109,6 +110,13 @@ export function createSniffServer(deps: SniffServerDeps) {
             extensionConnected: getExtensionConnectedCount() > 0,
           })
         );
+        return;
+      }
+      if ((req.method === 'POST' || req.method === 'GET') && req.url === '/focus') {
+        try {
+          deps.onFocusApp?.();
+        } catch {}
+        res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"ok":true}');
         return;
       }
       if (req.method !== 'POST' || req.url !== '/sniff') {

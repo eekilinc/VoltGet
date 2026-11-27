@@ -1,6 +1,6 @@
 {
   "name": "voltget",
-  "version": "1.2.4",
+  "version": "1.3.0",
   "description": "VoltGet - High-Speed Download Manager & Media Sniffer (IDM Alternative for Modern Web)",
   "type": "module",
   "main": "dist/electron/main.js",
@@ -12,7 +12,9 @@
     "start:dev": "cross-env ELECTRON_IS_DEV=0 npm run dev:electron",
     "build": "npm run build:electron && npm run build:renderer && electron-builder",
     "build:renderer": "vite build",
-    "build:electron": "tsc -p tsconfig.electron.json && node scripts/build-preload.mjs && node -e \"fs.copyFileSync('electron/preload.cjs', 'dist/electron/preload.cjs'); if(fs.existsSync('bin/yt-dlp.exe')){fs.mkdirSync('dist/bin',{recursive:true});fs.copyFileSync('bin/yt-dlp.exe','dist/bin/yt-dlp.exe');} if(fs.existsSync('extension')) fs.cpSync('extension','dist/extension',{recursive:true}); if(fs.existsSync('extension-firefox')) fs.cpSync('extension-firefox','dist/extension-firefox',{recursive:true});\"",
+    "build:extensions": "node scripts/build-extensions.mjs",
+    "pack:extensions": "node scripts/build-extensions.mjs --pack",
+    "build:electron": "node scripts/build-extensions.mjs && tsc -p tsconfig.electron.json && node scripts/build-preload.mjs && node -e \"fs.copyFileSync('electron/preload.cjs', 'dist/electron/preload.cjs'); if(fs.existsSync('bin/yt-dlp.exe')){fs.mkdirSync('dist/bin',{recursive:true});fs.copyFileSync('bin/yt-dlp.exe','dist/bin/yt-dlp.exe');} if(fs.existsSync('extension')) fs.cpSync('extension','dist/extension',{recursive:true}); if(fs.existsSync('extension-firefox')) fs.cpSync('extension-firefox','dist/extension-firefox',{recursive:true});\"",
     "build:nm_host": "tsc --project tsconfig.electron.json",
     "preview": "vite preview",
     "test": "vitest run",

@@ -9,6 +9,7 @@ import {
   tryDirectFileEarlyReturn,
   tryHlsEarlyReturn,
 } from './analyze.js';
+import { syncNativeHostToken } from './app/extensionInstaller.js';
 import { createNotificationHelper } from './app/notifications.js';
 import { createTrayController } from './app/tray.js';
 import { createDialogWindowFactory, createMainWindowFactory } from './app/windows.js';
@@ -363,6 +364,7 @@ const sniffController = createSniffServer({
   getToken: getExtensionToken,
   handleIncomingSniff: (data: any) => handleIncomingSniff(data),
   getMainWindow: () => mainWindow,
+  onFocusApp: () => notificationHelper.focusMainWindow({ switchToDownloads: true }),
 });
 function getExtensionConnectedCount(): number {
   return sniffController.getExtensionConnectedCount();
@@ -412,6 +414,11 @@ app.setName('VoltGet');
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.voltget.app');
 }
+try {
+  if (app.isPackaged) {
+    app.setAsDefaultProtocolClient('voltget');
+  }
+} catch {}
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -419,11 +426,7 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    }
+    notificationHelper.focusMainWindow({ switchToDownloads: true });
   });
 
   const clipboardWatcher = createClipboardWatcher({
@@ -463,6 +466,9 @@ if (!gotTheLock) {
       });
     } catch {}
     startSniffServer();
+    try {
+      syncNativeHostToken(app.getPath('userData'), getExtensionToken());
+    } catch {}
 
     // Register IPC handlers before creating window
     registerMiscIpc({
@@ -761,6 +767,7 @@ registerExtensionIpc({
   ensureDir,
   getDefaultDir: getDefaultDownloadDir,
   getExtensionConnectedCount,
+  getNmHostJsPath: () => path.join(__dirname, 'nm_host.js'),
 });
 
 function getExtensionDir(targetBrowser?: string): string {

@@ -55,11 +55,14 @@ jobs:
       - name: Package Windows Installers (NSIS & Portable)
         run: npx electron-builder --win --x64 --publish never
 
+      - name: Package Browser Extensions (Chrome/Edge ZIP & Firefox XPI)
+        run: npm run pack:extensions
+
       - name: Generate Checksums
         shell: pwsh
         run: |
           Remove-Item -Path "release/checksums.sha256.txt" -ErrorAction SilentlyContinue
-          Get-ChildItem -Path "release/*" -Include *.exe,*.blockmap,*.yml | ForEach-Object {
+          Get-ChildItem -Path "release/*" -Include *.exe,*.blockmap,*.yml,*.zip,*.xpi | ForEach-Object {
             $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash
             "$hash  $($_.Name)" | Out-File -FilePath "release/checksums.sha256.txt" -Append -Encoding utf8
           }
@@ -72,16 +75,9 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/latest.yml
+            release/voltget-*-extension-*
             release/checksums.sha256.txt
           generate_release_notes: true
-          body: |
-            ## VoltGet ${{ github.ref_name }}
-            ### Dayanıklılık + IDM İşlevleri
-            - **Kritik düzeltmeler**: bozuk config/kuyruk dosyasında açılış çökmesi yok (yedekleme + varsayılan), dosya adı path-traversal koruması, retry-cancel tutarlılığı
-            - **3-Kolon layout**: sol nav + ana içerik + sağ kuyruk (400px, responsive)
-            - **Kuyruk**: sürükle-sırala, not/etiket + arama, günlük indirilen sayacı, içe aktarma özeti
-            - **Ayarlar**: site girişleri, bağlantı, yeniden deneme, çakışma politikası, özel kategoriler, uygulama güncellemesi, tek seferlik zamanlayıcı
-            - **i18n**: 6 dilde 412 anahtar eşitlendi; test kapsamı 114 teste çıktı
           draft: false
           prerelease: false
           fail_on_unmatched_files: false

@@ -56,6 +56,13 @@ const api: DesktopApi = {
   onSwitchToDownloadTab: cb => subscribe('switch-to-download-tab', cb),
   openExtensionFolder: (browser?: string) => ipcRenderer.invoke('open-extension-folder', browser),
   exportExtensionZip: (browser?: string) => ipcRenderer.invoke('export-extension-zip', browser),
+  getExtensionPath: (browser?: string) => ipcRenderer.invoke('get-extension-path', browser),
+  detectInstalledBrowsers: () => ipcRenderer.invoke('detect-installed-browsers'),
+  launchBrowserExtensions: (browserId?: string) =>
+    ipcRenderer.invoke('launch-browser-extensions', browserId),
+  registerNativeHost: (payload?: { chromiumExtensionIds?: string[] }) =>
+    ipcRenderer.invoke('register-native-host', payload),
+  getNativeHostStatus: () => ipcRenderer.invoke('get-native-host-status'),
   getExtensionStatus: () => ipcRenderer.invoke('get-extension-status'),
   onExtensionStatus: cb => subscribe('extension-status-changed', cb),
   getDiskSpace: (dirPath?: string) => ipcRenderer.invoke('get-disk-space', dirPath),

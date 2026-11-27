@@ -1,437 +1,577 @@
-// VoltGet - IDM Tarzı Video Üstü İndirme Çubuğu ve Medya Algılayıcı (Content Script)
-;(function () {
-  'use strict'
+// VoltGet - Pro Shadow DOM Video Üstü İndirme Çubuğu ve Medya Algılayıcı
+(function () {
+  'use strict';
 
-  if (window.__flexplorer_injected) return
-  window.__flexplorer_injected = true
+  if (window.__voltget_injected) return;
+  window.__voltget_injected = true;
 
-  // --- 1. Yardımcı Fonksiyonlar ve Filtreler ---
+  const VIDEO_PORTAL_RE =
+    /youtube\.com|youtu\.be|tiktok\.com|instagram\.com|twitter\.com|x\.com|facebook\.com|vimeo\.com|dailymotion\.com/i;
+
+  let overlayEnabled = true;
+  let siteDismissed = false;
+  let lastReportedMediaUrl = '';
+  const reportedMedia = new Set();
+  const activeVideoOverlays = new Map(); // videoEl -> { host, updatePosition, destroy }
+
+  function cleanDomain(u) {
+    try {
+      return new URL(u).hostname.replace(/^www\./i, '').toLowerCase();
+    } catch {
+      return '';
+    }
+  }
+
+  function isExcludedList(domains) {
+    const dom = cleanDomain(location.href);
+    if (!dom || !Array.isArray(domains)) return false;
+    return domains.some(d => dom === d || dom.endsWith('.' + d));
+  }
+
+  function destroyAllOverlays() {
+    for (const entry of activeVideoOverlays.values()) {
+      entry.destroy();
+    }
+    activeVideoOverlays.clear();
+  }
+
+  async function syncOverlayPermissions() {
+    try {
+      const cfg = await chrome.storage.local.get({
+        captureEnabled: true,
+        showVideoOverlay: true,
+        excludedDomains: [],
+      });
+      const allowed =
+        cfg.captureEnabled !== false &&
+        cfg.showVideoOverlay !== false &&
+        !isExcludedList(cfg.excludedDomains) &&
+        !siteDismissed;
+      overlayEnabled = allowed;
+      if (!allowed) {
+        destroyAllOverlays();
+      } else {
+        scanAndAttachVideos();
+      }
+    } catch {}
+  }
+
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (
+        area === 'local' &&
+        (changes.captureEnabled || changes.showVideoOverlay || changes.excludedDomains)
+      ) {
+        void syncOverlayPermissions();
+      }
+    });
+  } catch {}
+
   function isChunkOrSegment(url) {
-    if (!url || typeof url !== 'string') return true
-    if (url.startsWith('blob:') || url.startsWith('data:')) return true
-    if (url.includes('generate_204') || url.includes('/s/search/audio/')) return true
-    if (url.includes('.ts?') || url.includes('range=') || url.includes('sq=') || url.includes('seq=')) return true
-    if (url.includes('segment-') || url.includes('init=') || url.includes('frag=')) return true
-    if (/\.(jpg|jpeg|png|webp|gif|svg|css|js)(\?|$)/i.test(url)) return true
-    return false
+    if (!url || typeof url !== 'string') return true;
+    if (url.startsWith('blob:') || url.startsWith('data:')) return true;
+    if (url.includes('generate_204') || url.includes('/s/search/audio/')) return true;
+    if (
+      url.includes('.ts?') ||
+      url.includes('range=') ||
+      url.includes('sq=') ||
+      url.includes('seq=')
+    )
+      return true;
+    if (url.includes('segment-') || url.includes('init=') || url.includes('frag=')) return true;
+    if (/\.(jpg|jpeg|png|webp|gif|svg|css|js)(\?|$)/i.test(url)) return true;
+    return false;
   }
 
   function isRealMedia(url) {
-    if (isChunkOrSegment(url)) return false
-    if (url.length < 20) return false
-    if (url.includes('/video/embed/')) return false
-    var PAT = /\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a|flac|wav|mov|flv|zip|rar|7z|pdf|exe|msi|apk|dmg|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)(\?|$)/i
-    var CDN = /(playmix|cdnimages|hls\d*\.|master\.txt|\/hls\/.*\.(m3u8|txt|mp4)|googlevideo|manifest\.googlevideo|tiktokcdn|cdninstagram|fbcdn|twimg|vimeocdn)/i
-    return PAT.test(url) || CDN.test(url)
+    if (isChunkOrSegment(url)) return false;
+    if (url.length < 20) return false;
+    if (url.includes('/video/embed/')) return false;
+    const PAT =
+      /\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a|flac|wav|mov|flv|zip|rar|7z|pdf|exe|msi|apk|dmg|doc|docx|xls|xlsx|ppt|pptx|epub|torrent)(\?|$)/i;
+    const CDN =
+      /(playmix|cdnimages|hls\d*\.|master\.txt|\/hls\/.*\.(m3u8|txt|mp4)|googlevideo|manifest\.googlevideo|tiktokcdn|cdninstagram|fbcdn|twimg|vimeocdn)/i;
+    return PAT.test(url) || CDN.test(url);
   }
 
-  var reportedMedia = new Set()
-  var lastReportedMediaUrl = ''
   function reportMedia(url, type) {
-    if (!url || isChunkOrSegment(url)) return
-    var clean = url.split('?')[0]
-    lastReportedMediaUrl = url
-    if (reportedMedia.has(clean)) return
-    reportedMedia.add(clean)
+    if (!url || isChunkOrSegment(url)) return;
+    const clean = url.split('?')[0];
+    lastReportedMediaUrl = url;
+    if (reportedMedia.has(clean)) return;
+    reportedMedia.add(clean);
 
-    var extMatch = url.match(/\.(m3u8|mpd|mp4|webm|mkv|mp3|m4a|zip|rar|7z|pdf|exe|msi|apk|dmg|doc|xls|ppt|epub|torrent)/i)
-    var finalType = type || (extMatch ? extMatch[1].toLowerCase() : (url.includes('master.txt') || url.includes('.m3u8') ? 'm3u8' : 'mp4'))
+    const extMatch = url.match(
+      /\.(m3u8|mpd|mp4|webm|mkv|mp3|m4a|zip|rar|7z|pdf|exe|msi|apk|dmg|doc|xls|ppt|epub|torrent)/i
+    );
+    const finalType =
+      type ||
+      (extMatch
+        ? extMatch[1].toLowerCase()
+        : url.includes('master.txt') || url.includes('.m3u8')
+          ? 'm3u8'
+          : 'mp4');
 
     try {
       chrome.runtime.sendMessage({
         type: 'sniffed',
         data: {
-          url: url,
+          url,
           type: finalType,
           pageUrl: location.href,
           title: document.title,
-          userInitiated: false
-        }
-      })
-    } catch (e) {}
+          userInitiated: false,
+        },
+      });
+    } catch {}
   }
-
-  // --- 2. IDM Video Üstü İndirme Butonu (Floating Video Bar) ---
-  var activeVideoOverlays = new Map() // videoEl -> overlayDiv
 
   function syncStreamFromBackground() {
     try {
-      chrome.runtime.sendMessage({ type: 'get_best_stream', pageUrl: location.href }, function (res) {
-        if (chrome.runtime.lastError) return
-        if (res && res.url) {
-          lastReportedMediaUrl = res.url
-        }
-      })
-    } catch (e) {}
+      chrome.runtime.sendMessage({ type: 'get_best_stream', pageUrl: location.href }, res => {
+        if (chrome.runtime.lastError) return;
+        if (res && res.url) lastReportedMediaUrl = res.url;
+      });
+    } catch {}
   }
 
   function getTargetUrlForVideo(videoEl) {
-    // 1. YouTube, TikTok, Instagram, Twitter gibi sitelerde doğrudan sayfa URL'si en doğru formattır
-    var h = location.hostname
-    if (h.includes('youtube.com') || h.includes('youtu.be') || h.includes('tiktok.com') ||
-        h.includes('instagram.com') || h.includes('twitter.com') || h.includes('x.com') ||
-        h.includes('facebook.com') || h.includes('vimeo.com') || h.includes('dailymotion.com')) {
-      return location.href
+    if (VIDEO_PORTAL_RE.test(location.hostname)) return location.href;
+    const src = videoEl.currentSrc || videoEl.src;
+    if (src && !src.startsWith('blob:') && !src.startsWith('data:')) return src;
+    const sources = videoEl.querySelectorAll('source');
+    for (let i = 0; i < sources.length; i++) {
+      const s = sources[i].src;
+      if (s && !s.startsWith('blob:') && !s.startsWith('data:')) return s;
     }
-
-    // 2. Doğrudan video src'si varsa
-    var src = videoEl.currentSrc || videoEl.src
-    if (src && !src.startsWith('blob:') && !src.startsWith('data:')) {
-      return src
-    }
-
-    // 3. İçindeki <source> etiketleri
-    var sources = videoEl.querySelectorAll('source')
-    for (var i = 0; i < sources.length; i++) {
-      var s = sources[i].src
-      if (s && !s.startsWith('blob:') && !s.startsWith('data:')) return s
-    }
-
-    // 4. Sayfadaki iframe kaynakları (molystream, embed player vs.)
     try {
-      var iframes = document.querySelectorAll('iframe')
-      for (var j = 0; j < iframes.length; j++) {
-        var isrc = iframes[j].src
-        if (isrc && (isrc.includes('molystream') || isrc.includes('/embed/') || isrc.includes('/video/'))) {
-          return isrc
+      const iframes = document.querySelectorAll('iframe');
+      for (let j = 0; j < iframes.length; j++) {
+        const isrc = iframes[j].src;
+        if (
+          isrc &&
+          (isrc.includes('molystream') || isrc.includes('/embed/') || isrc.includes('/video/'))
+        ) {
+          return isrc;
         }
       }
-    } catch (e) {}
-
-    // 5. Blob video için arka plandan yakalanmış gerçek m3u8 / stream URL'si varsa ONU KULLAN!
-    if (lastReportedMediaUrl) {
-      return lastReportedMediaUrl
-    }
-
-    return location.href
+    } catch {}
+    if (lastReportedMediaUrl) return lastReportedMediaUrl;
+    return location.href;
   }
 
+  const SHADOW_STYLES = `
+    :host { all: initial; }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .vg-wrap { position: relative; display: inline-block; user-select: none; }
+    .vg-bar {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(12, 16, 28, 0.94);
+      border: 1px solid rgba(59, 130, 246, 0.65);
+      color: #f8fafc;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(12px);
+      overflow: hidden;
+    }
+    .vg-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 10px;
+      cursor: pointer;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      transition: background 0.14s ease;
+    }
+    .vg-btn:hover { background: rgba(37, 99, 235, 0.28); }
+    .vg-logo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 5px;
+      background: linear-gradient(135deg, #2563eb, #0284c7);
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .vg-caret, .vg-close {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 7px;
+      cursor: pointer;
+      border: 0;
+      border-left: 1px solid rgba(255, 255, 255, 0.12);
+      background: transparent;
+      color: #cbd5e1;
+      transition: background 0.14s ease, color 0.14s ease;
+    }
+    .vg-caret:hover { background: rgba(37, 99, 235, 0.28); color: #fff; }
+    .vg-close:hover { background: rgba(239, 68, 68, 0.25); color: #fca5a5; }
+    .vg-menu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 224px;
+      background: rgba(12, 16, 28, 0.98);
+      border: 1px solid rgba(59, 130, 246, 0.45);
+      border-radius: 12px;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.78);
+      backdrop-filter: blur(16px);
+      padding: 6px;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .vg-menu.open { display: flex; }
+    .vg-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 0;
+      background: transparent;
+      color: #f1f5f9;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+      transition: background 0.12s ease;
+    }
+    .vg-item:hover { background: rgba(37, 99, 235, 0.24); }
+    .vg-item.accent { color: #38bdf8; }
+    .vg-item.danger { color: #fca5a5; }
+    .vg-item.danger:hover { background: rgba(239, 68, 68, 0.18); }
+    .vg-sep { height: 1px; background: rgba(255, 255, 255, 0.08); margin: 3px 4px; }
+  `;
+
+  const ICON_BOLT = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`;
+  const ICON_CHEVRON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+  const ICON_X = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+  const ICON_VIDEO = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`;
+  const ICON_AUDIO = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
+  const ICON_SLIDERS = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg>`;
+  const ICON_EYE_OFF = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fca5a5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>`;
+
   function createVideoOverlay(videoEl) {
-    if (activeVideoOverlays.has(videoEl)) return
+    if (!overlayEnabled || activeVideoOverlays.has(videoEl)) return;
 
-    var isYouTube = location.hostname.includes('youtube.com') || location.hostname.includes('youtu.be')
-    if (!isYouTube && videoEl.closest && videoEl.closest('.ad-banner, .advertisement, [id*="google_ads"], .twitter-tweet, [data-testid="tweet"]')) return
-
-    var rect = videoEl.getBoundingClientRect()
-    // YouTube harici sitelerde 280x160'dan küçük videoları yoksay
-    if (!isYouTube && (rect.width < 280 || rect.height < 160)) return
-
-    var overlay = document.createElement('div')
-    overlay.className = 'flexplorer-video-overlay'
-    overlay.style.cssText = [
-      'position: absolute',
-      'z-index: 2147483640',
-      'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      'user-select: none',
-      'pointer-events: auto',
-      'opacity: 0',
-      'transition: opacity 0.25s ease, transform 0.2s ease',
-      'transform: translateY(-4px)'
-    ].join(';')
-
-    var isMenuOpen = false
-    var hideTimeout = null
-
-    overlay.innerHTML = `
-      <div class="flexplorer-btn-wrapper" style="position: relative; display: inline-block;">
-        <div class="flexplorer-main-btn" style="
-          display: flex;
-          align-items: center;
-          background: rgba(15, 23, 42, 0.92);
-          border: 1px solid rgba(59, 130, 246, 0.7);
-          color: #f8fafc;
-          border-radius: 9px;
-          cursor: pointer;
-          font-size: 12px;
-          font-weight: 700;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1);
-          backdrop-filter: blur(12px);
-          transition: all 0.15s ease;
-          overflow: hidden;
-        ">
-          <div class="flexplorer-action-direct" style="display: flex; align-items: center; gap: 7px; padding: 6px 10px; transition: background 0.12s;">
-            <span style="display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; background: #2563eb; border-radius: 4px; color: #fff; font-size: 10px; font-weight: 900;">⚡</span>
-            <span>Bu videoyu indir</span>
-          </div>
-          <div class="flexplorer-action-menu" style="display: flex; align-items: center; justify-content: center; padding: 6px 8px; border-left: 1px solid rgba(255, 255, 255, 0.15); font-size: 10px; opacity: 0.85; transition: background 0.12s;">
-            ▾
-          </div>
-        </div>
-
-        <div class="flexplorer-dropdown" style="
-          display: none;
-          position: absolute;
-          top: 100%;
-          right: 0;
-          margin-top: 6px;
-          min-width: 210px;
-          background: rgba(15, 23, 42, 0.96);
-          border: 1px solid rgba(59, 130, 246, 0.5);
-          border-radius: 12px;
-          box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8);
-          backdrop-filter: blur(16px);
-          overflow: hidden;
-          padding: 6px;
-          flex-direction: column;
-          gap: 4px;
-        ">
-          <div class="flexplorer-item" data-action="video" style="
-            display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px;
-            cursor: pointer; font-size: 12px; font-weight: 600; color: #f1f5f9; transition: background 0.12s;
-          ">
-            <span>🎬</span> <span>Video İndir (En İyi Kalite)</span>
-          </div>
-          <div class="flexplorer-item" data-action="audio" style="
-            display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px;
-            cursor: pointer; font-size: 12px; font-weight: 600; color: #f1f5f9; transition: background 0.12s;
-          ">
-            <span>🎵</span> <span>Sadece Ses / Müzik (MP3)</span>
-          </div>
-          <div style="height: 1px; background: rgba(255, 255, 255, 0.1); margin: 3px 0;"></div>
-          <div class="flexplorer-item" data-action="dialog" style="
-            display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px;
-            cursor: pointer; font-size: 12px; font-weight: 600; color: #38bdf8; transition: background 0.12s;
-          ">
-            <span>⚙️</span> <span>Kalite Seç & Özellikler...</span>
-          </div>
-        </div>
-      </div>
-    `
-
-    var mainBtn = overlay.querySelector('.flexplorer-main-btn')
-    var directBtn = overlay.querySelector('.flexplorer-action-direct')
-    var menuBtn = overlay.querySelector('.flexplorer-action-menu')
-    var dropdown = overlay.querySelector('.flexplorer-dropdown')
-    var items = overlay.querySelectorAll('.flexplorer-item')
-
-    // Hover efektleri
-    directBtn.addEventListener('mouseenter', function () {
-      directBtn.style.background = 'rgba(59, 130, 246, 0.25)'
-    })
-    directBtn.addEventListener('mouseleave', function () {
-      directBtn.style.background = 'transparent'
-    })
-    menuBtn.addEventListener('mouseenter', function () {
-      menuBtn.style.background = 'rgba(59, 130, 246, 0.35)'
-    })
-    menuBtn.addEventListener('mouseleave', function () {
-      menuBtn.style.background = 'transparent'
-    })
-
-    items.forEach(function (it) {
-      it.addEventListener('mouseenter', function () {
-        it.style.background = 'rgba(59, 130, 246, 0.25)'
-      })
-      it.addEventListener('mouseleave', function () {
-        it.style.background = 'transparent'
-      })
-    })
-
-    function triggerDownload(action) {
-      dropdown.style.display = 'none'
-      isMenuOpen = false
-
-      directBtn.innerHTML = `
-        <span style="color:#60a5fa; font-size:12px;">⏳</span>
-        <span style="color:#60a5fa;">Akış kontrol ediliyor...</span>
-      `
-
-      // Arka plandan bu sekme ve alan adı için yakalanmış en kaliteli akışı sorgula
-      chrome.runtime.sendMessage({ type: 'get_best_stream', pageUrl: location.href }, function (bestStream) {
-        var h = location.hostname
-        var isVideoPortal = h.includes('youtube.com') || h.includes('youtu.be') || h.includes('tiktok.com') ||
-                            h.includes('instagram.com') || h.includes('twitter.com') || h.includes('x.com') ||
-                            h.includes('facebook.com') || h.includes('vimeo.com') || h.includes('dailymotion.com')
-
-        var realUrl = isVideoPortal ? location.href : ((bestStream && bestStream.url) ? bestStream.url : getTargetUrlForVideo(videoEl))
-        if (!realUrl) {
-          realUrl = location.href
-        }
-
-        directBtn.innerHTML = `
-          <span style="color:#4ade80; font-size:12px;">✓</span>
-          <span style="color:#4ade80;">İndirme başlatıldı...</span>
-        `
-
-        chrome.runtime.sendMessage({
-          type: 'user_request_download',
-          data: {
-            url: realUrl,
-            pageUrl: location.href,
-            title: document.title || 'Video',
-            asAudio: action === 'audio',
-            showDialog: true,
-            userInitiated: true
-          }
-        })
-
-        setTimeout(function () {
-          directBtn.innerHTML = `
-            <span style="display:flex;align-items:center;justify-content:center;width:16px;height:16px;background:#2563eb;border-radius:4px;color:#fff;font-size:10px;font-weight:900;">⚡</span>
-            <span>Bu videoyu indir</span>
-          `
-        }, 2500)
-      })
+    const isYouTube = /youtube\.com|youtu\.be/i.test(location.hostname);
+    if (
+      !isYouTube &&
+      videoEl.closest?.(
+        '.ad-banner, .advertisement, [id*="google_ads"], .twitter-tweet, [data-testid="tweet"]'
+      )
+    ) {
+      return;
     }
 
-    // Ana butona tıklandığında doğrudan IDM indirme penceresini aç, oka tıklandığında menüyü aç
-    mainBtn.addEventListener('click', function (e) {
-      e.stopPropagation()
-      if (menuBtn && (e.target === menuBtn || menuBtn.contains(e.target))) {
-        isMenuOpen = !isMenuOpen
-        dropdown.style.display = isMenuOpen ? 'flex' : 'none'
-      } else {
-        triggerDownload('dialog')
-      }
-    })
+    const rect = videoEl.getBoundingClientRect();
+    if (!isYouTube && (rect.width < 280 || rect.height < 160)) return;
 
-    // Menü öğelerine tıklandığında
-    items.forEach(function (it) {
-      it.addEventListener('click', function (e) {
-        e.stopPropagation()
-        var action = it.getAttribute('data-action')
-        triggerDownload(action)
-      })
-    })
+    const host = document.createElement('div');
+    host.className = 'voltget-video-host';
+    host.style.cssText = [
+      'position: absolute',
+      'z-index: 2147483640',
+      'pointer-events: auto',
+      'opacity: 0',
+      'transition: opacity 0.22s ease, transform 0.18s ease',
+      'transform: translateY(-4px)',
+    ].join(';');
 
-    document.addEventListener('click', function () {
-      if (isMenuOpen) {
-        isMenuOpen = false
-        dropdown.style.display = 'none'
+    const shadow = host.attachShadow({ mode: 'closed' });
+    shadow.innerHTML = `
+      <style>${SHADOW_STYLES}</style>
+      <div class="vg-wrap">
+        <div class="vg-bar">
+          <button type="button" class="vg-btn vg-direct">
+            <span class="vg-logo">${ICON_BOLT}</span>
+            <span class="vg-label">VoltGet ile İndir</span>
+          </button>
+          <button type="button" class="vg-caret" title="Seçenekler">${ICON_CHEVRON}</button>
+          <button type="button" class="vg-close" title="Gizle">${ICON_X}</button>
+        </div>
+        <div class="vg-menu">
+          <button type="button" class="vg-item" data-action="video">${ICON_VIDEO}<span>Video İndir (En İyi Kalite)</span></button>
+          <button type="button" class="vg-item" data-action="audio">${ICON_AUDIO}<span>Sadece Ses / Müzik (MP3)</span></button>
+          <button type="button" class="vg-item accent" data-action="dialog">${ICON_SLIDERS}<span>Kalite Seç & Özellikler...</span></button>
+          <div class="vg-sep"></div>
+          <button type="button" class="vg-item danger" data-action="exclude-site">${ICON_EYE_OFF}<span>Bu sitede gösterme</span></button>
+        </div>
+      </div>
+    `;
+
+    const directBtn = shadow.querySelector('.vg-direct');
+    const labelEl = shadow.querySelector('.vg-label');
+    const caretBtn = shadow.querySelector('.vg-caret');
+    const closeBtn = shadow.querySelector('.vg-close');
+    const menu = shadow.querySelector('.vg-menu');
+    const items = shadow.querySelectorAll('.vg-item');
+
+    let isMenuOpen = false;
+    let hideTimeout = null;
+
+    function closeMenu() {
+      isMenuOpen = false;
+      menu.classList.remove('open');
+    }
+
+    function triggerDownload(action) {
+      closeMenu();
+      if (action === 'exclude-site') {
+        const dom = cleanDomain(location.href);
+        chrome.runtime.sendMessage({ type: 'toggle_domain_exclude', domain: dom }, () => {
+          destroyAllOverlays();
+        });
+        return;
       }
-    })
+
+      labelEl.textContent = 'Kontrol ediliyor...';
+      labelEl.style.color = '#60a5fa';
+
+      chrome.runtime.sendMessage(
+        { type: 'get_best_stream', pageUrl: location.href },
+        bestStream => {
+          const isPortal = VIDEO_PORTAL_RE.test(location.hostname);
+          const realUrl = isPortal
+            ? location.href
+            : bestStream?.url || getTargetUrlForVideo(videoEl) || location.href;
+
+          chrome.runtime.sendMessage(
+            {
+              type: 'user_request_download',
+              data: {
+                url: realUrl,
+                pageUrl: location.href,
+                title: document.title || 'Video',
+                asAudio: action === 'audio',
+                showDialog: true,
+                userInitiated: true,
+              },
+            },
+            res => {
+              if (res && res.ok === false) {
+                labelEl.textContent = 'VoltGet kapalı!';
+                labelEl.style.color = '#fca5a5';
+              } else {
+                labelEl.textContent = 'VoltGet’e gönderildi ✓';
+                labelEl.style.color = '#4ade80';
+              }
+              setTimeout(() => {
+                labelEl.textContent = 'VoltGet ile İndir';
+                labelEl.style.color = '';
+              }, 2400);
+            }
+          );
+        }
+      );
+    }
+
+    directBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      triggerDownload('dialog');
+    });
+
+    caretBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      isMenuOpen = !isMenuOpen;
+      menu.classList.toggle('open', isMenuOpen);
+    });
+
+    closeBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      siteDismissed = true;
+      destroyAllOverlays();
+    });
+
+    items.forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        triggerDownload(btn.getAttribute('data-action'));
+      });
+    });
+
+    const onDocClick = () => {
+      if (isMenuOpen) closeMenu();
+    };
+    document.addEventListener('click', onDocClick);
 
     function updatePosition() {
       if (!videoEl.isConnected) {
-        overlay.remove()
-        activeVideoOverlays.delete(videoEl)
-        return
+        destroy();
+        activeVideoOverlays.delete(videoEl);
+        return;
       }
-
-      var vRect = videoEl.getBoundingClientRect()
-      if (vRect.width < 140 || vRect.height < 90 || vRect.bottom < 0 || vRect.top > window.innerHeight) {
-        overlay.style.display = 'none'
-        return
+      const vRect = videoEl.getBoundingClientRect();
+      if (
+        vRect.width < 140 ||
+        vRect.height < 90 ||
+        vRect.bottom < 0 ||
+        vRect.top > window.innerHeight
+      ) {
+        host.style.display = 'none';
+        return;
       }
-
-      overlay.style.display = 'block'
-      var fsEl = document.fullscreenElement
+      host.style.display = 'block';
+      const fsEl = document.fullscreenElement;
       if (fsEl && (fsEl === videoEl || fsEl.contains(videoEl))) {
-        if (overlay.parentElement !== fsEl) {
-          fsEl.appendChild(overlay)
-        }
-        overlay.style.position = 'fixed'
-        overlay.style.top = '16px'
-        overlay.style.right = '24px'
-        overlay.style.left = 'auto'
+        if (host.parentElement !== fsEl) fsEl.appendChild(host);
+        host.style.position = 'fixed';
+        host.style.top = '16px';
+        host.style.right = '24px';
+        host.style.left = 'auto';
       } else {
-        if (overlay.parentElement !== document.body) {
-          document.body.appendChild(overlay)
-        }
-        overlay.style.position = 'absolute'
-        var top = window.scrollY + vRect.top + 10
-        var left = window.scrollX + vRect.right - 170
-        if (left < window.scrollX + vRect.left) left = window.scrollX + vRect.left + 10
-        overlay.style.top = Math.max(0, top) + 'px'
-        overlay.style.left = Math.max(0, left) + 'px'
+        if (host.parentElement !== document.body) document.body.appendChild(host);
+        host.style.position = 'absolute';
+        const top = window.scrollY + vRect.top + 10;
+        let left = window.scrollX + vRect.right - 205;
+        if (left < window.scrollX + vRect.left + 8) left = window.scrollX + vRect.left + 8;
+        host.style.top = Math.max(0, top) + 'px';
+        host.style.left = Math.max(0, left) + 'px';
       }
     }
 
     function showOverlay() {
-      updatePosition()
-      overlay.style.opacity = '1'
-      overlay.style.transform = 'translateY(0)'
-      clearTimeout(hideTimeout)
-      syncStreamFromBackground()
+      updatePosition();
+      host.style.opacity = '1';
+      host.style.transform = 'translateY(0)';
+      clearTimeout(hideTimeout);
+      syncStreamFromBackground();
     }
 
     function scheduleHide() {
-      if (isMenuOpen) return
-      clearTimeout(hideTimeout)
-      hideTimeout = setTimeout(function () {
+      if (isMenuOpen) return;
+      clearTimeout(hideTimeout);
+      hideTimeout = setTimeout(() => {
         if (!isMenuOpen) {
-          overlay.style.opacity = '0'
-          overlay.style.transform = 'translateY(-4px)'
+          host.style.opacity = '0';
+          host.style.transform = 'translateY(-4px)';
         }
-      }, 2500)
+      }, 2600);
     }
 
-    // Video ve oynatıcı konteyneri mouse dinleyicileri (YouTube ve diğer player katmanları için kritik)
-    videoEl.addEventListener('mouseenter', showOverlay)
-    videoEl.addEventListener('mousemove', showOverlay)
-    videoEl.addEventListener('mouseleave', scheduleHide)
-    videoEl.addEventListener('play', showOverlay)
+    const playerContainer =
+      videoEl.closest(
+        '#movie_player, .html5-video-player, .video-player, .player-container, .player, .jwplayer, .video-js, [data-player]'
+      ) || videoEl.parentElement;
 
-    var playerContainer = videoEl.closest('#movie_player, .html5-video-player, .video-player, .player-container, .player, .jwplayer, .video-js, [data-player]') || videoEl.parentElement
+    videoEl.addEventListener('mouseenter', showOverlay);
+    videoEl.addEventListener('mousemove', showOverlay);
+    videoEl.addEventListener('mouseleave', scheduleHide);
+    videoEl.addEventListener('play', showOverlay);
+
     if (playerContainer && playerContainer !== videoEl) {
-      playerContainer.addEventListener('mouseenter', showOverlay)
-      playerContainer.addEventListener('mousemove', showOverlay)
-      playerContainer.addEventListener('mouseleave', scheduleHide)
+      playerContainer.addEventListener('mouseenter', showOverlay);
+      playerContainer.addEventListener('mousemove', showOverlay);
+      playerContainer.addEventListener('mouseleave', scheduleHide);
     }
 
-    overlay.addEventListener('mouseenter', function () {
-      clearTimeout(hideTimeout)
-      overlay.style.opacity = '1'
-    })
-    overlay.addEventListener('mouseleave', scheduleHide)
+    host.addEventListener('mouseenter', () => {
+      clearTimeout(hideTimeout);
+      host.style.opacity = '1';
+    });
+    host.addEventListener('mouseleave', scheduleHide);
 
-    window.addEventListener('resize', updatePosition)
-    window.addEventListener('scroll', updatePosition, { passive: true })
+    function destroy() {
+      clearTimeout(hideTimeout);
+      document.removeEventListener('click', onDocClick);
+      videoEl.removeEventListener('mouseenter', showOverlay);
+      videoEl.removeEventListener('mousemove', showOverlay);
+      videoEl.removeEventListener('mouseleave', scheduleHide);
+      videoEl.removeEventListener('play', showOverlay);
+      if (playerContainer && playerContainer !== videoEl) {
+        playerContainer.removeEventListener('mouseenter', showOverlay);
+        playerContainer.removeEventListener('mousemove', showOverlay);
+        playerContainer.removeEventListener('mouseleave', scheduleHide);
+      }
+      host.remove();
+    }
 
-    document.body.appendChild(overlay)
-    activeVideoOverlays.set(videoEl, overlay)
-    updatePosition()
+    document.body.appendChild(host);
+    activeVideoOverlays.set(videoEl, { host, updatePosition, destroy });
+    updatePosition();
 
-    // Video kaynağını arka planda sessizce kaydet
-    var initialSrc = getTargetUrlForVideo(videoEl)
+    const initialSrc = getTargetUrlForVideo(videoEl);
     if (initialSrc && isRealMedia(initialSrc)) {
-      reportMedia(initialSrc)
+      reportMedia(initialSrc);
     }
   }
 
   function scanAndAttachVideos() {
-    var videos = document.querySelectorAll('video')
-    for (var i = 0; i < videos.length; i++) {
-      createVideoOverlay(videos[i])
+    if (!overlayEnabled) return;
+    const videos = document.querySelectorAll('video');
+    for (let i = 0; i < videos.length; i++) {
+      createVideoOverlay(videos[i]);
     }
   }
 
-  // Sayfa yüklenirken ve dinamik eklendikçe tara
-  scanAndAttachVideos()
-  var observer = new MutationObserver(function () {
-    scanAndAttachVideos()
-  })
-  observer.observe(document.documentElement, { childList: true, subtree: true })
-  setInterval(scanAndAttachVideos, 2500)
+  // Tek global scroll/resize konum güncelleyici (rAF throttle)
+  let rafScheduled = false;
+  function updateAllPositions() {
+    if (rafScheduled || activeVideoOverlays.size === 0) return;
+    rafScheduled = true;
+    requestAnimationFrame(() => {
+      rafScheduled = false;
+      for (const entry of activeVideoOverlays.values()) {
+        entry.updatePosition();
+      }
+    });
+  }
+  window.addEventListener('resize', updateAllPositions, { passive: true });
+  window.addEventListener('scroll', updateAllPositions, { passive: true });
+  document.addEventListener('fullscreenchange', updateAllPositions);
 
-  // YouTube / SPA sayfa geçişlerinde tetikle
-  window.addEventListener('yt-navigate-finish', function () {
-    setTimeout(scanAndAttachVideos, 400)
-    setTimeout(scanAndAttachVideos, 1200)
-  })
-  window.addEventListener('popstate', function () {
-    setTimeout(scanAndAttachVideos, 400)
-  })
+  // Debounced MutationObserver (SPA dostu düşük CPU)
+  let scanTimer = null;
+  function scheduleScan() {
+    if (!overlayEnabled || scanTimer) return;
+    scanTimer = setTimeout(() => {
+      scanTimer = null;
+      scanAndAttachVideos();
+    }, 250);
+  }
 
-  // --- 3. Medya Ağ İstekleri Sniffer (Yalnızca gerçel ana medyalar için) ---
-  ;(function hookNetwork() {
-    var origFetch = window.fetch
+  const observer = new MutationObserver(scheduleScan);
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+
+  window.addEventListener('yt-navigate-finish', () => {
+    siteDismissed = false;
+    setTimeout(scanAndAttachVideos, 400);
+    setTimeout(scanAndAttachVideos, 1200);
+  });
+  window.addEventListener('popstate', () => {
+    siteDismissed = false;
+    setTimeout(scanAndAttachVideos, 400);
+  });
+
+  // İlk izin kontrolü ve tarama
+  void syncOverlayPermissions();
+
+  // Ağ istekleri sniffer (yalnızca gerçek medya akışları)
+  (function hookNetwork() {
+    const origFetch = window.fetch;
     window.fetch = async function () {
-      var args = Array.prototype.slice.call(arguments)
-      var url = typeof args[0] === 'string' ? args[0] : args[0] && args[0].url
-      if (url && isRealMedia(url)) {
-        reportMedia(url)
-      }
-      return origFetch.apply(this, args)
-    }
+      const args = Array.prototype.slice.call(arguments);
+      const url = typeof args[0] === 'string' ? args[0] : args[0] && args[0].url;
+      if (url && isRealMedia(url)) reportMedia(url);
+      return origFetch.apply(this, args);
+    };
 
-    var origOpen = XMLHttpRequest.prototype.open
+    const origOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (method, url) {
-      if (typeof url === 'string' && isRealMedia(url)) {
-        reportMedia(url)
-      }
-      var rest = Array.prototype.slice.call(arguments, 2)
-      return origOpen.apply(this, [method, url].concat(rest))
-    }
-  })()
-})()
+      if (typeof url === 'string' && isRealMedia(url)) reportMedia(url);
+      const rest = Array.prototype.slice.call(arguments, 2);
+      return origOpen.apply(this, [method, url].concat(rest));
+    };
+  })();
+})();
