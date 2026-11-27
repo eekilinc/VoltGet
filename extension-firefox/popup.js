@@ -28,7 +28,9 @@ let searchQuery = '';
 let currentTabUrl = '';
 let currentDomain = '';
 let appState = {
+  appRunning: false,
   connected: false,
+  needsPairing: false,
   hasToken: false,
   domainExcluded: false,
   settings: {
@@ -53,11 +55,43 @@ function sendMsg(msg) {
   });
 }
 
+async function directProbeDesktop() {
+  const { pairingToken = '' } = await chrome.storage.local.get('pairingToken');
+  const hasToken = /^[a-f0-9]{64}$/.test(pairingToken);
+  let appRunning = false;
+  try {
+    const h = await fetch('http://127.0.0.1:8765/health');
+    if (h.ok || h.status === 401 || h.status === 404) appRunning = true;
+  } catch {
+    return { appRunning: false, connected: false, needsPairing: !hasToken, hasToken };
+  }
+  if (!hasToken) {
+    return { appRunning, connected: false, needsPairing: true, hasToken: false };
+  }
+  try {
+    const r = await fetch('http://127.0.0.1:8765/status', {
+      headers: { Authorization: 'Bearer ' + pairingToken },
+    });
+    if (r.ok) return { appRunning: true, connected: true, needsPairing: false, hasToken: true };
+    if (r.status === 401)
+      return { appRunning: true, connected: false, needsPairing: true, hasToken: true };
+  } catch {}
+  return { appRunning, connected: false, needsPairing: !hasToken, hasToken };
+}
+
 function updateHeaderUI() {
   const pill = document.getElementById('statusPill');
   const statusText = document.getElementById('statusText');
-  pill.className = 'status-pill ' + (appState.connected ? 'online' : 'offline');
-  statusText.textContent = appState.connected ? 'Bağlı' : 'Kapalı / Bekliyor';
+  if (appState.connected) {
+    pill.className = 'status-pill online';
+    statusText.textContent = 'Bağlı';
+  } else if (appState.appRunning && appState.needsPairing) {
+    pill.className = 'status-pill warning';
+    statusText.textContent = 'Anahtar Gerekli';
+  } else {
+    pill.className = 'status-pill offline';
+    statusText.textContent = 'VoltGet Kapalı';
+  }
 
   const capBtn = document.getElementById('toggleCapture');
   const enabled = appState.settings.captureEnabled !== false;
@@ -73,8 +107,14 @@ function updateHeaderUI() {
   exBtn.className = 'pill-btn ' + (appState.domainExcluded ? 'excluded' : '');
 
   const pairBanner = document.getElementById('pairBanner');
-  if (!appState.hasToken || !appState.connected) {
+  const pairTitle = pairBanner.querySelector('.pair-title');
+  if (!appState.connected) {
     pairBanner.classList.add('visible');
+    if (pairTitle) {
+      pairTitle.textContent = appState.appRunning
+        ? 'VoltGet Açık — Bağlantı Anahtarını Girin veya Eşleştirin'
+        : 'VoltGet Kapalı — Masaüstü Uygulamasını Başlatın';
+    }
   } else {
     pairBanner.classList.remove('visible');
   }
@@ -89,15 +129,26 @@ async function refreshState() {
   currentTabUrl = tab?.url || '';
   currentDomain = cleanDomain(currentTabUrl);
 
-  const st = await sendMsg({ type: 'get_state' });
-  if (st) {
-    appState = {
-      connected: !!st.connected,
-      hasToken: !!st.hasToken,
-      domainExcluded: !!st.domainExcluded,
-      settings: { ...appState.settings, ...(st.settings || {}) },
-    };
+  const [st, direct] = await Promise.all([sendMsg({ type: 'get_state' }), directProbeDesktop()]);
+
+  const connected = !!(st?.connected || direct.connected);
+  const appRunning = !!(st?.appRunning || direct.appRunning || connected);
+  const hasToken = !!(st?.hasToken || direct.hasToken);
+  const needsPairing = !connected && (st?.needsPairing || direct.needsPairing || !hasToken);
+
+  appState = {
+    appRunning,
+    connected,
+    needsPairing,
+    hasToken,
+    domainExcluded: !!st?.domainExcluded,
+    settings: { ...appState.settings, ...(st?.settings || {}) },
+  };
+
+  if (direct.connected && !st?.connected) {
+    void sendMsg({ type: 'reconnect_ws' });
   }
+
   updateHeaderUI();
 }
 
@@ -209,13 +260,25 @@ async function renderList() {
       btn.disabled = false;
       if (res?.ok) {
         btn.textContent = 'Gönderildi ✓';
+      } else if (res?.reason === 'unauthorized') {
+        btn.textContent = 'Anahtar Gerekli';
+        document.getElementById('pairBanner').classList.add('visible');
       } else {
         btn.textContent = 'VoltGet Kapalı';
       }
-      setTimeout(() => (btn.textContent = prevText), 1400);
+      setTimeout(() => (btn.textContent = prevText), 1500);
     };
   });
 }
+
+// Canlı bağlantı değişimlerini arka plandan dinle
+try {
+  chrome.runtime.onMessage.addListener(msg => {
+    if (msg?.type === 'connection_changed') {
+      void refreshState();
+    }
+  });
+} catch {}
 
 // Event bindings
 document.getElementById('tabCurrent').onclick = () => {
@@ -264,8 +327,11 @@ document.getElementById('batchBtn').onclick = async () => {
   btn.disabled = false;
   if (res?.ok) {
     btn.textContent = `${res.sentCount} öğe gönderildi ✓`;
+  } else if (res?.reason === 'unauthorized') {
+    btn.textContent = 'Anahtar gerekli';
+    document.getElementById('pairBanner').classList.add('visible');
   } else {
-    btn.textContent = 'VoltGet bağlı değil';
+    btn.textContent = 'VoltGet kapalı';
   }
   setTimeout(() => void renderList(), 1500);
 };
@@ -299,14 +365,15 @@ document.getElementById('optAutoClear').onchange = async e => {
 document.getElementById('autoPairBtn').onclick = async () => {
   const statusEl = document.getElementById('pairStatus');
   statusEl.textContent = 'VoltGet ile otomatik eşleştiriliyor...';
+  statusEl.style.color = '#94a3b8';
   const res = await sendMsg({ type: 'auto_pair' });
   if (res?.ok) {
     statusEl.textContent = 'Otomatik eşleştirildi ✓';
     statusEl.style.color = '#4ade80';
-    setTimeout(() => void refreshState(), 400);
+    await refreshState();
   } else {
     statusEl.textContent =
-      'Otomatik eşleştirme hazır değil. VoltGet → Eklenti Kur içinden "Otomatik Eşleştirme Kur" yapın veya anahtarı yapıştırın.';
+      'Otomatik eşleştirme için VoltGet → Eklenti Kur içinden "Otomatik Eşleştirme Kur" yapın veya 64 haneli anahtarı yapıştırın.';
     statusEl.style.color = '#fca5a5';
   }
 };
@@ -320,18 +387,27 @@ document.getElementById('pairBtn').onclick = async () => {
     statusEl.style.color = '#fca5a5';
     return;
   }
+  statusEl.textContent = 'Bağlanıyor...';
+  statusEl.style.color = '#94a3b8';
   try {
     const r = await fetch('http://127.0.0.1:8765/status', {
       headers: { Authorization: 'Bearer ' + token },
     });
+    if (r.status === 401) {
+      statusEl.textContent = 'Anahtar uyuşmuyor — VoltGet içinden yeniden kopyalayın.';
+      statusEl.style.color = '#fca5a5';
+      return;
+    }
     if (!r.ok) throw new Error();
     await chrome.storage.local.set({ pairingToken: token });
+    await sendMsg({ type: 'reconnect_ws', token });
     input.value = '';
     statusEl.textContent = 'Bağlandı ✓';
     statusEl.style.color = '#4ade80';
-    setTimeout(() => void refreshState(), 300);
+    await refreshState();
   } catch {
-    statusEl.textContent = 'VoltGet açık olmalı ve anahtar doğru olmalı.';
+    statusEl.textContent =
+      'VoltGet uygulamasına ulaşılamadı — uygulamanın açık olduğundan emin olun.';
     statusEl.style.color = '#fca5a5';
   }
 };

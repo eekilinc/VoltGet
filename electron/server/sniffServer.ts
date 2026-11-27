@@ -83,15 +83,23 @@ export function createSniffServer(deps: SniffServerDeps) {
       }
       if (req.headers.origin) {
         res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
+        res.setHeader('Access-Control-Allow-Private-Network', 'true');
         res.setHeader('Vary', 'Origin');
       }
       if (req.method === 'OPTIONS') {
         res
           .writeHead(204, {
-            'Access-Control-Allow-Methods': 'GET, POST',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Private-Network': 'true',
           })
           .end();
+        return;
+      }
+      if (req.method === 'GET' && req.url === '/health') {
+        res
+          .writeHead(200, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ ok: true, app: 'VoltGet' }));
         return;
       }
       if (!authorized(req.headers.authorization?.replace(/^Bearer /, ''))) {

@@ -22,12 +22,6 @@
     }
   }
 
-  function isExcludedList(domains) {
-    const dom = cleanDomain(location.href);
-    if (!dom || !Array.isArray(domains)) return false;
-    return domains.some(d => dom === d || dom.endsWith('.' + d));
-  }
-
   function destroyAllOverlays() {
     for (const entry of activeVideoOverlays.values()) {
       entry.destroy();
@@ -35,34 +29,33 @@
     activeVideoOverlays.clear();
   }
 
-  async function syncOverlayPermissions() {
+  function applyOverlayState(allowed) {
+    overlayEnabled = !!allowed && !siteDismissed;
+    if (!overlayEnabled) {
+      destroyAllOverlays();
+    } else {
+      scanAndAttachVideos();
+    }
+  }
+
+  function syncOverlayPermissions() {
     try {
-      const cfg = await chrome.storage.local.get({
-        captureEnabled: true,
-        showVideoOverlay: true,
-        excludedDomains: [],
+      chrome.runtime.sendMessage({ type: 'get_content_settings', pageUrl: location.href }, res => {
+        if (chrome.runtime.lastError) {
+          applyOverlayState(true);
+          return;
+        }
+        applyOverlayState(res ? res.overlayEnabled !== false : true);
       });
-      const allowed =
-        cfg.captureEnabled !== false &&
-        cfg.showVideoOverlay !== false &&
-        !isExcludedList(cfg.excludedDomains) &&
-        !siteDismissed;
-      overlayEnabled = allowed;
-      if (!allowed) {
-        destroyAllOverlays();
-      } else {
-        scanAndAttachVideos();
-      }
-    } catch {}
+    } catch {
+      applyOverlayState(true);
+    }
   }
 
   try {
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (
-        area === 'local' &&
-        (changes.captureEnabled || changes.showVideoOverlay || changes.excludedDomains)
-      ) {
-        void syncOverlayPermissions();
+    chrome.runtime.onMessage.addListener(msg => {
+      if (msg?.type === 'settings_updated') {
+        applyOverlayState(msg.overlayEnabled !== false);
       }
     });
   } catch {}
@@ -361,8 +354,13 @@
             },
             res => {
               if (res && res.ok === false) {
-                labelEl.textContent = 'VoltGet kapalı!';
-                labelEl.style.color = '#fca5a5';
+                if (res.reason === 'unauthorized') {
+                  labelEl.textContent = 'Eşleştirme gerekli!';
+                  labelEl.style.color = '#fde047';
+                } else {
+                  labelEl.textContent = 'VoltGet kapalı!';
+                  labelEl.style.color = '#fca5a5';
+                }
               } else {
                 labelEl.textContent = 'VoltGet’e gönderildi ✓';
                 labelEl.style.color = '#4ade80';

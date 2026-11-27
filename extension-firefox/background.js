@@ -32,7 +32,7 @@ const DEFAULT_SETTINGS = {
 let settingsCache = { ...DEFAULT_SETTINGS };
 let socket = null;
 let isConnecting = false;
-let reconnectDelayMs = 2500;
+let reconnectDelayMs = 2000;
 let reconnectTimer = null;
 let keepAliveTimer = null;
 let lastDesktopSeenAt = 0;
@@ -67,7 +67,105 @@ function isDomainExcluded(urlOrDomain) {
 
 function isDesktopConnected() {
   if (socket && socket.readyState === WebSocket.OPEN) return true;
-  return Date.now() - lastDesktopSeenAt < 15000;
+  return Date.now() - lastDesktopSeenAt < 20000;
+}
+
+function markDesktopAlive() {
+  lastDesktopSeenAt = Date.now();
+  try {
+    chrome.storage?.session?.set({ lastDesktopSeenAt });
+  } catch {}
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 2000) {
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+  try {
+    return await fetch(url, { ...options, ...(ctrl ? { signal: ctrl.signal } : {}) });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function probeDesktop(tokenOverride) {
+  const token =
+    typeof tokenOverride === 'string'
+      ? tokenOverride
+      : (await chrome.storage.local.get('pairingToken')).pairingToken || '';
+  const hasToken = /^[a-f0-9]{64}$/.test(token);
+
+  // 1. Önce VoltGet açık mı kontrol et (token gerektirmeyen /health)
+  let appRunning = false;
+  try {
+    const h = await fetchWithTimeout(`${DESKTOP_HOST}/health`, { method: 'GET' }, 1800);
+    if (h.ok) {
+      appRunning = true;
+    } else if (h.status === 401 || h.status === 404) {
+      // Eski masaüstü sürümü (/health yok ama sunucu ayakta!)
+      appRunning = true;
+    }
+  } catch {
+    return { appRunning: false, connected: false, needsPairing: !hasToken, hasToken };
+  }
+
+  if (!hasToken) {
+    return { appRunning, connected: false, needsPairing: true, hasToken: false };
+  }
+
+  // 2. Token ile /status doğrula
+  try {
+    const r = await fetchWithTimeout(
+      `${DESKTOP_HOST}/status`,
+      { headers: { Authorization: 'Bearer ' + token } },
+      1800
+    );
+    if (r.ok) {
+      markDesktopAlive();
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        void initWebSocket(true);
+      }
+      return { appRunning: true, connected: true, needsPairing: false, hasToken: true };
+    }
+    if (r.status === 401) {
+      return { appRunning: true, connected: false, needsPairing: true, hasToken: true };
+    }
+  } catch {
+    return { appRunning: false, connected: false, needsPairing: false, hasToken };
+  }
+
+  return { appRunning, connected: isDesktopConnected(), needsPairing: false, hasToken };
+}
+
+function broadcastConnectionState(connected) {
+  try {
+    chrome.runtime.sendMessage({ type: 'connection_changed', connected }, () => {
+      void chrome.runtime.lastError;
+    });
+  } catch {}
+}
+
+function notifyContentScriptsSettings() {
+  try {
+    chrome.tabs.query({}, tabs => {
+      if (chrome.runtime.lastError || !Array.isArray(tabs)) return;
+      for (const tab of tabs) {
+        if (tab.id == null) continue;
+        const allowed =
+          settingsCache.captureEnabled !== false &&
+          settingsCache.showVideoOverlay !== false &&
+          !isDomainExcluded(tab.url || '');
+        try {
+          chrome.tabs.sendMessage(
+            tab.id,
+            { type: 'settings_updated', overlayEnabled: allowed },
+            () => {
+              void chrome.runtime.lastError;
+            }
+          );
+        } catch {}
+      }
+    });
+  } catch {}
 }
 
 function isChunkOrSegment(url) {
@@ -141,11 +239,16 @@ async function loadSettings() {
       autoClearOnNavigate: !!stored.autoClearOnNavigate,
       excludedDomains: Array.isArray(stored.excludedDomains) ? stored.excludedDomains : [],
     };
+    if (chrome.storage?.session) {
+      const s = await chrome.storage.session.get('lastDesktopSeenAt');
+      if (typeof s.lastDesktopSeenAt === 'number' && s.lastDesktopSeenAt > lastDesktopSeenAt) {
+        lastDesktopSeenAt = s.lastDesktopSeenAt;
+      }
+    }
   } catch {}
   return settingsCache;
 }
 
-// MV3 Service Worker uyku koruması: sekme medya haritasını session storage'da sakla
 async function persistTabMedia(tabId, list) {
   try {
     if (chrome.storage?.session) {
@@ -180,7 +283,6 @@ function recordTabMedia(tabId, entry) {
   }
 }
 
-// Canlı Eklenti Rozeti (Badge)
 async function updateBadgeForTab(tabId) {
   try {
     if (!chrome.action?.setBadgeText) return;
@@ -213,23 +315,33 @@ async function refreshActiveTabBadge() {
   } catch {}
 }
 
-// Native Messaging üzerinden sıfır-adım otomatik eşleştirme (Zero-Config Pairing)
+// Native Messaging üzerinden sıfır-adım otomatik eşleştirme (2 sn timeout korumalı)
 async function tryNativeAutoPair(force = false) {
   if (!chrome.runtime?.sendNativeMessage) return null;
   if (!force && Date.now() - lastTokenAutoFetchAt < 10000) return null;
   lastTokenAutoFetchAt = Date.now();
   return new Promise(resolve => {
+    let settled = false;
+    const finish = val => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(val);
+    };
+    const timer = setTimeout(() => finish(null), 2000);
     try {
       chrome.runtime.sendNativeMessage(NM_HOST_NAME, { type: 'get-token' }, async res => {
         if (chrome.runtime.lastError || !res?.token || !/^[a-f0-9]{64}$/.test(res.token)) {
-          resolve(null);
+          finish(null);
           return;
         }
-        await chrome.storage.local.set({ pairingToken: res.token });
-        resolve(res.token);
+        try {
+          await chrome.storage.local.set({ pairingToken: res.token });
+        } catch {}
+        finish(res.token);
       });
     } catch {
-      resolve(null);
+      finish(null);
     }
   });
 }
@@ -238,12 +350,21 @@ function scheduleReconnect() {
   if (reconnectTimer) clearTimeout(reconnectTimer);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    void initWebSocket();
+    void initWebSocket(false);
   }, reconnectDelayMs);
-  reconnectDelayMs = Math.min(15000, Math.round(reconnectDelayMs * 1.5));
+  reconnectDelayMs = Math.min(10000, Math.round(reconnectDelayMs * 1.4));
 }
 
-async function initWebSocket() {
+async function initWebSocket(forceReset = false) {
+  if (forceReset && socket) {
+    try {
+      socket.onclose = null;
+      socket.onerror = null;
+      socket.close();
+    } catch {}
+    socket = null;
+    isConnecting = false;
+  }
   if (
     socket &&
     (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
@@ -265,37 +386,44 @@ async function initWebSocket() {
       }
     }
 
-    socket = new WebSocket(DESKTOP_WS, ['voltget', 'token.' + pairingToken]);
-    socket.onopen = () => {
+    const ws = new WebSocket(DESKTOP_WS, ['voltget', 'token.' + pairingToken]);
+    socket = ws;
+
+    ws.onopen = () => {
+      if (socket !== ws) return;
       isConnecting = false;
-      reconnectDelayMs = 2500;
-      lastDesktopSeenAt = Date.now();
+      reconnectDelayMs = 2000;
+      markDesktopAlive();
       if (keepAliveTimer) clearInterval(keepAliveTimer);
       keepAliveTimer = setInterval(() => {
         if (socket && socket.readyState === WebSocket.OPEN) {
-          lastDesktopSeenAt = Date.now();
+          markDesktopAlive();
           socket.send(JSON.stringify({ type: 'ping' }));
         }
       }, 15000);
       void refreshActiveTabBadge();
+      broadcastConnectionState(true);
     };
-    socket.onmessage = ev => {
-      lastDesktopSeenAt = Date.now();
+    ws.onmessage = ev => {
+      markDesktopAlive();
       try {
         const msg = JSON.parse(ev.data);
         if (msg?.type === 'pong') return;
       } catch {}
     };
-    socket.onclose = () => {
-      if (keepAliveTimer) clearInterval(keepAliveTimer);
-      socket = null;
-      isConnecting = false;
-      void refreshActiveTabBadge();
-      scheduleReconnect();
+    ws.onclose = () => {
+      if (socket === ws) {
+        if (keepAliveTimer) clearInterval(keepAliveTimer);
+        socket = null;
+        isConnecting = false;
+        void refreshActiveTabBadge();
+        broadcastConnectionState(false);
+        scheduleReconnect();
+      }
     };
-    socket.onerror = () => {
+    ws.onerror = () => {
       try {
-        if (socket) socket.close();
+        ws.close();
       } catch {}
     };
   } catch {
@@ -304,17 +432,21 @@ async function initWebSocket() {
   }
 }
 
-// MV3 Keepalive Alarm (Service Worker uyanık/sağlıklı kalsın)
-function setupAlarms() {
-  try {
-    if (!chrome.alarms) return;
-    chrome.alarms.create('voltget-keepalive', { periodInMinutes: 0.5 });
-    chrome.alarms.onAlarm.addListener(alarm => {
-      if (alarm?.name === 'voltget-keepalive') {
-        void initWebSocket();
+// Top-level MV3 alarm dinleyicisi (Service Worker uyandığında güvenle yakalar)
+if (chrome.alarms?.onAlarm) {
+  chrome.alarms.onAlarm.addListener(alarm => {
+    if (alarm?.name === 'voltget-keepalive') {
+      void loadSettings().then(() => {
+        void initWebSocket(false);
         void refreshActiveTabBadge();
-      }
-    });
+      });
+    }
+  });
+}
+
+function ensureKeepAliveAlarm() {
+  try {
+    chrome.alarms?.create('voltget-keepalive', { periodInMinutes: 1 });
   } catch {}
 }
 
@@ -328,21 +460,17 @@ chrome.storage.onChanged.addListener((changes, area) => {
       settingsChanged = true;
     }
   }
-  if (settingsChanged) void refreshActiveTabBadge();
+  if (settingsChanged) {
+    void refreshActiveTabBadge();
+    notifyContentScriptsSettings();
+  }
   if (changes.pairingToken) {
-    if (socket) {
-      try {
-        socket.close();
-      } catch {}
-      socket = null;
-    }
-    isConnecting = false;
-    reconnectDelayMs = 2500;
-    void initWebSocket();
+    reconnectDelayMs = 2000;
+    void initWebSocket(true);
   }
 });
 
-// Sekme geçişleri, kapanışları ve autoClearOnNavigate uygulaması
+// Sekme olayları ve autoClearOnNavigate
 chrome.tabs.onActivated.addListener(({ tabId }) => {
   void updateBadgeForTab(tabId);
 });
@@ -424,55 +552,75 @@ async function sendToVoltGet(data, opts = {}) {
   }
 
   let sent = false;
+  let failReason = 'offline';
 
-  // 1. Tercih: WebSocket (en hızlı ve düşük gecikmeli)
+  // 1. Tercih: WebSocket (en hızlı)
   if (socket && socket.readyState === WebSocket.OPEN) {
     try {
       socket.send(JSON.stringify({ type: 'sniffed-url', data: payload }));
       sent = true;
-      lastDesktopSeenAt = Date.now();
+      markDesktopAlive();
     } catch {}
   }
 
   // 2. Tercih: HTTP POST
   if (!sent && /^[a-f0-9]{64}$/.test(pairingToken)) {
     try {
-      const response = await fetch(`${DESKTOP_HOST}/sniff`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + pairingToken,
+      const response = await fetchWithTimeout(
+        `${DESKTOP_HOST}/sniff`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + pairingToken,
+          },
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(payload),
-      });
+        3000
+      );
       if (response.ok) {
         sent = true;
-        lastDesktopSeenAt = Date.now();
+        markDesktopAlive();
+        void initWebSocket(false);
       } else if (response.status === 401) {
+        failReason = 'unauthorized';
         const refreshed = await tryNativeAutoPair(true);
         if (refreshed) {
-          const retry = await fetch(`${DESKTOP_HOST}/sniff`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + refreshed },
-            body: JSON.stringify(payload),
-          });
+          const retry = await fetchWithTimeout(
+            `${DESKTOP_HOST}/sniff`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + refreshed },
+              body: JSON.stringify(payload),
+            },
+            3000
+          );
           if (retry.ok) {
             sent = true;
-            lastDesktopSeenAt = Date.now();
+            markDesktopAlive();
+            void initWebSocket(true);
           }
         }
       }
-    } catch {}
+    } catch {
+      failReason = 'offline';
+    }
+  } else if (!sent && !/^[a-f0-9]{64}$/.test(pairingToken)) {
+    // Anahtar yok: uygulama açık mı diye bak ki doğru hata mesajı dönsün
+    const probe = await probeDesktop('');
+    failReason = probe.appRunning ? 'unauthorized' : 'offline';
   }
 
-  // 3. Yedek: Native Messaging (uygulama henüz açılmamışsa bile iletebilir)
+  // 3. Yedek: Native Messaging
   if (!sent && chrome.runtime?.sendNativeMessage) {
     try {
       const res = await new Promise(resolve => {
+        const t = setTimeout(() => resolve(null), 2000);
         chrome.runtime.sendNativeMessage(
           NM_HOST_NAME,
           { type: 'download-request', data: payload, token: pairingToken },
           response => {
+            clearTimeout(t);
             if (chrome.runtime.lastError) resolve(null);
             else resolve(response);
           }
@@ -480,12 +628,11 @@ async function sendToVoltGet(data, opts = {}) {
       });
       if (res?.success) {
         sent = true;
-        lastDesktopSeenAt = Date.now();
+        markDesktopAlive();
       }
     } catch {}
   }
 
-  // Eklenti popup geçmişine kaydet
   try {
     const { items = [] } = await chrome.storage.local.get('items');
     const existingIdx = items.findIndex(x => x.url === data.url);
@@ -498,33 +645,48 @@ async function sendToVoltGet(data, opts = {}) {
     await chrome.storage.local.set({ items: items.slice(0, 80) });
   } catch {}
 
-  return { ok: sent };
+  return { ok: sent, reason: sent ? 'sent' : failReason };
 }
 
 async function openOrFocusDesktopApp() {
   const { pairingToken = '' } = await chrome.storage.local.get('pairingToken');
-  // 1. Önce yerel HTTP /focus endpoint'ini dene
   if (/^[a-f0-9]{64}$/.test(pairingToken)) {
     try {
-      const r = await fetch(`${DESKTOP_HOST}/focus`, {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + pairingToken },
-      });
+      const r = await fetchWithTimeout(
+        `${DESKTOP_HOST}/focus`,
+        {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + pairingToken },
+        },
+        2000
+      );
       if (r.ok) {
-        lastDesktopSeenAt = Date.now();
+        markDesktopAlive();
         return { ok: true, method: 'http' };
+      }
+      // Eski masaüstü sürümünde /focus yoksa /status ile açık olduğunu doğrula
+      const s = await fetchWithTimeout(
+        `${DESKTOP_HOST}/status`,
+        { headers: { Authorization: 'Bearer ' + pairingToken } },
+        1500
+      );
+      if (s.ok) {
+        markDesktopAlive();
+        return { ok: true, method: 'status' };
       }
     } catch {}
   }
-  // 2. Native Messaging ile uygulamayı odakla/başlat
   if (chrome.runtime?.sendNativeMessage) {
     const nmRes = await new Promise(resolve => {
+      const t = setTimeout(() => resolve(null), 2000);
       try {
         chrome.runtime.sendNativeMessage(NM_HOST_NAME, { type: 'focus-app' }, res => {
+          clearTimeout(t);
           if (chrome.runtime.lastError) resolve(null);
           else resolve(res);
         });
       } catch {
+        clearTimeout(t);
         resolve(null);
       }
     });
@@ -533,7 +695,6 @@ async function openOrFocusDesktopApp() {
   return { ok: false, protocolUrl: 'voltget://focus' };
 }
 
-// Ağ isteklerini dinle
 chrome.webRequest.onBeforeRequest.addListener(
   details => {
     if (!settingsCache.captureEnabled) return;
@@ -617,46 +778,88 @@ function pickBestStreamFromList(list) {
   return list[0];
 }
 
-// Mesajlaşma (Content script + Popup)
+// Mesajlaşma (Content script + Popup) — tüm async handler'lar güvenli try/catch ile sarılı
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === 'get_content_settings') {
+    (async () => {
+      try {
+        await loadSettings();
+        const pageUrl = msg.pageUrl || sender?.tab?.url || '';
+        const overlayEnabled =
+          settingsCache.captureEnabled !== false &&
+          settingsCache.showVideoOverlay !== false &&
+          !isDomainExcluded(pageUrl);
+        sendResponse({ overlayEnabled });
+      } catch {
+        sendResponse({ overlayEnabled: true });
+      }
+    })();
+    return true;
+  }
+
   if (msg?.type === 'get_state') {
     (async () => {
-      await loadSettings();
-      const { pairingToken = '' } = await chrome.storage.local.get('pairingToken');
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      const curDomain = cleanDomain(tab?.url || '');
-      let connected = isDesktopConnected();
-      if (!connected && /^[a-f0-9]{64}$/.test(pairingToken)) {
-        try {
-          const r = await fetch(`${DESKTOP_HOST}/status`, {
-            headers: { Authorization: 'Bearer ' + pairingToken },
-          });
-          if (r.ok) {
-            connected = true;
-            lastDesktopSeenAt = Date.now();
-            void initWebSocket();
-          }
-        } catch {}
+      try {
+        await loadSettings();
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const curDomain = cleanDomain(tab?.url || '');
+        const probe = await probeDesktop();
+        sendResponse({
+          appRunning: probe.appRunning,
+          connected: probe.connected,
+          needsPairing: probe.needsPairing,
+          hasToken: probe.hasToken,
+          settings: settingsCache,
+          currentDomain: curDomain,
+          domainExcluded: isDomainExcluded(curDomain),
+        });
+      } catch {
+        sendResponse({
+          appRunning: false,
+          connected: false,
+          needsPairing: true,
+          hasToken: false,
+          settings: settingsCache,
+          currentDomain: '',
+          domainExcluded: false,
+        });
       }
-      sendResponse({
-        connected,
-        hasToken: /^[a-f0-9]{64}$/.test(pairingToken),
-        settings: settingsCache,
-        currentDomain: curDomain,
-        domainExcluded: isDomainExcluded(curDomain),
-      });
+    })();
+    return true;
+  }
+
+  if (msg?.type === 'reconnect_ws') {
+    (async () => {
+      try {
+        if (typeof msg.token === 'string' && /^[a-f0-9]{64}$/.test(msg.token)) {
+          await chrome.storage.local.set({ pairingToken: msg.token });
+        }
+        reconnectDelayMs = 2000;
+        const probe = await probeDesktop(msg.token);
+        if (probe.connected) {
+          await initWebSocket(true);
+        }
+        sendResponse(probe);
+      } catch {
+        sendResponse({ appRunning: false, connected: false, needsPairing: true });
+      }
     })();
     return true;
   }
 
   if (msg?.type === 'auto_pair') {
     (async () => {
-      const token = await tryNativeAutoPair(true);
-      if (token) {
-        reconnectDelayMs = 2500;
-        await initWebSocket();
-        sendResponse({ ok: true });
-      } else {
+      try {
+        const token = await tryNativeAutoPair(true);
+        if (token) {
+          reconnectDelayMs = 2000;
+          await initWebSocket(true);
+          const probe = await probeDesktop(token);
+          sendResponse({ ok: probe.connected, ...probe });
+        } else {
+          sendResponse({ ok: false });
+        }
+      } catch {
         sendResponse({ ok: false });
       }
     })();
@@ -664,90 +867,112 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg?.type === 'open_desktop_app') {
-    openOrFocusDesktopApp().then(sendResponse);
+    openOrFocusDesktopApp()
+      .then(sendResponse)
+      .catch(() => sendResponse({ ok: false, protocolUrl: 'voltget://focus' }));
     return true;
   }
 
   if (msg?.type === 'update_settings') {
     (async () => {
-      const patch = msg.patch || {};
-      const next = { ...settingsCache, ...patch };
-      settingsCache = next;
-      await chrome.storage.local.set(patch);
-      await refreshActiveTabBadge();
-      sendResponse({ ok: true, settings: next });
+      try {
+        const patch = msg.patch || {};
+        const next = { ...settingsCache, ...patch };
+        settingsCache = next;
+        await chrome.storage.local.set(patch);
+        await refreshActiveTabBadge();
+        notifyContentScriptsSettings();
+        sendResponse({ ok: true, settings: next });
+      } catch {
+        sendResponse({ ok: false, settings: settingsCache });
+      }
     })();
     return true;
   }
 
   if (msg?.type === 'toggle_domain_exclude') {
     (async () => {
-      const dom = cleanDomain(msg.domain?.includes('://') ? msg.domain : `https://${msg.domain}`);
-      if (!dom) {
+      try {
+        const dom = cleanDomain(msg.domain?.includes('://') ? msg.domain : `https://${msg.domain}`);
+        if (!dom) {
+          sendResponse({ ok: false });
+          return;
+        }
+        const list = new Set(settingsCache.excludedDomains || []);
+        let excluded = false;
+        if (list.has(dom)) {
+          list.delete(dom);
+          excluded = false;
+        } else {
+          list.add(dom);
+          excluded = true;
+        }
+        const nextList = [...list];
+        settingsCache.excludedDomains = nextList;
+        await chrome.storage.local.set({ excludedDomains: nextList });
+        notifyContentScriptsSettings();
+        sendResponse({ ok: true, excluded, excludedDomains: nextList });
+      } catch {
         sendResponse({ ok: false });
-        return;
       }
-      const list = new Set(settingsCache.excludedDomains || []);
-      let excluded = false;
-      if (list.has(dom)) {
-        list.delete(dom);
-        excluded = false;
-      } else {
-        list.add(dom);
-        excluded = true;
-      }
-      const nextList = [...list];
-      settingsCache.excludedDomains = nextList;
-      await chrome.storage.local.set({ excludedDomains: nextList });
-      sendResponse({ ok: true, excluded, excludedDomains: nextList });
     })();
     return true;
   }
 
   if (msg?.type === 'batch_download') {
     (async () => {
-      const entries = Array.isArray(msg.items) ? msg.items : [];
-      let sentCount = 0;
-      for (const it of entries) {
-        const itemToSend = {
-          ...it,
-          userInitiated: true,
-          showDialog: false,
-        };
-        if (it.pageUrl && VIDEO_PORTAL_RE.test(it.pageUrl)) {
-          itemToSend.url = it.pageUrl;
+      try {
+        const entries = Array.isArray(msg.items) ? msg.items : [];
+        let sentCount = 0;
+        let lastReason = 'offline';
+        for (const it of entries) {
+          const itemToSend = {
+            ...it,
+            userInitiated: true,
+            showDialog: false,
+          };
+          if (it.pageUrl && VIDEO_PORTAL_RE.test(it.pageUrl)) {
+            itemToSend.url = it.pageUrl;
+          }
+          const res = await sendToVoltGet(itemToSend, { force: true, userInitiated: true });
+          if (res.ok) sentCount++;
+          else if (res.reason) lastReason = res.reason;
         }
-        const res = await sendToVoltGet(itemToSend, { force: true, userInitiated: true });
-        if (res.ok) sentCount++;
+        sendResponse({ ok: sentCount > 0, sentCount, total: entries.length, reason: lastReason });
+      } catch {
+        sendResponse({ ok: false, sentCount: 0, total: 0, reason: 'offline' });
       }
-      sendResponse({ ok: sentCount > 0, sentCount, total: entries.length });
     })();
     return true;
   }
 
   if (msg?.type === 'get_best_stream') {
     (async () => {
-      const tabId = sender?.tab?.id;
-      const pageUrl = msg.pageUrl || sender?.tab?.url || '';
-      const dom = cleanDomain(pageUrl);
-      let candidate = null;
-      if (tabId != null) {
-        const list = await getTabMedia(tabId);
-        candidate = pickBestStreamFromList(list);
+      try {
+        const tabId = sender?.tab?.id;
+        const pageUrl = msg.pageUrl || sender?.tab?.url || '';
+        const dom = cleanDomain(pageUrl);
+        let candidate = null;
+        if (tabId != null) {
+          const list = await getTabMedia(tabId);
+          candidate = pickBestStreamFromList(list);
+        }
+        if (!candidate && dom && domainMediaMap.has(dom)) {
+          candidate = pickBestStreamFromList(domainMediaMap.get(dom));
+        }
+        if (!candidate && globalMediaHistory.length) {
+          candidate = pickBestStreamFromList(globalMediaHistory);
+        }
+        if (!candidate && lastSniffedStream && Date.now() - lastSniffedStream.time < 300000) {
+          candidate = lastSniffedStream;
+        }
+        if (candidate?.url) {
+          candidate = { ...candidate, url: normalizeToMasterPlaylist(candidate.url) };
+        }
+        sendResponse(candidate || null);
+      } catch {
+        sendResponse(null);
       }
-      if (!candidate && dom && domainMediaMap.has(dom)) {
-        candidate = pickBestStreamFromList(domainMediaMap.get(dom));
-      }
-      if (!candidate && globalMediaHistory.length) {
-        candidate = pickBestStreamFromList(globalMediaHistory);
-      }
-      if (!candidate && lastSniffedStream && Date.now() - lastSniffedStream.time < 300000) {
-        candidate = lastSniffedStream;
-      }
-      if (candidate?.url) {
-        candidate = { ...candidate, url: normalizeToMasterPlaylist(candidate.url) };
-      }
-      sendResponse(candidate || null);
     })();
     return true;
   }
@@ -764,47 +989,51 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg?.type === 'user_request_download') {
     (async () => {
-      const downloadData = { ...msg.data };
-      const isVideoPortal =
-        VIDEO_PORTAL_RE.test(downloadData.pageUrl || '') ||
-        VIDEO_PORTAL_RE.test(downloadData.url || '') ||
-        (downloadData.url && downloadData.url.includes('googlevideo.com'));
-      if (isVideoPortal) {
-        if (downloadData.pageUrl && VIDEO_PORTAL_RE.test(downloadData.pageUrl)) {
-          downloadData.url = downloadData.pageUrl;
-        } else if (sender?.tab?.url && VIDEO_PORTAL_RE.test(sender.tab.url)) {
-          downloadData.url = sender.tab.url;
-          downloadData.pageUrl = sender.tab.url;
+      try {
+        const downloadData = { ...msg.data };
+        const isVideoPortal =
+          VIDEO_PORTAL_RE.test(downloadData.pageUrl || '') ||
+          VIDEO_PORTAL_RE.test(downloadData.url || '') ||
+          (downloadData.url && downloadData.url.includes('googlevideo.com'));
+        if (isVideoPortal) {
+          if (downloadData.pageUrl && VIDEO_PORTAL_RE.test(downloadData.pageUrl)) {
+            downloadData.url = downloadData.pageUrl;
+          } else if (sender?.tab?.url && VIDEO_PORTAL_RE.test(sender.tab.url)) {
+            downloadData.url = sender.tab.url;
+            downloadData.pageUrl = sender.tab.url;
+          }
         }
-      }
 
-      const isDirectMedia =
-        /\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a)($|\?)/i.test(downloadData.url || '') ||
-        (downloadData.url || '').includes('master.txt') ||
-        (downloadData.url || '').includes('/q/');
-      if (!isVideoPortal && !isDirectMedia) {
-        const tabId = sender?.tab?.id;
-        const dom = cleanDomain(downloadData.pageUrl || '');
-        let candidate = null;
-        if (tabId != null) {
-          candidate = pickBestStreamFromList(await getTabMedia(tabId));
+        const isDirectMedia =
+          /\.(m3u8|mpd|mp4|webm|mkv|avi|mp3|m4a)($|\?)/i.test(downloadData.url || '') ||
+          (downloadData.url || '').includes('master.txt') ||
+          (downloadData.url || '').includes('/q/');
+        if (!isVideoPortal && !isDirectMedia) {
+          const tabId = sender?.tab?.id;
+          const dom = cleanDomain(downloadData.pageUrl || '');
+          let candidate = null;
+          if (tabId != null) {
+            candidate = pickBestStreamFromList(await getTabMedia(tabId));
+          }
+          if (!candidate && dom && domainMediaMap.has(dom)) {
+            candidate = pickBestStreamFromList(domainMediaMap.get(dom));
+          }
+          if (!candidate && globalMediaHistory.length) {
+            candidate = pickBestStreamFromList(globalMediaHistory);
+          }
+          if (!candidate && lastSniffedStream && Date.now() - lastSniffedStream.time < 300000) {
+            candidate = lastSniffedStream;
+          }
+          if (candidate) {
+            downloadData.url = normalizeToMasterPlaylist(candidate.url);
+            downloadData.type = candidate.type || 'm3u8';
+          }
         }
-        if (!candidate && dom && domainMediaMap.has(dom)) {
-          candidate = pickBestStreamFromList(domainMediaMap.get(dom));
-        }
-        if (!candidate && globalMediaHistory.length) {
-          candidate = pickBestStreamFromList(globalMediaHistory);
-        }
-        if (!candidate && lastSniffedStream && Date.now() - lastSniffedStream.time < 300000) {
-          candidate = lastSniffedStream;
-        }
-        if (candidate) {
-          downloadData.url = normalizeToMasterPlaylist(candidate.url);
-          downloadData.type = candidate.type || 'm3u8';
-        }
+        const res = await sendToVoltGet(downloadData, { force: true, userInitiated: true });
+        sendResponse(res);
+      } catch {
+        sendResponse({ ok: false, reason: 'offline' });
       }
-      const res = await sendToVoltGet(downloadData, { force: true, userInitiated: true });
-      sendResponse(res);
     })();
     return true;
   }
@@ -812,7 +1041,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return false;
 });
 
-// Sağ tık menüsü
 function registerContextMenus() {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
@@ -830,18 +1058,14 @@ function registerContextMenus() {
 
 chrome.runtime.onInstalled.addListener(() => {
   registerContextMenus();
-  void loadSettings().then(() => {
-    setupAlarms();
-    void initWebSocket();
-  });
+  ensureKeepAliveAlarm();
+  void loadSettings().then(() => void initWebSocket(false));
 });
 
 if (chrome.runtime.onStartup) {
   chrome.runtime.onStartup.addListener(() => {
-    void loadSettings().then(() => {
-      setupAlarms();
-      void initWebSocket();
-    });
+    ensureKeepAliveAlarm();
+    void loadSettings().then(() => void initWebSocket(false));
   });
 }
 
@@ -971,9 +1195,9 @@ if (chrome.downloads.onDeterminingFilename) {
   });
 }
 
-// İlk başlatma
+// İlk başlatma — senkron WebSocket tetiklemesi + ayar yüklemesi
+ensureKeepAliveAlarm();
 void loadSettings().then(() => {
-  setupAlarms();
-  void initWebSocket();
+  void initWebSocket(false);
   void refreshActiveTabBadge();
 });

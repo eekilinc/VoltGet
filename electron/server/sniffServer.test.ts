@@ -114,4 +114,30 @@ describe('authenticated extension bridge', () => {
     expect(status).toBe(200);
     expect(onFocusApp).toHaveBeenCalledTimes(1);
   });
+  it('exposes unauthenticated /health for extension origins and PNA preflight header', async () => {
+    const f = await fixture();
+    const healthRes = await new Promise<{ status: number; pna: string | undefined }>(resolve => {
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: f.port,
+          path: '/health',
+          method: 'GET',
+          headers: { Origin: origin },
+        },
+        res => {
+          res.resume();
+          res.on('end', () =>
+            resolve({
+              status: res.statusCode!,
+              pna: res.headers['access-control-allow-private-network'] as string | undefined,
+            })
+          );
+        }
+      );
+      req.end();
+    });
+    expect(healthRes.status).toBe(200);
+    expect(healthRes.pna).toBe('true');
+  });
 });
