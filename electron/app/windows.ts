@@ -77,11 +77,18 @@ export function createDialogWindowFactory(deps: {
     deps.setLastData(sniffData);
     console.log('[VoltGet] createDownloadDialogWindow called for:', sniffData?.url?.slice(0, 70));
 
+    const focusDialog = (w: any) => {
+      if (!w || w.isDestroyed()) return;
+      if (w.isMinimized()) w.restore();
+      w.setAlwaysOnTop(true, 'pop-up-menu');
+      w.show();
+      if (typeof w.moveTop === 'function') w.moveTop();
+      w.focus();
+    };
+
     let win = deps.getDialogWindow();
     if (win && !win.isDestroyed()) {
-      if (win.isMinimized()) win.restore();
-      win.show();
-      win.focus();
+      focusDialog(win);
       win.webContents.send('show-download-dialog', sniffData);
       return;
     }
@@ -103,9 +110,7 @@ export function createDialogWindowFactory(deps: {
     const showWindow = () => {
       const w = deps.getDialogWindow();
       if (w && !w.isDestroyed()) {
-        if (w.isMinimized()) w.restore();
-        w.show();
-        w.focus();
+        focusDialog(w);
         w.webContents.send('show-download-dialog', deps.getLastData() || sniffData);
       }
     };

@@ -43,11 +43,13 @@ export default function SniffPanel({
   onStartDownload,
   onDirectDownload,
   onHttpDownload,
+  onCountChange,
 }: {
   outDir: string;
   onStartDownload: (opts: any) => Promise<any>;
   onDirectDownload: (opts: any) => Promise<any>;
   onHttpDownload: (opts: any) => Promise<any>;
+  onCountChange?: (count: number) => void;
 }) {
   const { t } = useAppSettings();
   const toast = useToast();
@@ -63,6 +65,9 @@ export default function SniffPanel({
   const itemRefs = useRef<Record<string, HTMLDivElement>>({});
   const itemsRef = useRef<Sniff[]>([]);
   itemsRef.current = items;
+  useEffect(() => {
+    onCountChange?.(items.length);
+  }, [items.length, onCountChange]);
   const toastRef = useRef(toast);
   toastRef.current = toast;
   const tRef = useRef(t);

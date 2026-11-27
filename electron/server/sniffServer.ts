@@ -14,14 +14,25 @@ const httpUrl = z
       return false;
     }
   });
+const optionalPageUrl = z
+  .preprocess(val => {
+    if (typeof val !== 'string') return '';
+    try {
+      return ['http:', 'https:'].includes(new URL(val).protocol) ? val : '';
+    } catch {
+      return '';
+    }
+  }, z.string().max(16384))
+  .optional();
+
 export const SniffPayloadSchema = z
   .object({
     url: httpUrl,
-    pageUrl: z.union([httpUrl, z.literal('')]).optional(),
-    title: z.string().max(4096).optional(),
-    filename: z.string().max(1024).optional(),
-    cookie: z.string().max(65536).optional(),
-    type: z.string().max(128).optional(),
+    pageUrl: optionalPageUrl,
+    title: z.string().max(4096).nullish(),
+    filename: z.string().max(1024).nullish(),
+    cookie: z.string().max(65536).nullish(),
+    type: z.string().max(128).nullish(),
     userInitiated: z.boolean().optional(),
     isGenericDownload: z.boolean().optional(),
     showDialog: z.boolean().optional(),
@@ -43,6 +54,7 @@ export interface SniffServerDeps {
 export function allowedOrigin(origin: string | undefined): boolean {
   return (
     origin === undefined ||
+    origin === 'null' ||
     /^(chrome-extension:\/\/[a-p]{32}|moz-extension:\/\/[a-zA-Z0-9-]+)$/.test(origin)
   );
 }

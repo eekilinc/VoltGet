@@ -140,4 +140,17 @@ describe('authenticated extension bridge', () => {
     expect(healthRes.status).toBe(200);
     expect(healthRes.pna).toBe('true');
   });
+  it('accepts Firefox moz-extension payloads with non-http pageUrl or null metadata', async () => {
+    const f = await fixture();
+    const mozOrigin = 'moz-extension://12345678-abcd-ef01-2345-6789abcdef01';
+    const body = JSON.stringify({
+      url: 'https://cdn.example.com/video.mp4',
+      pageUrl: 'about:blank',
+      filename: null,
+      title: null,
+      userInitiated: true,
+    });
+    expect(await f.post(body, { Authorization: 'Bearer ' + token, Origin: mozOrigin })).toBe(200);
+    expect(f.handle).toHaveBeenCalledTimes(1);
+  });
 });

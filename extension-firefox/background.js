@@ -538,8 +538,17 @@ async function sendToVoltGet(data, opts = {}) {
     }
   } catch {}
 
+  const safePageUrl =
+    typeof data.pageUrl === 'string' && /^https?:\/\//i.test(data.pageUrl) ? data.pageUrl : '';
   const payload = {
-    ...data,
+    url: data.url,
+    pageUrl: safePageUrl,
+    title: typeof data.title === 'string' ? data.title : undefined,
+    filename: typeof data.filename === 'string' ? data.filename : undefined,
+    type: typeof data.type === 'string' ? data.type : detectType(data.url),
+    fileSize: typeof data.fileSize === 'number' ? data.fileSize : undefined,
+    asAudio: !!data.asAudio,
+    isGenericDownload: !!data.isGenericDownload,
     cookie: cookieHeader,
     userInitiated,
     showDialog: !!data.showDialog,
@@ -554,17 +563,10 @@ async function sendToVoltGet(data, opts = {}) {
   let sent = false;
   let failReason = 'offline';
 
-  // 1. Tercih: WebSocket (en hızlı)
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    try {
-      socket.send(JSON.stringify({ type: 'sniffed-url', data: payload }));
-      sent = true;
-      markDesktopAlive();
-    } catch {}
-  }
-
-  // 2. Tercih: HTTP POST
-  if (!sent && /^[a-f0-9]{64}$/.test(pairingToken)) {
+  // Kullanıcı tetikli indirmelerde ÖNCE HTTP POST /sniff (sunucudan gerçek 200 OK onayı al!)
+  // Arka plan yakalamalarında ÖNCE WebSocket (düşük gecikme)
+  const tryHttpPost = async () => {
+    if (!/^[a-f0-9]{64}$/.test(pairingToken)) return false;
     try {
       const response = await fetchWithTimeout(
         `${DESKTOP_HOST}/sniff`,
@@ -576,13 +578,14 @@ async function sendToVoltGet(data, opts = {}) {
           },
           body: JSON.stringify(payload),
         },
-        3000
+        4000
       );
       if (response.ok) {
-        sent = true;
         markDesktopAlive();
         void initWebSocket(false);
-      } else if (response.status === 401) {
+        return true;
+      }
+      if (response.status === 401) {
         failReason = 'unauthorized';
         const refreshed = await tryNativeAutoPair(true);
         if (refreshed) {
@@ -593,20 +596,47 @@ async function sendToVoltGet(data, opts = {}) {
               headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + refreshed },
               body: JSON.stringify(payload),
             },
-            3000
+            4000
           );
           if (retry.ok) {
-            sent = true;
             markDesktopAlive();
             void initWebSocket(true);
+            return true;
           }
         }
+      } else {
+        failReason = 'rejected';
       }
     } catch {
       failReason = 'offline';
     }
-  } else if (!sent && !/^[a-f0-9]{64}$/.test(pairingToken)) {
-    // Anahtar yok: uygulama açık mı diye bak ki doğru hata mesajı dönsün
+    return false;
+  };
+
+  const tryWsSend = () => {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      try {
+        socket.send(JSON.stringify({ type: 'sniffed-url', data: payload }));
+        markDesktopAlive();
+        return true;
+      } catch {}
+    }
+    return false;
+  };
+
+  if (userInitiated) {
+    sent = await tryHttpPost();
+    if (!sent && failReason !== 'unauthorized') {
+      sent = tryWsSend();
+    }
+  } else {
+    sent = tryWsSend();
+    if (!sent) {
+      sent = await tryHttpPost();
+    }
+  }
+
+  if (!sent && !/^[a-f0-9]{64}$/.test(pairingToken)) {
     const probe = await probeDesktop('');
     failReason = probe.appRunning ? 'unauthorized' : 'offline';
   }

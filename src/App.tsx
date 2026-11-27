@@ -67,6 +67,7 @@ export default function App() {
   const [completedInfo, setCompletedInfo] = useState<any>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [filesRefreshKey, setFilesRefreshKey] = useState(0);
+  const [sniffCount, setSniffCount] = useState(0);
   const bumpFiles = () => setFilesRefreshKey(k => k + 1);
 
   const hasApi = typeof window !== 'undefined' && !!window.api;
@@ -570,6 +571,7 @@ export default function App() {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: 'space-between',
                   gap: 8,
                   padding: '7px 10px',
                   borderRadius: 8,
@@ -585,8 +587,24 @@ export default function App() {
                   textAlign: 'left',
                 }}
               >
-                <Radio size={14} color="#f43f5e" />
-                <span>Medya Yakalayıcı (Sniff)</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Radio size={14} color="#f43f5e" />
+                  <span>Medya Yakalayıcı (Sniff)</span>
+                </div>
+                {sniffCount > 0 && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: '1px 6px',
+                      borderRadius: 99,
+                      background: tab === 'sniff' ? 'var(--accent-solid)' : '#f43f5e',
+                      color: '#fff',
+                    }}
+                  >
+                    {sniffCount}
+                  </span>
+                )}
               </button>
 
               <button
@@ -1101,14 +1119,22 @@ export default function App() {
             />
           )}
 
-          {tab === 'sniff' && (
+          <div
+            style={{
+              display: tab === 'sniff' ? 'flex' : 'none',
+              flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
+            }}
+          >
             <SniffPanel
               outDir={outDir}
               onStartDownload={handleStartDownload}
               onDirectDownload={handleDirectDownload}
               onHttpDownload={handleHttpDownload}
+              onCountChange={setSniffCount}
             />
-          )}
+          </div>
 
           {tab === 'explorer' && (
             <FileExplorer

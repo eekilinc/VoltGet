@@ -6,7 +6,7 @@ export default function AboutPanel() {
   const { t } = useAppSettings();
   const [status, setStatus] = useState<any>(null);
   const [extConnected, setExtConnected] = useState<boolean>(false);
-  const [appVersion, setAppVersion] = useState<string>('1.3.1');
+  const [appVersion, setAppVersion] = useState<string>('1.3.2');
 
   useEffect(() => {
     window.api?.getYtDlpStatus?.().then(setStatus);

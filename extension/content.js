@@ -353,8 +353,8 @@
               },
             },
             res => {
-              if (res && res.ok === false) {
-                if (res.reason === 'unauthorized') {
+              if (chrome.runtime.lastError || !res || !res.ok) {
+                if (res?.reason === 'unauthorized') {
                   labelEl.textContent = 'Eşleştirme gerekli!';
                   labelEl.style.color = '#fde047';
                 } else {

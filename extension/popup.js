@@ -248,7 +248,7 @@ async function renderList() {
       const prevText = btn.textContent;
       btn.disabled = true;
       btn.textContent = 'Gönderiliyor...';
-      const res = await sendMsg({
+      let res = await sendMsg({
         type: 'user_request_download',
         data: {
           ...it,
@@ -257,6 +257,37 @@ async function renderList() {
           userInitiated: true,
         },
       });
+      // Firefox MV3 fallback: background yanıtı boş dönerse doğrudan /sniff'e gönder
+      if (!res?.ok && res?.reason !== 'unauthorized') {
+        try {
+          const { pairingToken = '' } = await chrome.storage.local.get('pairingToken');
+          if (/^[a-f0-9]{64}$/.test(pairingToken)) {
+            const directPayload = {
+              url: it.pageUrl && /youtube\.com|youtu\.be/i.test(it.pageUrl) ? it.pageUrl : it.url,
+              pageUrl:
+                typeof it.pageUrl === 'string' && /^https?:\/\//i.test(it.pageUrl)
+                  ? it.pageUrl
+                  : '',
+              title: typeof it.title === 'string' ? it.title : undefined,
+              filename: typeof it.filename === 'string' ? it.filename : undefined,
+              type: typeof it.type === 'string' ? it.type : 'file',
+              asAudio: act === 'audio',
+              showDialog: true,
+              userInitiated: true,
+            };
+            const r = await fetch('http://127.0.0.1:8765/sniff', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: 'Bearer ' + pairingToken,
+              },
+              body: JSON.stringify(directPayload),
+            });
+            if (r.ok) res = { ok: true, reason: 'sent' };
+            else if (r.status === 401) res = { ok: false, reason: 'unauthorized' };
+          }
+        } catch {}
+      }
       btn.disabled = false;
       if (res?.ok) {
         btn.textContent = 'Gönderildi ✓';
